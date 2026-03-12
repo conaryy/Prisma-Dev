@@ -1,0 +1,8 @@
+bot-env/
+myvenv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+output_*.txt
+output_switch_portal

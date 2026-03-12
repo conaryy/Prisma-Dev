@@ -1,0 +1,6 @@
+kategori,prefix,pertanyaan,deskripsi
+PROSEDUR,F,Apakah SOP Pelaporan telah diketahui dan diimplementasikan oleh teknisi?,
+PROSEDUR,F,Apakah SOP koordinasi penyelenggara pelayanan telah diketahui dan di implementasikan oleh teknisi?,
+FASILITAS,G,Apakah spesifikasi teknis dan nilai kinerjapelayanan telekomunikasi penerbangan dari setiap pelayanan sesuai dengan ketentuan kinerja pelayanan?,
+PERSONNEL,H,Apakah personel teknik telekomunikasi penerbangan melaksanakan pekerjaan sesuai dengan ketentuan di bidangnya?,
+DOKUMEN,I,Apakah teknisi memiliki akses yang mudah untuk mendapatkan atau menggunakan dokumen terkait fasilitas telekomunikasi penerbangan?,

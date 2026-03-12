@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/airnavpp.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prisma</title>
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function () {
+        try {
+          var theme = window.localStorage.getItem('k2s-theme') === 'dark' ? 'dark' : 'light';
+          var root = document.documentElement;
+          root.classList.toggle('dark', theme === 'dark');
+          root.style.colorScheme = theme;
+        } catch (_) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

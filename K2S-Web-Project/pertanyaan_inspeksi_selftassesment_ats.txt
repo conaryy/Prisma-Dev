@@ -1,0 +1,35 @@
+DAFTAR PERTANYAAN AIR TRAFFIC SERVICES (ATS)
+Instansi: Perum LPPNPI Cabang Surabaya
+
+B. PROSEDUR
+1. B.8: Apakah penyelenggara pelayanan memilliki SOP untuk pemberian pelayanan sesuai dengan sertifikat yang dimiliki?
+2. B.13: Apakah penyelenggara memiliki LOCA dengan : a. Penyelenggara Bandar Udara dan unit dibawahnya; b. Unit Telekomunikasi penerbangan; c. Penyelenggara pelayanan informasi aeronautika; d. Penyelenggara informasi Meteorologi Penerbangan; e. Kantor Pencarian dan Pertolongan (Search and Recue/ SAR); f. Instansi Militer (Jika ada): g. Operator Penerbangan: dan h. Instansi /unit terkait (stakeholder)?
+3. B.35: Apakah unit PLLP mendapatkan informasi meteorologi sebagaimana disebutkan dalam PKPS 174?
+4. B.63: Apakah penyelenggara pelayanan memiliki dan menerapkan prosedur dalam pengiriman/penerimaan data link pesawat yang akan dilayani dalam ruang udara yuridiksinya (data link communication initiation procedure) sesuai dengan ketentuan terkini?
+
+C. PERSONEL
+5. C.67: Apakah pemandu LLP memiliki lisensi yang sah dan rating yang masih berlaku?
+6. C.70: Apakah pemegang lisensi Pemandu LLP dalam melakukan tugas dan kewenangan memiliki sertifikat Kesehatan yang masih berlaku?
+7. C.71: Apakah pemandu LLP dalam melakukan tugas memiliki Sertifikat ICAO Language Proficiency paling rendah Level 4 yang masih berlaku?
+8. C.72: Apakah pemandu LLP dalam melakukan tugas dan kewenangannya sesuai dengan rating yang dimiliki?
+9. C.80: Apakah penyelenggara pelayanan memiliki prosedur untuk melarang penggunaan bahan psikoaktif bagi personel Pemandu LLP? (kecuali atas anjuran dokter)
+10. C.81: Apakah penyelenggara pelayanan memiliki prosedur larangan bertugas bagi Pemandu LLP yang menggunakan bahan psikoaktif?
+11. C.88: Apakah jam kerja Pemandu LLP dan asisten Pemandu LLP sesuai dengan peraturan yang berlaku?
+12. C.91: Apakah personel Pemandu Komunikasi Penerbangan (PKP) yang bekerja di Unit Komunikasi Penerbangan memiliki lisensi dan rating yang sah dan berlaku?
+13. C.92: Apakah rating yang dimiliki oleh Personel PKP diberikan oleh Checker yang ditunjuk Direktur Navigasi Penerbangan?
+14. C.94: Apakah Pemandu Komunikasi Penerbangan dalam melakukan tugas dan kewenangan memilliki sertifikat Kesehatan dan/atau Surat Keterangan Sehat yang berlaku?
+15. C.95: Apakah Pemandu Komunikasi Penerbangan dalam melakukan tugas dan kewenangannya telah memiliki Sertifikat ICAO Language Proficiency paling rendah Level 4 yang berlaku?
+16. C.96: Apakah Pemandu Komunikasi Penerbangan dalam melaksanakan tugas dan kewenangannya sesuai dengan rating yang dimiliki?
+17. C.102: Apakah Penyelenggara Pelayanan Lalu Lintas Penerbangan dalam memberikan pelayanan Flight information Service, menggunakan fasilitas komunikasi 2 arah (Air-Ground Communication) yang dapat berkomunikasi secara langsung, berkelanjutan dan static? (Jika ada)
+18. C.104: Apakah Area Control Centre memiliki fasilitas komunikasi Ground - Ground dengan unit yang memberikan pelayanan lalu lintas penerbangan di wilayah tanggung jawab dengan FIC, APP, TWR dan Air Traffic Reporting Offices?
+19. C.105: Apakah Approach Control Centre memiliki fasilitas komunikasi Ground - Ground dengan unit yang memberikan pelayanan lalu lintas penerbangan di wilayah tanggung jawab dengan FIC, ACC, TWR dan Air Traffic Reporting Offices?
+20. C.106: Apakah Aerodrome Control Tower memiliki fasilitas komunikasi Ground - Ground dengan unit yang memberikan pelayanan lalu lintas penerbangan di wilayah tanggung jawab dengan FIC, APP, ACC, dan Air Traffic Reporting Offices?
+21. C.107: Apakah Penyelenggara Pelayanan Lalu Lintas Penerbangan ACC memiliki fasilitas komunikasi antara unit ATS dengan unit : - Militer - Meteorologi; - Aeronautical Telecommunication Station; - Operator Penerbangan terkait; - Operator Bandar Udara; - Lembaga yang menyelenggarakan pecarian dan pertolongan; - Notam Office.
+22. C.110: Apakah gedung tower untuk pelayanan lalu lintas penerbangan dilengkapi dengan fasilitas: - Unintteruptable Power Supply (UPS); - Alat komunikasi dua arah dengan pesawat, kendaraan dan orang; - Komunikasi dua arah dengan unit unit terkait; - Sarana rekaman komunikasi udara ke darat, darat ke udara, darat ke darat; - Terminal AFTN/AMHS/Alat lain yang memiliki fungsi yang sama; - Teropong; - Lampu signal yang memiliki warna putih. Merah dan hijau.
+23. C.111: Apakah gedung tower untuk pelayanan lalu lintas penerbangan dilengkapi dengan tampilan; a. Data penerbangan; b. Informasi meteorology dengan kriteria keakuratan sesuai dengan ICAO annex 3 dan sekurang-kurangnya memuat informasi kecepatan angin tekanan barometer dan suhu; c. Informasi mengenai data operasional meliputi : - Informasi Cuaca significant; - NOTAM; - Penyerahan / pengambil alihan; - Informasi penting mengenai aerodrome; - Peta penerbangan yang relevan. d. Waktu (jam) untuk tiap posisi operasional dan berasal dari sumber yang sama.
+24. C.112: Apakah gedung tower dilengkapi dengan sistem switching monitoring and control untuk fasilitas pendaratan visual di dalam wilayah tanggung jawabnya? (Jika tidak terdapat fasilitas tersebut dalam gedung tower, maka periksa LOCA dengan penyelenggara bandar udara terkait pemberian fasilitas pendaratan visual)
+25. C.113: Apakah gedung tower dilengkapi dengan sarana yang dapat dengan mudah mendeteksi dan mengetahui kegagalan dalam system radio navigasi di darat maupun sinyal GNSS yang digunakan untuk memandu pesawat udara?
+26. C.114: Apakah ruang APP/ACC penyelenggara pelayanan dilengkapi dengan alat: a. Komunikasi dua arah udara ke darat dalam bentuk radio telephony atau data link; b. Komunikasi dua arah udara ke darat dalam bentuk radio telephony atau data link antara Unit terkait; c. Tampilan waktu untuk tiap posisi operasional berdasarkan sumber yang sama (GPS); d. Tampilan data; e. Tampilan data operasional; f. Peta Penerbangan yang sesuai; g. Komunikasi eksternal h. Rekaman Suara; i. Data terminal j. AFTN / AMHS / Alat yang memiliki fungsu yang sama.
+27. C.115: Apakah ruang APP/ACC dilengkapi dengan sarana untuk mengetahui kegagalan dalam system navigasi di darat maupun sinyal GNSS yang digunakan untuk memandu pesawat?
+28. C.116: Apakah penyelenggara pelayanan memiliki fasilitas automatic transfer of data?
+29. C.120: Apakah ATS Log diisi dan disimpan sesuai ketentuan?Screenshot from 2026-02-23 10-25-54.png

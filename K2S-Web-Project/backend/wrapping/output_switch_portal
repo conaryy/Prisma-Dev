@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>DNP - Menu Portal</title>
+    <!-- HTML5 Shim and Respond.js IE11 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 11]>
+    	<script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+    	<script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    	<![endif]-->
+    <!-- Meta -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=0, minimal-ui">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="description" content="" />
+    <meta name="keywords" content="">
+    <meta name="author" content="Phoenixcoded" />
+    <!-- Favicon icon -->
+    <link rel="icon" href="http://180.214.246.148/resource/doc/images/icon/favicon.png" type="image/x-icon">
+
+    <!-- vendor css -->
+    <link href="https://fonts.googleapis.com/css?family=Comfortaa:300,400,700" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="http://180.214.246.148/resource/themes/ablepro/css/style.css" media="all" />
+<link rel="stylesheet" type="text/css" href="http://180.214.246.148/resource/themes/ablepro/plugins/sweetalert2/sweetalert2.min.css" media="all" />
+
+    <link href="http://180.214.246.148/resource/themes/ablepro/css/custom.css" rel="stylesheet" />
+    <script src="http://180.214.246.148/resource/themes/ablepro/plugins/jquery/jquery.min.js"></script>
+    <style>
+        .card:hover {
+            cursor: pointer;
+            box-shadow: 0 2px 10px -1px rgb(70 125 255 / 100%);
+            margin-bottom: 30 px;
+            transition: box-shadow 0.2s ease-in-out;
+        }
+
+        @media only screen and (max-width: 991px) {
+            .pcoded-content {
+                margin-top: 0;
+            }
+        }
+
+        #shortlink:before {
+            content: "Shortlink";
+            width: 100px;
+        }
+
+        #shortlink:after {
+            right: 70px;
+            top: 11px;
+        }
+        img{
+            min-height: 45px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- [ Pre-loader ] start -->
+    <div class="loader-bg">
+        <div class="loader-track">
+            <div class="loader-fill"></div>
+        </div>
+    </div>
+    <!-- [ Pre-loader ] End -->
+    <!-- [ navigation menu ] start -->
+    <nav class="pcoded-navbar theme-horizontal menu-light brand-blue"
+        style="background-color: #ecf0f5; box-shadow: none; display: none;">
+    </nav>
+    <!-- [ navigation menu ] end -->
+    <!-- [ Header ] start -->
+    <header class="navbar pcoded-header navbar-expand-lg navbar-light header-blue">
+        <div class="m-header col-lg-3">
+            <a class="mobile-menu" id="mobile-collapse" href="#!"><span></span></a>
+            <a href="#!" class="b-brand">
+                <!-- ========   change your logo hear   ============ -->
+
+            </a>
+            <a href="#!" class="mob-toggler">
+                <i class="feather icon-more-vertical"></i>
+            </a>
+        </div>
+        <div class="collapse navbar-collapse">
+            <ul class="navbar-nav mx-auto">
+                <img src="http://180.214.246.148/resource/doc/images/icon/favicon.png" alt="" class="logo">
+                <h5 class="font-weight-bold text-light mt-3 ml-2 mr-5">Direktorat Navigasi Penerbangan</h5>
+                <input type="hidden" name="lang" value="indonesian" id="lang">
+            </ul>
+            <ul class="navbar-nav ml-auto">
+                <li>
+                	<section style="position: absolute; top: 5px; right: 0px; padding: 0 70px; margin-right: 25px;">
+                        <form id="languageForm" action="http://180.214.246.148/home/language/change" method="post">
+                            <input type="hidden" name="ci_csrf_token" value="" />
+                            <label for="languageSwitch">ID</label>
+                            <div class="switch switch-primary d-inline m-r-5 m-l-5">
+                                <input type="checkbox" id="languageSwitch"  onchange="changeLanguage(this.checked ? 'english' : 'indonesian')">
+                                <label for="languageSwitch" class="cr"></label>
+                            </div>
+                            <label for="languageSwitch">EN</label>
+                        </form>
+                    </section>
+                    <div class="dropdown drp-user mt-1">
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">
+                            <i class="feather icon-user"></i>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-right profile-notification">
+                            <div class="pro-head">
+                                                                <span>Perum LPPNPI Cabang Surabaya</span>
+                                <a href="http://180.214.246.148/login/logout_process" class="dud-logout" title="Logout">
+                                    <i class="feather icon-log-out"></i>
+                                </a>
+                            </div>
+                            <ul class="pro-body">
+                                <li><a href="http://180.214.246.148/home/welcome/profile" class="dropdown-item"><i
+                                            class="feather icon-user"></i>
+                                        Profile</a></li>
+                                <li><a href="http://180.214.246.148/login/logout_process"
+                                        class="dropdown-item text-danger"><i class="feather icon-power"></i>
+                                        Logout</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </header>
+    <!-- [ Header ] end -->
+    <!-- [ Main Content ] start -->
+    <div class="pcoded-main-container" style="min-height: 150vh; margin-top: 50px;">
+        <div class="pcoded-wrapper container">
+            <div class="pcoded-content">
+                <div class="pcoded-inner-content">
+                    <div class="main-body">
+                        <div class="page-wrapper">
+                            <div class="row portal justify-content-center">
+                                <!-- [ horizontal-layout ] start -->
+                                <!-- customar project  end -->
+                                <!-- social download  start -->
+                                <div class="col-4">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <i class="feather icon-shield text-c-blue d-block f-40"></i>
+                                            <h4 class="m-t-20">SMS</h4>
+                                            <p class="m-b-20">Portal Untuk SMS</p>
+                                                                                        <a href="https://sms.bireka.id/auth/login/eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiMjcyIiwiZXhwIjoxNzcxMzgzNzkwfQ.N5jCzq7Q6Btpq7iSHzDQUP-K7raUf5rsS4Ku2Mvjw-A" class="btn btn-primary btn-round">Masuk</a>
+                                                                                    </div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <i class="feather icon-layout text-c-red d-block f-40"></i>
+                                            <h4 class="m-t-20">Dashboard</h4>
+                                            <p class="m-b-20">Portal untuk dashboard</p>
+                                            <a href="home/dashboard/penyelenggara" class="btn btn-danger btn-round" >Masuk</a>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- social download  end -->
+                                <!-- [ horizontal-layout ] end -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+                <!-- Warning Section Ends -->
+
+                <!-- Required Js -->
+                <script src="http://180.214.246.148/resource/themes/ablepro/js/vendor-all.min.js"></script>
+                <script src="http://180.214.246.148/resource/themes/ablepro/js/plugins/bootstrap.min.js"></script>
+                <script src="http://180.214.246.148/resource/themes/ablepro/js/ripple.js"></script>
+                <script src="http://180.214.246.148/resource/themes/ablepro/js/pcoded.min.js"></script>
+
+                <!-- prism Js -->
+                <script src="http://180.214.246.148/resource/themes/ablepro/js/plugins/prism.js"></script>
+                <script src="http://180.214.246.148/resource/themes/ablepro/js/horizontal-menu.js"></script>
+
+                <script src="http://180.214.246.148/resource/themes/ablepro/js/analytics.js"></script>
+                <script src="http://180.214.246.148/resource/themes/ablepro/js/plugins/jquery.dataTables.min.js"></script>
+                <script src="http://180.214.246.148/resource/themes/ablepro/js/plugins/dataTables.bootstrap4.min.js"></script>
+                <!-- load javascript -->
+                <script type="text/javascript" src="http://180.214.246.148/resource/themes/ablepro/plugins/sweetalert2/sweetalert2.min.js"></script>
+
+
+                <script>
+                    $(document).ready(function () {
+                        var lang = $('#lang').val();
+                        // =========================================================
+                        // =========    Menu Customizer [ HTML ] code   ============
+                        // =========================================================
+                        var list_portal = '';
+                        list_portal += '<div id="styleSelector" class="menu-styler">'
+                        list_portal += '<div class="style-toggler">'
+                        list_portal += '<a href="#!" id="shortlink"></a>'
+                        list_portal += '</div>'
+                        list_portal += '<div class="style-block">'
+                        if(lang == 'english'){
+                            list_portal += '<h4 class="mb-2 mt-1"><small class="font-weight-normal">Related Application Shortlinks</small></h4>'
+                        }else{
+                            list_portal += '<h4 class="mb-2 mt-1"><small class="font-weight-normal">Shortlink Aplikasi Terkait</small></h4>'
+                        }
+                        list_portal += '<hr class="">'
+                        list_portal += '<div class="row">'
+                        var link_shortcut = [{"pref_id":"55","pref_group":"link","pref_nm":"eksternal","pref_label":"IMSIS","pref_value_en":null,"pref_value":"https:\/\/imsis-djpu.dephub.go.id\/","updated_by":null,"created_by":null,"created_at":null,"updated_at":null,"deleted_at":null},{"pref_id":"56","pref_group":"link","pref_nm":"eksternal","pref_label":"AIREON","pref_value_en":null,"pref_value":"https:\/\/dashboard.aireon.com","updated_by":null,"created_by":null,"created_at":null,"updated_at":null,"deleted_at":null},{"pref_id":"57","pref_group":"link","pref_nm":"eksternal","pref_label":"IWISH","pref_value_en":null,"pref_value":"https:\/\/iwish.dephub.go.id","updated_by":null,"created_by":null,"created_at":null,"updated_at":null,"deleted_at":null},{"pref_id":"58","pref_group":"link","pref_nm":"eksternal","pref_label":"InaTEWS","pref_value_en":null,"pref_value":"https:\/\/inatews.bmkg.go.id","updated_by":null,"created_by":null,"created_at":null,"updated_at":null,"deleted_at":null},{"pref_id":"59","pref_group":"link","pref_nm":"eksternal","pref_label":"RAMI","pref_value_en":null,"pref_value":"https:\/\/rami.bmkg.go.id","updated_by":null,"created_by":null,"created_at":null,"updated_at":null,"deleted_at":null},{"pref_id":"60","pref_group":"link","pref_nm":"eksternal","pref_label":"WINDY","pref_value_en":null,"pref_value":"https:\/\/windy.com","updated_by":null,"created_by":null,"created_at":null,"updated_at":null,"deleted_at":null},{"pref_id":"61","pref_group":"link","pref_nm":"eksternal","pref_label":"PESAT'S","pref_value_en":null,"pref_value":"http:\/\/202.61.104.172\/development\/portal\/","updated_by":null,"created_by":null,"created_at":null,"updated_at":null,"deleted_at":null},{"pref_id":"62","pref_group":"link","pref_nm":"eksternal","pref_label":"RADAR","pref_value_en":null,"pref_value":"https:\/\/202.61.104.120","updated_by":null,"created_by":null,"created_at":null,"updated_at":null,"deleted_at":null},{"pref_id":"73","pref_group":"link","pref_nm":"eksternal","pref_label":"Portal Kalibrasi","pref_value_en":null,"pref_value":"http:\/\/180.214.246.148\/kalibrasi\/","updated_by":null,"created_by":null,"created_at":null,"updated_at":null,"deleted_at":null}]
+                        link_shortcut.forEach(function (list, index) {
+                            // console.log();
+                            list_portal += '<div class="col-lg-4 mt-2">'
+                            list_portal += '<center>'
+                            list_portal += '<a href="' + list.pref_value + '" title="' + list.pref_label.toUpperCase() + '" target="_blank">'
+                            // if (list.src) {
+                            //     list_portal += '<img class="ml-2" width="40px" src="' + list.src + '" alt="User-Profile-Image">'
+                            // } else {
+                            //     list_portal += '<img class="" width="40px" src="http://180.214.246.148/resource/doc/images/portal/default_portal.png" alt="' + list.title.toUpperCase() + '">'
+                            // }
+                            if (list.pref_label == 'IMSIS') {
+                                list_portal += '<img class="" width="40px" src="http://180.214.246.148//resource/doc/images/shortcut/imsis.png" alt="' + list.pref_label.toUpperCase() + '">'
+                            }
+                            else if (list.pref_label == 'AIREON') {
+                                list_portal += '<img class="" width="40px" src="http://180.214.246.148//resource/doc/images/shortcut/aireon.png" alt="' + list.pref_label.toUpperCase() + '">'
+                            }
+                            else if (list.pref_label == 'IWISH') {
+                                list_portal += '<img class="" width="40px" src="http://180.214.246.148//resource/doc/images/shortcut/iwish.png" alt="' + list.pref_label.toUpperCase() + '">'
+                            }
+                            else if (list.pref_label == 'InaTEWS') {
+                                list_portal += '<img class="" width="40px" src="http://180.214.246.148//resource/doc/images/shortcut/bmkg.png" alt="' + list.pref_label.toUpperCase() + '">'
+                            }
+                            else if (list.pref_label == 'RAMI') {
+                                list_portal += '<img class="" width="40px" src="http://180.214.246.148//resource/doc/images/shortcut/bmkg.png" alt="' + list.pref_label.toUpperCase() + '">'
+                            }
+                            else if (list.pref_label == 'WINDY') {
+                                list_portal += '<img class="" width="40px" src="http://180.214.246.148//resource/doc/images/shortcut/windy.png" alt="' + list.pref_label.toUpperCase() + '">'
+                            }
+                            else if (list.pref_label == 'PESAT\'S') {
+                                list_portal += '<img class="" width="40px" src="http://180.214.246.148//resource/doc/images/shortcut/pesats.png" alt="' + list.pref_label.toUpperCase() + '">'
+                            }
+                            else if (list.pref_label == 'RADAR') {
+                                list_portal += '<img class="" width="40px" src="http://180.214.246.148//resource/doc/images/portal/default_portal.png" alt="' + list.pref_label.toUpperCase() + '">'
+                            }
+                            else if (list.pref_label == 'Portal Kalibrasi') {
+                                list_portal += '<img class="" width="40px" src="http://180.214.246.148//resource/doc/images/shortcut/imsis.png" alt="' + list.pref_label.toUpperCase() + '">'
+                            }
+                            // list_portal += '<img class="" width="40px" src="http://180.214.246.148/resource/doc/images/portal/default_portal.png" alt="' + list.pref_label.toUpperCase() + '">'
+                            list_portal += '<p class="form-label mt-1" style="margin:0">' + list.pref_label + '</p>'
+                            list_portal += '</a>'
+                            list_portal += '</center>'
+                            list_portal += '</div>'
+                        })
+                        list_portal += '</div>' // row
+                        list_portal += '</div>' // style block
+                        list_portal += '</div>' // style selector
+
+                        $('body').append(list_portal);
+                        // 
+                        // =========================================================
+                        // ==================    Menu Customizer Start   ===========
+                        // =========================================================
+                        // open Menu Styler
+                        $('#styleSelector > .style-toggler').on('click', function () {
+                            $('#styleSelector').toggleClass('open');
+                            $('#styleSelector').removeClass('prebuild-open');
+                        });
+                    })
+                </script>
+                <!-- <script src="http://180.214.246.148/resource/themes/ablepro/js/menu-setting.js"></script> -->
+                <!-- [ content ] end -->
+    </div>
+</body>
+
+</html>
+<script>
+    function changeLanguage(language) {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', document.getElementById('languageForm').action, true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState === 4) {
+                if (xhr.status === 200) {
+                    const response = JSON.parse(xhr.responseText);
+                    if (response.status === 'success') {
+                        // Handle pesan sukses jika diperlukan
+                        console.log(response.message);
+                        // Reload halaman setelah mengganti bahasa
+                        window.location.reload();
+                    }
+                } else {
+                    // Handle kesalahan jika diperlukan
+                    console.log('Error changing language');
+                }
+            }
+        };
+        xhr.send('language=' + language);
+    }
+
+    function showAlert() {
+        Swal.fire({
+            title: 'Failed!',
+            text: 'Token Gagal Di Generate.',
+            icon: 'error',
+            confirmButtonText: 'OK'
+        });
+    }
+</script>

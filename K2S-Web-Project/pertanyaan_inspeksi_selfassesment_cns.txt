@@ -1,0 +1,22 @@
+DAFTAR PERTANYAAN AERONAUTICAL TELECOMMUNICATION SERVICES (CNS)
+Instansi: Perum LPPNPI Cabang Surabaya
+
+B. PROSEDUR
+1. B.12: Apakah SOP Pelaporan telah diketahui dan diimplementasikan oleh teknisi?
+2. B.15: Apakah SOP gangguan pelayanan telekomunikasi penerbangan telah diketahui dan diimplementasikan oleh teknisi?
+3. B.17: Apakah SOP koordinasi penyelenggara pelayanan telah diketahui dan di implementasikan oleh teknisi?
+
+C. FASILITAS
+4. C.18: Apakah spesifikasi teknis dan nilai kinerja pelayanan telekomunikasi penerbangan dari setiap pelayanan sesuai dengan ketentuan kinerja pelayanan?
+5. C.19: Apakah penyelenggara pelayanan melakukan Flight Commissioning dan / atau kalibrasi secara periodic / special terhadap fasilitas telekomunikasi penerbangan?
+6. C.20: Apakah Fasilitas yang memberikan pelayanan telah dilaksanakan ground inspection?
+7. C.21: Apakah terdapat fasilitas untuk memonitor status operasional peralatan telekomunikasi penerbangan?
+8. C.23: Apakah fasilitas telekomunikasi penerbangan menggunakan pengalokasian spectrum frekuensi radio penerbangan dengan mempertimbangkan ketentuan nasional dan internasional serta sesuai dengan prosedur penggunaan frekuensi untuk penerbangan?
+9. C.24: Apakah terdapat fasilitas perekaman pada pelayanan komunikasi bergerak dan tetap?
+10. C.25: Apakah fasilitas pengamatan penerbangan memiliki alokasi kode: a. System area Code (SAC)? b. System Identification Code (SIC)? dan c. Integrator Indentifier (II)?
+
+D. PERSONNEL
+11. D.31: Apakah personel teknik telekomunikasi penerbangan melaksanakan pekerjaan sesuai dengan ketentuan di bidangnya?
+
+E. DOKUMEN
+12. E.33: Apakah teknisi memiliki akses yang mudah untuk mendapatkan atau menggunakan dokumen terkait fasilitas telekomunikasi penerbangan?

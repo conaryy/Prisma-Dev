@@ -1,0 +1,1498 @@
+openapi: 3.0.3
+info:
+  title: K2S Backend API
+  version: 1.0.0
+  description: Draft OpenAPI untuk Laravel + Sanctum.
+servers:
+  - url: http://localhost:8000
+tags:
+  - name: Auth
+  - name: Users
+  - name: Instansi
+  - name: Facilities
+  - name: Organizations
+  - name: Personil
+  - name: Certificates
+  - name: Agenda
+  - name: Audits
+  - name: Inspections
+  - name: Monitoring
+  - name: Findings
+  - name: FollowUps
+security:
+  - bearerAuth: []
+paths:
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Login and get token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (revoke token)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+
+  /api/users:
+    get:
+      tags: [Users]
+      summary: List users
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+    post:
+      tags: [Users]
+      summary: Create user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+
+  /api/users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+    patch:
+      tags: [Users]
+      summary: Update user
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+    delete:
+      tags: [Users]
+      summary: Delete user
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/instansi:
+    get:
+      tags: [Instansi]
+      summary: Get instansi list (or single)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstansiListResponse'
+  /api/instansi/{id}:
+    put:
+      tags: [Instansi]
+      summary: Update instansi
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstansiRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstansiResponse'
+
+  /api/facilities:
+    get:
+      tags: [Facilities]
+      summary: List facilities
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityListResponse'
+    post:
+      tags: [Facilities]
+      summary: Create facility
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FacilityRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityResponse'
+
+  /api/facilities/{id}:
+    get:
+      tags: [Facilities]
+      summary: Get facility
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityResponse'
+    patch:
+      tags: [Facilities]
+      summary: Update facility
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FacilityRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FacilityResponse'
+    delete:
+      tags: [Facilities]
+      summary: Delete facility
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/organizations:
+    get:
+      tags: [Organizations]
+      summary: List organizations
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationListResponse'
+    post:
+      tags: [Organizations]
+      summary: Create organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationResponse'
+
+  /api/organizations/{id}:
+    get:
+      tags: [Organizations]
+      summary: Get organization
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationResponse'
+    patch:
+      tags: [Organizations]
+      summary: Update organization
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationResponse'
+    delete:
+      tags: [Organizations]
+      summary: Delete organization
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/personil:
+    get:
+      tags: [Personil]
+      summary: List personil
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonilListResponse'
+    post:
+      tags: [Personil]
+      summary: Create personil
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonilRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonilResponse'
+
+  /api/personil/{id}:
+    get:
+      tags: [Personil]
+      summary: Get personil
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonilResponse'
+    patch:
+      tags: [Personil]
+      summary: Update personil
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonilRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonilResponse'
+    delete:
+      tags: [Personil]
+      summary: Delete personil
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/certificates:
+    get:
+      tags: [Certificates]
+      summary: List certificates
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateListResponse'
+    post:
+      tags: [Certificates]
+      summary: Create certificate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateResponse'
+
+  /api/certificates/{id}:
+    get:
+      tags: [Certificates]
+      summary: Get certificate
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateResponse'
+    patch:
+      tags: [Certificates]
+      summary: Update certificate
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateResponse'
+    delete:
+      tags: [Certificates]
+      summary: Delete certificate
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/agenda:
+    get:
+      tags: [Agenda]
+      summary: List agenda
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgendaListResponse'
+    post:
+      tags: [Agenda]
+      summary: Create agenda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgendaRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgendaResponse'
+
+  /api/agenda/{id}:
+    get:
+      tags: [Agenda]
+      summary: Get agenda
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgendaResponse'
+    patch:
+      tags: [Agenda]
+      summary: Update agenda
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgendaRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgendaResponse'
+    delete:
+      tags: [Agenda]
+      summary: Delete agenda
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/audits:
+    get:
+      tags: [Audits]
+      summary: List audits
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditListResponse'
+    post:
+      tags: [Audits]
+      summary: Create audit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditResponse'
+
+  /api/audits/{id}:
+    get:
+      tags: [Audits]
+      summary: Get audit
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditResponse'
+    patch:
+      tags: [Audits]
+      summary: Update audit
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditResponse'
+    delete:
+      tags: [Audits]
+      summary: Delete audit
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/inspections:
+    get:
+      tags: [Inspections]
+      summary: List inspections
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InspectionListResponse'
+    post:
+      tags: [Inspections]
+      summary: Create inspection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InspectionRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InspectionResponse'
+
+  /api/inspections/{id}:
+    get:
+      tags: [Inspections]
+      summary: Get inspection
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InspectionResponse'
+    patch:
+      tags: [Inspections]
+      summary: Update inspection
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InspectionRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InspectionResponse'
+    delete:
+      tags: [Inspections]
+      summary: Delete inspection
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/monitoring:
+    get:
+      tags: [Monitoring]
+      summary: List monitoring
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitoringListResponse'
+    post:
+      tags: [Monitoring]
+      summary: Create monitoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonitoringRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitoringResponse'
+
+  /api/monitoring/{id}:
+    get:
+      tags: [Monitoring]
+      summary: Get monitoring
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitoringResponse'
+    patch:
+      tags: [Monitoring]
+      summary: Update monitoring
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonitoringRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitoringResponse'
+    delete:
+      tags: [Monitoring]
+      summary: Delete monitoring
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/findings:
+    get:
+      tags: [Findings]
+      summary: List findings
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingListResponse'
+    post:
+      tags: [Findings]
+      summary: Create finding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingResponse'
+
+  /api/findings/{id}:
+    get:
+      tags: [Findings]
+      summary: Get finding
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingResponse'
+    patch:
+      tags: [Findings]
+      summary: Update finding
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingResponse'
+    delete:
+      tags: [Findings]
+      summary: Delete finding
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/follow-ups:
+    get:
+      tags: [FollowUps]
+      summary: List follow ups
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpListResponse'
+    post:
+      tags: [FollowUps]
+      summary: Create follow up
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpResponse'
+
+  /api/follow-ups/{id}:
+    get:
+      tags: [FollowUps]
+      summary: Get follow up
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpResponse'
+    patch:
+      tags: [FollowUps]
+      summary: Update follow up
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpResponse'
+    delete:
+      tags: [FollowUps]
+      summary: Delete follow up
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/follow-ups/{id}/history:
+    get:
+      tags: [FollowUps]
+      summary: List follow up history
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpHistoryListResponse'
+    post:
+      tags: [FollowUps]
+      summary: Add follow up history note
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FollowUpHistoryRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpHistoryResponse'
+
+  /api/follow-ups/{id}/evidence:
+    post:
+      tags: [FollowUps]
+      summary: Upload evidence file
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpEvidenceResponse'
+
+  /api/follow-ups/{id}/evidence/{evidenceId}:
+    delete:
+      tags: [FollowUps]
+      summary: Delete evidence file
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - name: evidenceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            success:
+              type: boolean
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        remember:
+          type: boolean
+    AuthResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            token:
+              type: string
+            token_type:
+              type: string
+            user:
+              $ref: '#/components/schemas/User'
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
+    UserResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/User'
+    UserListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+    UserCreateRequest:
+      type: object
+      required: [name, email, password, role]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
+    UserUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
+
+    Instansi:
+      type: object
+      properties:
+        id:
+          type: string
+        facilityGroup:
+          type: string
+        kobu:
+          type: string
+        bandara:
+          type: string
+        cabangAirnav:
+          type: string
+        name:
+          type: string
+        alias:
+          type: string
+        address:
+          type: string
+        contactName:
+          type: string
+        contactEmail:
+          type: string
+        contactPhone:
+          type: string
+        fax:
+          type: string
+        postalCode:
+          type: string
+        longitude:
+          type: string
+        latitude:
+          type: string
+        serviceArea:
+          type: string
+        operatingHours:
+          type: string
+        trafficType:
+          type: string
+        runwayCapacity:
+          type: string
+        runwayCondition:
+          type: string
+        location:
+          type: string
+    InstansiRequest:
+      allOf:
+        - $ref: '#/components/schemas/Instansi'
+    InstansiResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Instansi'
+    InstansiListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Instansi'
+
+    Facility:
+      type: object
+      properties:
+        id:
+          type: string
+        instansiId:
+          type: string
+        group:
+          type: string
+        name:
+          type: string
+        merk:
+          type: string
+        type:
+          type: string
+        frequency:
+          type: string
+        ident:
+          type: string
+        condition:
+          type: string
+    FacilityRequest:
+      allOf:
+        - $ref: '#/components/schemas/Facility'
+    FacilityResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Facility'
+    FacilityListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Facility'
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+        instansiId:
+          type: string
+        unitName:
+          type: string
+        positionName:
+          type: string
+        level:
+          type: string
+        status:
+          type: string
+    OrganizationRequest:
+      allOf:
+        - $ref: '#/components/schemas/Organization'
+    OrganizationResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Organization'
+    OrganizationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
+
+    Personil:
+      type: object
+      properties:
+        id:
+          type: string
+        instansiId:
+          type: string
+        name:
+          type: string
+        position:
+          type: string
+        level:
+          type: string
+        field:
+          type: string
+        tier:
+          type: string
+    PersonilRequest:
+      allOf:
+        - $ref: '#/components/schemas/Personil'
+    PersonilResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Personil'
+    PersonilListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Personil'
+
+    Certificate:
+      type: object
+      properties:
+        id:
+          type: string
+        instansiId:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        number:
+          type: string
+        validUntil:
+          type: string
+          format: date
+        status:
+          type: string
+    CertificateRequest:
+      allOf:
+        - $ref: '#/components/schemas/Certificate'
+    CertificateResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Certificate'
+    CertificateListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Certificate'
+
+    Agenda:
+      type: object
+      properties:
+        id:
+          type: string
+        date:
+          type: string
+          format: date
+        activityType:
+          type: string
+        location:
+          type: string
+        status:
+          type: string
+    AgendaRequest:
+      allOf:
+        - $ref: '#/components/schemas/Agenda'
+    AgendaResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Agenda'
+    AgendaListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Agenda'
+
+    Audit:
+      type: object
+      properties:
+        id:
+          type: string
+        number:
+          type: string
+        date:
+          type: string
+          format: date
+        location:
+          type: string
+        status:
+          type: string
+        focus:
+          type: string
+    AuditRequest:
+      allOf:
+        - $ref: '#/components/schemas/Audit'
+    AuditResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Audit'
+    AuditListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Audit'
+
+    Inspection:
+      type: object
+      properties:
+        id:
+          type: string
+        number:
+          type: string
+        date:
+          type: string
+          format: date
+        location:
+          type: string
+        status:
+          type: string
+        unit:
+          type: string
+    InspectionRequest:
+      allOf:
+        - $ref: '#/components/schemas/Inspection'
+    InspectionResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Inspection'
+    InspectionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Inspection'
+
+    Monitoring:
+      type: object
+      properties:
+        id:
+          type: string
+        date:
+          type: string
+          format: date
+        location:
+          type: string
+        status:
+          type: string
+        note:
+          type: string
+    MonitoringRequest:
+      allOf:
+        - $ref: '#/components/schemas/Monitoring'
+    MonitoringResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Monitoring'
+    MonitoringListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Monitoring'
+
+    Finding:
+      type: object
+      properties:
+        id:
+          type: string
+        sourceType:
+          type: string
+        sourceId:
+          type: string
+        kategori:
+          type: string
+        deskripsi:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+        dueDate:
+          type: string
+          format: date
+    FindingRequest:
+      allOf:
+        - $ref: '#/components/schemas/Finding'
+    FindingResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Finding'
+    FindingListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+
+    FollowUp:
+      type: object
+      properties:
+        id:
+          type: string
+        findingId:
+          type: string
+        aksiPerbaikan:
+          type: string
+        pic:
+          type: string
+        targetDate:
+          type: string
+          format: date
+        status:
+          type: string
+    FollowUpRequest:
+      allOf:
+        - $ref: '#/components/schemas/FollowUp'
+    FollowUpResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/FollowUp'
+    FollowUpListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/FollowUp'
+
+    FollowUpHistory:
+      type: object
+      properties:
+        id:
+          type: string
+        followUpId:
+          type: string
+        note:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    FollowUpHistoryRequest:
+      type: object
+      required: [note]
+      properties:
+        note:
+          type: string
+    FollowUpHistoryResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/FollowUpHistory'
+    FollowUpHistoryListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/FollowUpHistory'
+
+    FollowUpEvidence:
+      type: object
+      properties:
+        id:
+          type: string
+        followUpId:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+    FollowUpEvidenceResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/FollowUpEvidence'

@@ -1,0 +1,30 @@
+{
+  "name": "k3-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend NestJS untuk dashboard dan checklist audit K3",
+  "scripts": {
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:backend": "nest build",
+    "build:frontend": "npm --prefix frontend run build",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "start": "nest start",
+    "start:dev": "nest start --watch"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.12",
+    "@nestjs/core": "^11.0.12",
+    "@nestjs/platform-express": "^11.0.12",
+    "mammoth": "^1.10.0",
+    "multer": "^2.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.5",
+    "@types/express": "^5.0.1",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^22.13.10",
+    "typescript": "^5.7.3"
+  }
+}

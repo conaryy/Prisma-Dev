@@ -1,0 +1,41 @@
+import * as React from 'react';
+
+import { cn } from '@/lib/utils';
+
+export type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, type, onClick, ...props }, ref) => {
+    const openNativeDatePicker = (event: React.MouseEvent<HTMLInputElement>) => {
+      if (type !== 'date') return;
+      const target = event.currentTarget;
+      if (target.disabled || target.readOnly) return;
+      if (typeof target.showPicker !== 'function') return;
+
+      try {
+        target.showPicker();
+      } catch {
+        // Ignore browsers that block showPicker in specific states.
+      }
+    };
+
+    return (
+      <input
+        type={type}
+        className={cn(
+          'flex h-10 w-full rounded-xl border border-input bg-white/80 px-3 py-2 text-sm shadow-sm transition-colors duration-200 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-slate-400 focus-visible:outline-none focus-visible:border-blue-300 focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50',
+          className
+        )}
+        onClick={(event) => {
+          openNativeDatePicker(event);
+          onClick?.(event);
+        }}
+        ref={ref}
+        {...props}
+      />
+    );
+  }
+);
+Input.displayName = 'Input';
+
+export { Input };
