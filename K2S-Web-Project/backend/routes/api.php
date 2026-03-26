@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:20,1');
+Route::get('auth/sso-config', [AuthController::class, 'ssoConfig'])->middleware('throttle:60,1');
 Route::get('notifications/stream', [NotificationController::class, 'stream'])
     ->middleware(['signed', 'throttle:60,1'])
     ->name('notifications.stream');
@@ -60,6 +61,18 @@ Route::get('self-assessment/sessions/{session}/file/signed', [SelfAssessmentSess
 Route::get('external-dnp/sync/captcha/{sessionId}', [ExternalDnpCapController::class, 'syncCaptcha'])
     ->middleware(['signed', 'throttle:60,1'])
     ->name('external-dnp.sync.captcha');
+Route::get(
+    'admin/self-assessment/questions/import-dnp/captcha/{sessionId}',
+    [SelfAssessmentQuestionController::class, 'importDnpCaptcha']
+)
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('admin.self-assessment.questions.import-dnp.captcha');
+Route::get(
+    'admin/self-assessment/questions/export/signed',
+    [SelfAssessmentQuestionController::class, 'exportDownloadSigned']
+)
+    ->middleware(['signed:relative', 'throttle:60,1'])
+    ->name('admin.self-assessment.questions.export.signed');
 Route::get('follow-ups/evidence/{evidence}/signed', [FollowUpEvidenceController::class, 'downloadSigned'])
     ->middleware(['signed', 'throttle:60,1'])
     ->name('follow-ups.evidence.signed');
@@ -76,7 +89,7 @@ Route::get('guide/template/{type}/signed', [GuideManualController::class, 'downl
     ->middleware(['signed:relative', 'throttle:60,1'])
     ->name('guide.template.signed');
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth.api')->group(function () {
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::get('auth/me', [AuthController::class, 'me']);
     Route::get('dashboard/cap-summary', [DashboardController::class, 'capSummary']);
@@ -188,6 +201,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('questions', [SelfAssessmentQuestionController::class, 'adminIndex']);
         Route::post('questions', [SelfAssessmentQuestionController::class, 'store']);
         Route::post('questions/import', [SelfAssessmentQuestionController::class, 'import']);
+        Route::post('questions/export-url', [SelfAssessmentQuestionController::class, 'exportUrl']);
+        Route::post('questions/import-dnp/init', [SelfAssessmentQuestionController::class, 'importDnpInit']);
+        Route::post('questions/import-dnp/fills', [SelfAssessmentQuestionController::class, 'importDnpFillOptions']);
+        Route::post('questions/import-dnp/scrape', [SelfAssessmentQuestionController::class, 'importDnpScrape']);
         Route::delete('questions', [SelfAssessmentQuestionController::class, 'adminDestroyAll']);
         Route::patch('questions/{question}', [SelfAssessmentQuestionController::class, 'update']);
         Route::delete('questions/{question}', [SelfAssessmentQuestionController::class, 'destroy']);

@@ -80,7 +80,7 @@ export function Login() {
 
   return (
     <div
-      className="relative min-h-screen overflow-hidden bg-slate-50 text-slate-900 transition-colors duration-300 dark:text-slate-100"
+      className="relative min-h-screen overflow-hidden bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100"
       style={
         {
           '--login-hero': '#2563eb',
@@ -91,9 +91,9 @@ export function Login() {
       }
     >
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-32 top-20 h-72 w-72 rounded-full bg-[var(--login-hero-soft)] opacity-60 blur-3xl" />
-        <div className="absolute -right-20 -top-24 h-60 w-60 rounded-full bg-blue-100 opacity-70 blur-3xl" />
-        <div className="absolute bottom-0 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-sky-100 opacity-60 blur-2xl" />
+        <div className="absolute -left-32 top-20 h-72 w-72 rounded-full bg-[var(--login-hero-soft)] opacity-60 blur-3xl dark:bg-blue-500/30" />
+        <div className="absolute -right-20 -top-24 h-60 w-60 rounded-full bg-blue-100 opacity-70 blur-3xl dark:bg-indigo-500/25" />
+        <div className="absolute bottom-0 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-sky-100 opacity-60 blur-2xl dark:bg-cyan-500/20" />
       </div>
 
       <div className="relative grid min-h-screen w-full grid-cols-1 md:grid-cols-[1.05fr_0.95fr]">
@@ -103,7 +103,7 @@ export function Login() {
               className="absolute inset-y-0 left-0 right-0 bg-cover bg-center bg-no-repeat opacity-30 md:-right-20 lg:-right-28"
               style={{ backgroundImage: `url(${airnavBackground})` }}
             />
-            <div className="absolute inset-y-0 left-0 right-0 bg-white/88 backdrop-blur-[1px] md:-right-20 lg:-right-28" />
+            <div className="absolute inset-y-0 left-0 right-0 bg-white/88 backdrop-blur-[1px] md:-right-20 lg:-right-28 dark:bg-slate-950/80" />
           </div>
 
           <div className="relative z-10 mx-auto w-full max-w-lg space-y-10">
@@ -135,7 +135,7 @@ export function Login() {
                   </h1>
                 </div>
               </div>
-              <p className="text-base text-slate-500">
+              <p className="text-base text-slate-500 dark:text-slate-300">
                 Masuk untuk melanjutkan pemantauan dan inspeksi K3.
               </p>
             </div>
@@ -144,13 +144,13 @@ export function Login() {
               className="space-y-6 animate-in fade-in slide-in-from-left-6 duration-700 delay-100"
               onSubmit={handleSubmit}
             >
-              <div className="space-y-4 rounded-3xl border border-white/80 bg-white/90 p-7 shadow-[0_20px_45px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8">
+              <div className="space-y-4 rounded-3xl border border-white/80 bg-white/90 p-7 shadow-[0_20px_45px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8 dark:border-slate-700 dark:bg-slate-900/85 dark:shadow-[0_20px_45px_rgba(2,6,23,0.6)]">
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                  <label className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-300">
                     Email atau username
                   </label>
                   <div className="relative">
-                    <Mail className="pointer-events-none absolute left-4 top-1/2 z-10 h-5 w-5 -translate-y-1/2 text-slate-400 dark:!text-slate-100" />
+                    <Mail className="pointer-events-none absolute left-4 top-1/2 z-10 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-400" />
                     <Input
                       type="text"
                       value={form.email}
@@ -167,11 +167,11 @@ export function Login() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                  <label className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-300">
                     Password
                   </label>
                   <div className="relative">
-                    <Lock className="pointer-events-none absolute left-4 top-1/2 z-10 h-5 w-5 -translate-y-1/2 text-slate-400 dark:!text-slate-100" />
+                    <Lock className="pointer-events-none absolute left-4 top-1/2 z-10 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-400" />
                     <Input
                       type={isPasswordVisible ? 'text' : 'password'}
                       value={form.password}
@@ -190,7 +190,7 @@ export function Login() {
                       aria-label={
                         isPasswordVisible ? 'Sembunyikan password' : 'Tampilkan password'
                       }
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 dark:!text-slate-100 dark:hover:!text-white"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 dark:text-slate-400 dark:hover:text-slate-200"
                     >
                       {isPasswordVisible ? (
                         <EyeOff className="h-5 w-5" />
@@ -202,7 +202,7 @@ export function Login() {
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                  <label className="flex items-center gap-2 font-semibold text-slate-500">
+                  <label className="flex items-center gap-2 font-semibold text-slate-500 dark:text-slate-300">
                     <Checkbox
                       checked={form.remember}
                       onCheckedChange={(checked) =>
@@ -238,7 +238,7 @@ export function Login() {
                 )}
               </div>
 
-              <p className="text-center text-sm text-slate-500">
+              <p className="text-center text-sm text-slate-500 dark:text-slate-300">
                 Belum punya akun?{' '}
                 <a
                   href="https://wa.me/6281217672800?text=Halo%20admin%2C%20saya%20ingin%20minta%20akses%20akun%20K3.%20Terima%20kasih."

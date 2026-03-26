@@ -38,3 +38,6 @@ Catatan token:
 
 Referensi kontrak API:
 - backend/docs/openapi.yaml
+
+Panduan migrasi auth ke SSO:
+- backend/docs/AUTH_SSO_MIGRATION.md

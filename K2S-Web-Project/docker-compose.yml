@@ -48,6 +48,25 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-*}
       QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      AUTH_MODE: ${AUTH_MODE:-local}
+      SSO_ISSUER: ${SSO_ISSUER:-}
+      SSO_AUDIENCE: ${SSO_AUDIENCE:-}
+      SSO_JWKS_URL: ${SSO_JWKS_URL:-}
+      SSO_AUTHORIZE_URL: ${SSO_AUTHORIZE_URL:-}
+      SSO_TOKEN_URL: ${SSO_TOKEN_URL:-}
+      SSO_END_SESSION_URL: ${SSO_END_SESSION_URL:-}
+      SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
+      SSO_SCOPE: ${SSO_SCOPE:-openid profile email}
+      SSO_CLOCK_SKEW: ${SSO_CLOCK_SKEW:-60}
+      SSO_JWKS_CACHE_TTL: ${SSO_JWKS_CACHE_TTL:-300}
+      SSO_SUB_CLAIM: ${SSO_SUB_CLAIM:-sub}
+      SSO_EMAIL_CLAIM: ${SSO_EMAIL_CLAIM:-email}
+      SSO_USERNAME_CLAIM: ${SSO_USERNAME_CLAIM:-preferred_username}
+      SSO_NAME_CLAIM: ${SSO_NAME_CLAIM:-name}
+      SSO_ADMIN_ROLES: ${SSO_ADMIN_ROLES:-admin,k2s_admin}
+      SSO_VIEWER_ROLES: ${SSO_VIEWER_ROLES:-user,viewer,k2s_user,k2s_viewer}
+      SSO_EXTERNAL_DNP_ROLES: ${SSO_EXTERNAL_DNP_ROLES:-external_dnp,k2s_external_dnp}
+      SSO_PROVISION_USERS: ${SSO_PROVISION_USERS:-false}
       SEED_ON_START: ${SEED_ON_START:-false}
     volumes:
       - backend_storage:/var/www/html/storage
@@ -92,6 +111,25 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-*}
       QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      AUTH_MODE: ${AUTH_MODE:-local}
+      SSO_ISSUER: ${SSO_ISSUER:-}
+      SSO_AUDIENCE: ${SSO_AUDIENCE:-}
+      SSO_JWKS_URL: ${SSO_JWKS_URL:-}
+      SSO_AUTHORIZE_URL: ${SSO_AUTHORIZE_URL:-}
+      SSO_TOKEN_URL: ${SSO_TOKEN_URL:-}
+      SSO_END_SESSION_URL: ${SSO_END_SESSION_URL:-}
+      SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
+      SSO_SCOPE: ${SSO_SCOPE:-openid profile email}
+      SSO_CLOCK_SKEW: ${SSO_CLOCK_SKEW:-60}
+      SSO_JWKS_CACHE_TTL: ${SSO_JWKS_CACHE_TTL:-300}
+      SSO_SUB_CLAIM: ${SSO_SUB_CLAIM:-sub}
+      SSO_EMAIL_CLAIM: ${SSO_EMAIL_CLAIM:-email}
+      SSO_USERNAME_CLAIM: ${SSO_USERNAME_CLAIM:-preferred_username}
+      SSO_NAME_CLAIM: ${SSO_NAME_CLAIM:-name}
+      SSO_ADMIN_ROLES: ${SSO_ADMIN_ROLES:-admin,k2s_admin}
+      SSO_VIEWER_ROLES: ${SSO_VIEWER_ROLES:-user,viewer,k2s_user,k2s_viewer}
+      SSO_EXTERNAL_DNP_ROLES: ${SSO_EXTERNAL_DNP_ROLES:-external_dnp,k2s_external_dnp}
+      SSO_PROVISION_USERS: ${SSO_PROVISION_USERS:-false}
     volumes:
       - backend_storage:/var/www/html/storage
     depends_on:
@@ -133,6 +171,25 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-*}
       QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      AUTH_MODE: ${AUTH_MODE:-local}
+      SSO_ISSUER: ${SSO_ISSUER:-}
+      SSO_AUDIENCE: ${SSO_AUDIENCE:-}
+      SSO_JWKS_URL: ${SSO_JWKS_URL:-}
+      SSO_AUTHORIZE_URL: ${SSO_AUTHORIZE_URL:-}
+      SSO_TOKEN_URL: ${SSO_TOKEN_URL:-}
+      SSO_END_SESSION_URL: ${SSO_END_SESSION_URL:-}
+      SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
+      SSO_SCOPE: ${SSO_SCOPE:-openid profile email}
+      SSO_CLOCK_SKEW: ${SSO_CLOCK_SKEW:-60}
+      SSO_JWKS_CACHE_TTL: ${SSO_JWKS_CACHE_TTL:-300}
+      SSO_SUB_CLAIM: ${SSO_SUB_CLAIM:-sub}
+      SSO_EMAIL_CLAIM: ${SSO_EMAIL_CLAIM:-email}
+      SSO_USERNAME_CLAIM: ${SSO_USERNAME_CLAIM:-preferred_username}
+      SSO_NAME_CLAIM: ${SSO_NAME_CLAIM:-name}
+      SSO_ADMIN_ROLES: ${SSO_ADMIN_ROLES:-admin,k2s_admin}
+      SSO_VIEWER_ROLES: ${SSO_VIEWER_ROLES:-user,viewer,k2s_user,k2s_viewer}
+      SSO_EXTERNAL_DNP_ROLES: ${SSO_EXTERNAL_DNP_ROLES:-external_dnp,k2s_external_dnp}
+      SSO_PROVISION_USERS: ${SSO_PROVISION_USERS:-false}
     volumes:
       - backend_storage:/var/www/html/storage
     depends_on:

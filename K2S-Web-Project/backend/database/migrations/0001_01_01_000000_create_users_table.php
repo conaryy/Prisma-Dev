@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->string('password');
             $table->string('name');
-            $table->enum('role', ['Admin', 'Supervisor', 'Auditor', 'Viewer'])->default('Viewer');
+            $table->enum('role', ['Admin', 'Viewer'])->default('Viewer');
             $table->enum('status', ['Active', 'Disabled'])->default('Active');
             $table->timestamp('last_login_at')->nullable();
             $table->timestamps();

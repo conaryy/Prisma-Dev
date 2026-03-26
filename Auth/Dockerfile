@@ -7,7 +7,9 @@ RUN npm ci --no-audit --no-fund
 
 COPY . .
 ARG VITE_API_BASE_URL
+ARG VITE_K2S_BASE_URL
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_K2S_BASE_URL=${VITE_K2S_BASE_URL}
 RUN npm run build
 
 FROM nginx:1.25-alpine

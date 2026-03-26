@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   Sun,
   UserCircle,
-  Zap,
 } from 'lucide-react';
 import Lottie, { type LottieRefCurrentProps } from 'lottie-react';
 import { Button } from '@/components/ui/button';
@@ -43,7 +42,6 @@ const MENU_LOTTIE_FALLBACK_END = Math.max(
 );
 const MENU_LOTTIE_OPEN_FRAME = 67;
 const MENU_LOTTIE_SPEED = 1.75;
-const SSE_STORAGE_KEY = 'k2s.sseEnabled';
 
 interface MenuLottieIconProps {
   isOpen?: boolean;
@@ -139,12 +137,6 @@ export function Topbar({
   const { instansi } = useAppData();
   const profileName =
     instansi?.name?.trim() || authUser?.name?.trim() || 'Pengguna';
-  const [sseEnabled, setSseEnabled] = useState(() => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-    return window.localStorage.getItem(SSE_STORAGE_KEY) === 'true';
-  });
 
   const menuItems = useMemo(
     () =>
@@ -240,92 +232,26 @@ export function Topbar({
       return;
     }
 
-    const enableSse = isAdmin && sseEnabled;
+    let isMounted = true;
 
-    if (!enableSse || typeof EventSource === 'undefined') {
-      let isMounted = true;
-
-      const loadUnread = () => {
-        fetchNotifications({ limit: 1 })
-          .then((data) => {
-            if (isMounted) {
-              setUnreadCount(data.unreadCount);
-            }
-          })
-          .catch(() => {});
-      };
-
-      loadUnread();
-      const timerId = window.setInterval(loadUnread, 20000);
-
-      return () => {
-        isMounted = false;
-        window.clearInterval(timerId);
-      };
-    }
-
-    let source: EventSource | null = null;
-    let reconnectTimer: number | undefined;
-    let isUnmounted = false;
-    let lastCreatedAt: string | null = null;
-
-    const connect = () => {
-      if (isUnmounted) return;
-      if (source) {
-        source.close();
-      }
-
-      const urlParams = new URLSearchParams();
-      if (lastCreatedAt) {
-        urlParams.set('since', lastCreatedAt);
-      }
-      apiFetch<{ data: { url: string } }>(
-        `/api/notifications/stream-url?${urlParams.toString()}`
-      )
-        .then((response) => {
-          if (isUnmounted) return;
-          source = new EventSource(response.data.url);
-
-          source.addEventListener('notification', (event) => {
-            try {
-              const payload = JSON.parse(event.data);
-              if (typeof payload.unreadCount === 'number') {
-                setUnreadCount(payload.unreadCount);
-              }
-              if (payload.lastCreatedAt) {
-                lastCreatedAt = payload.lastCreatedAt;
-              }
-            } catch {
-              // ignore parsing errors
-            }
-          });
-
-          source.addEventListener('ping', () => {});
-
-          source.onerror = () => {
-            source?.close();
-            if (!isUnmounted) {
-              reconnectTimer = window.setTimeout(connect, 5000);
-            }
-          };
-        })
-        .catch(() => {
-          if (!isUnmounted) {
-            reconnectTimer = window.setTimeout(connect, 5000);
+    const loadUnread = () => {
+      fetchNotifications({ limit: 1 })
+        .then((data) => {
+          if (isMounted) {
+            setUnreadCount(data.unreadCount);
           }
-        });
+        })
+        .catch(() => {});
     };
 
-    connect();
+    loadUnread();
+    const timerId = window.setInterval(loadUnread, 20000);
 
     return () => {
-      isUnmounted = true;
-      if (reconnectTimer) {
-        window.clearTimeout(reconnectTimer);
-      }
-      source?.close();
+      isMounted = false;
+      window.clearInterval(timerId);
     };
-  }, [isAdmin, sseEnabled]);
+  }, []);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -500,7 +426,7 @@ export function Topbar({
                   <div className="flex flex-col items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-blue-200/70">
                     <button
                       type="button"
-                      className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-400 to-amber-500 text-white shadow-sm transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-200"
+                      className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-sky-400 text-white shadow-sm transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
                       aria-label="Keamanan"
                       title="Keamanan"
                       onClick={() => {
@@ -573,35 +499,6 @@ export function Topbar({
               />
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {isAdmin && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                'rounded-full text-slate-500 transition hover:scale-105 hover:bg-slate-100 hover:text-slate-900 dark:text-blue-100/80 dark:hover:bg-[#1d429f] dark:hover:text-blue-50',
-                sseEnabled &&
-                  'text-emerald-600 hover:text-emerald-700 dark:text-emerald-400'
-              )}
-              aria-pressed={sseEnabled}
-              aria-label="Toggle realtime notifikasi"
-              title={sseEnabled ? 'Realtime notifikasi: ON' : 'Realtime notifikasi: OFF'}
-              onClick={() => {
-                setSseEnabled((prev) => {
-                  const next = !prev;
-                  if (typeof window !== 'undefined') {
-                    window.localStorage.setItem(
-                      SSE_STORAGE_KEY,
-                      next ? 'true' : 'false'
-                    );
-                  }
-                  return next;
-                });
-              }}
-            >
-              <Zap className="h-5 w-5" />
-            </Button>
-          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

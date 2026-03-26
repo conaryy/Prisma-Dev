@@ -247,6 +247,310 @@ def _run_pemenuhan_automation(s, main_path_segment, debug_log):
             
     return (grouped_results, debug_log)
 
+
+def _extract_fill_targets_from_html(soup):
+    targets = []
+    seen = set()
+    fill_pattern = re.compile(r'(?:^|/)fill/([^/]+)/([^/?#"\'\s]+)')
+
+    for tag in soup.find_all('a'):
+        href_value = str(tag.get('href') or '').strip()
+        onclick_value = str(tag.get('onclick') or '').strip()
+        candidates = [value for value in [href_value, onclick_value] if value]
+
+        for candidate in candidates:
+            matched = fill_pattern.search(candidate)
+            if not matched:
+                continue
+
+            code1, code2 = matched.group(1), matched.group(2)
+            pair_key = (code1, code2)
+            if pair_key in seen:
+                continue
+            seen.add(pair_key)
+
+            targets.append({
+                'code1': code1,
+                'code2': code2,
+                'area': tag.get_text(' ', strip=True),
+                'href': href_value,
+            })
+
+    return targets
+
+
+def _extract_prefix_letter(pq_no, pq_desc):
+    pq_no_text = ' '.join(str(pq_no or '').split())
+    pq_desc_text = ' '.join(str(pq_desc or '').split())
+
+    matched_no = re.match(r'^([A-Za-z]+)', pq_no_text)
+    if matched_no:
+        return matched_no.group(1).upper()
+
+    matched_desc = re.match(r'^([A-Za-z]+)(?:\.\d+)?\s*-', pq_desc_text)
+    if matched_desc:
+        return matched_desc.group(1).upper()
+
+    return ''
+
+
+def _extract_pertanyaan_text(pq_desc):
+    text = ' '.join(str(pq_desc or '').split())
+    if not text:
+        return ''
+
+    matched = re.match(r'^[A-Za-z]+(?:\.\d+)?\s*-\s*(.+)$', text)
+    if matched:
+        return matched.group(1).strip()
+
+    return text
+
+
+def _build_deskripsi(ref_konten_no, ref_konten):
+    parts = [part.strip() for part in str(ref_konten_no or '').split('-') if part.strip()]
+    left_part = ' - '.join(parts)
+    right_part = ' '.join(str(ref_konten or '').split())
+
+    if left_part and right_part:
+        return f"{left_part} - {right_part}"
+    if left_part:
+        return left_part
+    return right_part
+
+
+def _collect_deskripsi_fragments(node):
+    fragments = []
+
+    def walk(current):
+        if isinstance(current, dict):
+            if current.get('ref_konten_no') is not None or current.get('ref_konten') is not None:
+                built = _build_deskripsi(current.get('ref_konten_no'), current.get('ref_konten'))
+                if built:
+                    fragments.append(built)
+            for value in current.values():
+                walk(value)
+        elif isinstance(current, list):
+            for item in current:
+                walk(item)
+
+    walk(node)
+
+    unique_fragments = []
+    seen = set()
+    for fragment in fragments:
+        if fragment in seen:
+            continue
+        seen.add(fragment)
+        unique_fragments.append(fragment)
+    return unique_fragments
+
+
+def _build_selfassessment_main_path(scope):
+    if scope == 'audit':
+        return 'penyelenggara/audit/pq/selfassessment'
+    if scope in ['inspeksi', 'surveillance']:
+        return f'penyelenggara/{scope}/pq/selfassessment'
+    return None
+
+
+def _fetch_selfassessment_fill_targets(s, scope, year, debug_log):
+    main_path_segment = _build_selfassessment_main_path(scope)
+    if not main_path_segment:
+        return {'error': f'Scope selfassessment tidak valid: {scope}'}
+
+    main_page_url = f"{WEB2_URL}/{main_path_segment}"
+    search_url = f"{main_page_url}/search_process"
+    debug_log.append(f"POST: {search_url}")
+
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': WEB2_URL,
+        'Referer': main_page_url,
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+    }
+    payload = {
+        'ci_csrf_token': '',
+        'bulan': '',
+        'plan_tahun': str(year),
+        'save': 'Cari',
+    }
+
+    try:
+        res = s.post(search_url, data=payload, headers=headers, allow_redirects=True, timeout=120)
+        res.raise_for_status()
+        debug_log.append(f"Selfassessment URL: {res.url} (status {res.status_code})")
+    except Exception as e:
+        return {'error': f'Gagal memfilter selfassessment tahun {year}: {str(e)}'}
+
+    soup = BeautifulSoup(res.text, 'html.parser')
+    targets = _extract_fill_targets_from_html(soup)
+    debug_log.append(f"Selfassessment fill links ditemukan: {len(targets)}")
+
+    for target in targets:
+        code1 = target['code1']
+        code2 = target['code2']
+        target['datatable_url'] = f"{WEB2_URL}/{main_path_segment}/get_datatable/{code1}/{code2}"
+        target['fill_url'] = urljoin(main_page_url, target.get('href') or f"fill/{code1}/{code2}")
+
+    return {
+        'scope': scope,
+        'year': str(year),
+        'main_path_segment': main_path_segment,
+        'fill_targets': targets,
+    }
+
+
+def _scrape_selfassessment_fill(s, scope, year, code1, code2, area, debug_log):
+    main_path_segment = _build_selfassessment_main_path(scope)
+    if not main_path_segment:
+        return {'error': f'Scope selfassessment tidak valid: {scope}'}
+
+    main_page_url = f"{WEB2_URL}/{main_path_segment}"
+    datatable_url = f"{WEB2_URL}/{main_path_segment}/get_datatable/{code1}/{code2}"
+    debug_log.append(f"GET: {datatable_url}")
+
+    ajax_headers = {
+        'X-Requested-With': 'XMLHttpRequest',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+        'Referer': main_page_url,
+    }
+
+    try:
+        datatable_res = s.get(datatable_url, headers=ajax_headers, timeout=120)
+        datatable_res.raise_for_status()
+        datatable_content = datatable_res.json()
+    except Exception as e:
+        return {'error': f'Gagal mengambil datatable selfassessment: {str(e)}'}
+
+    pq_items = []
+    default_plan_id = None
+    header_by_pq_id = {}
+    if (
+        isinstance(datatable_content, list)
+        and datatable_content
+        and isinstance(datatable_content[0], dict)
+        and isinstance(datatable_content[0].get('rs_pq'), list)
+    ):
+        default_plan_id = datatable_content[0].get('plan_id')
+        pq_items = datatable_content[0]['rs_pq']
+
+    for pq_item in pq_items:
+        if not isinstance(pq_item, dict):
+            continue
+        pq_id_value = str(pq_item.get('pq_id') or '').strip()
+        pq_induk_value = str(pq_item.get('pq_induk') or '').strip()
+        pq_desc_value = str(pq_item.get('pq_desc') or '').strip()
+        pq_no_value = str(pq_item.get('pq_no') or '').strip()
+
+        is_header_candidate = (
+            pq_id_value
+            and pq_desc_value
+            and pq_id_value == pq_induk_value
+            and bool(re.match(r'^[A-Za-z]+$', pq_no_value))
+        )
+        if not is_header_candidate:
+            continue
+        header_by_pq_id[pq_id_value] = {
+            'pq_desc': pq_desc_value,
+            'pq_no': pq_no_value,
+        }
+
+    plan_pq_results = []
+    seen_pairs = set()
+    for item in pq_items:
+        if not isinstance(item, dict):
+            continue
+
+        pair_plan_id = item.get('plan_id') or default_plan_id
+        pair_pq_id = item.get('pq_id')
+        if not pair_plan_id or not pair_pq_id:
+            continue
+
+        pair_key = (str(pair_plan_id), str(pair_pq_id))
+        if pair_key in seen_pairs:
+            continue
+        seen_pairs.add(pair_key)
+
+        pq_induk = str(item.get('pq_induk') or '').strip()
+        kategori_header = header_by_pq_id.get(pq_induk) if pq_induk else None
+        get_plan_pq_url = f"{WEB2_URL}/{main_path_segment}/get_plan_pq"
+        debug_log.append(f"GET: {get_plan_pq_url}?plan_id={pair_key[0]}&pq_id={pair_key[1]}")
+
+        plan_pq_content = None
+        try:
+            plan_pq_res = s.get(
+                get_plan_pq_url,
+                headers=ajax_headers,
+                params={'plan_id': pair_key[0], 'pq_id': pair_key[1]},
+                timeout=120,
+            )
+            plan_pq_res.raise_for_status()
+            plan_pq_content = plan_pq_res.json()
+        except Exception as e_plan_pq:
+            plan_pq_content = {'error': f'Gagal mengambil get_plan_pq: {str(e_plan_pq)}'}
+
+        plan_pq_results.append({
+            'plan_id': pair_key[0],
+            'pq_id': pair_key[1],
+            'pq_desc': item.get('pq_desc'),
+            'datatable_pq_desc': item.get('pq_desc'),
+            'datatable_pq_no': item.get('pq_no'),
+            'datatable_kategori_desc': (kategori_header or {}).get('pq_desc') or item.get('pq_desc'),
+            'datatable_kategori_no': (kategori_header or {}).get('pq_no') or item.get('pq_no'),
+            'url': f"{get_plan_pq_url}?plan_id={pair_key[0]}&pq_id={pair_key[1]}",
+            'content': plan_pq_content,
+        })
+
+    rows = []
+    seen_rows = set()
+    for detail in plan_pq_results:
+        kategori_value = (
+            detail.get('datatable_kategori_desc')
+            or detail.get('datatable_pq_desc')
+            or detail.get('pq_desc')
+            or ''
+        )
+        pertanyaan_value = detail.get('pq_desc') or kategori_value
+        question_no = str(detail.get('datatable_pq_no') or '').strip()
+        if '.' not in question_no:
+            continue
+
+        prefix_value = _extract_prefix_letter(question_no, pertanyaan_value)
+        deskripsi_parts = _collect_deskripsi_fragments(detail.get('content'))
+        deskripsi_value = ' | '.join(deskripsi_parts)
+
+        kategori = ' '.join(str(kategori_value or '').split())
+        prefix = ' '.join(str(prefix_value or '').split())
+        pertanyaan = _extract_pertanyaan_text(pertanyaan_value)
+
+        if pertanyaan.strip().lower() == kategori.strip().lower():
+            continue
+
+        row_tuple = (kategori, prefix, pertanyaan, deskripsi_value)
+        if row_tuple in seen_rows:
+            continue
+        seen_rows.add(row_tuple)
+
+        rows.append({
+            'kategori': kategori,
+            'prefix': prefix,
+            'pertanyaan': pertanyaan,
+            'deskripsi': deskripsi_value,
+        })
+
+    return {
+        'scope': scope,
+        'year': str(year),
+        'assessment': {
+            'area': area or '',
+            'fill_url': urljoin(main_page_url, f'fill/{code1}/{code2}'),
+            'datatable_url': datatable_url,
+            'datatable_content': datatable_content,
+            'plan_pq_details': plan_pq_results,
+        },
+        'rows': rows,
+    }
+
 def _post_pemenuhan_draft(s, scope, csrf_token, payload_data, upload_file=None):
     if scope == 'audit':
         process_path = 'penyelenggara/audit/cap/pemenuhan_cap/detail_process'
@@ -514,19 +818,19 @@ def automation_run():
         )
         return jsonify(result), status
 
-    captcha_value = incoming.get('captcha')
-    audit_type = incoming.get('type')
-    audit_stage = incoming.get('stage')
+    captcha_value = (incoming.get('captcha') or '').strip()
+    audit_type = (incoming.get('type') or '').strip()
+    audit_stage = (incoming.get('stage') or '').strip()
     username = (incoming.get('username') or '').strip()
     password = (incoming.get('password') or '').strip()
-    if not captcha_value:
-        return jsonify({'error': 'Captcha wajib diisi'}), 400
-    if not username or not password:
-        return jsonify({'error': 'Username dan password wajib diisi'}), 400
     if action != 'login_only' and (not audit_type or not audit_stage):
         return jsonify({'error': 'Tipe dan Tahapan audit harus dipilih.'}), 400
 
     if not meta.get('authenticated'):
+        if not captcha_value:
+            return jsonify({'error': 'Captcha wajib diisi'}), 400
+        if not username or not password:
+            return jsonify({'error': 'Username dan password wajib diisi'}), 400
         payload = {
             'ci_csrf_token': meta.get('csrf', ''),
             'username': username,
@@ -549,6 +853,54 @@ def automation_run():
             'status': 'ok',
             'authenticated': True,
         })
+
+    if audit_stage == 'selfassessment':
+        year_value = (incoming.get('year') or '').strip()
+        if not year_value:
+            return jsonify({'error': 'Tahun wajib diisi untuk selfassessment.'}), 400
+
+        try:
+            year_number = int(year_value)
+        except ValueError:
+            return jsonify({'error': 'Format tahun tidak valid.'}), 422
+
+        debug_log = []
+        if action == 'selfassessment_fill':
+            fill_payload = _fetch_selfassessment_fill_targets(
+                s=s,
+                scope=audit_type,
+                year=year_number,
+                debug_log=debug_log,
+            )
+            if fill_payload.get('error'):
+                return jsonify({'error': fill_payload['error'], 'debug_log': debug_log}), 502
+            return jsonify({'results': {'selfassessment': fill_payload}, 'debug_log': debug_log})
+
+        if action == 'selfassessment_scrape':
+            fill_code1 = (incoming.get('fill_code1') or '').strip()
+            fill_code2 = (incoming.get('fill_code2') or '').strip()
+            fill_area = (incoming.get('fill_area') or '').strip()
+            if not fill_code1 or not fill_code2:
+                return jsonify({'error': 'fill_code1 dan fill_code2 wajib diisi.'}), 422
+
+            scrape_payload = _scrape_selfassessment_fill(
+                s=s,
+                scope=audit_type,
+                year=year_number,
+                code1=fill_code1,
+                code2=fill_code2,
+                area=fill_area,
+                debug_log=debug_log,
+            )
+            if scrape_payload.get('error'):
+                return jsonify({'error': scrape_payload['error'], 'debug_log': debug_log}), 502
+
+            return jsonify({
+                'results': {'selfassessment': scrape_payload},
+                'debug_log': debug_log,
+            })
+
+        return jsonify({'error': f'Aksi tidak didukung untuk selfassessment: {action}'}), 422
 
     debug_log = []
     main_path_segment = ""

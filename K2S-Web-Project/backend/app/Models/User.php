@@ -27,6 +27,9 @@ class User extends Authenticatable
         'role',
         'status',
         'can_access_external_dnp',
+        'sso_subject',
+        'sso_provider',
+        'last_sso_login_at',
         'last_login_at',
         'phone',
         'position',
@@ -56,6 +59,7 @@ class User extends Authenticatable
         return [
             'password' => 'hashed',
             'last_login_at' => 'datetime',
+            'last_sso_login_at' => 'datetime',
             'can_access_external_dnp' => 'boolean',
         ];
     }

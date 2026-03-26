@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
+            'auth.api' => \App\Http\Middleware\AuthenticateApiRequest::class,
             'admin' => \App\Http\Middleware\EnsureAdmin::class,
             'external-dnp-access' => \App\Http\Middleware\EnsureExternalDnpAccess::class,
         ]);

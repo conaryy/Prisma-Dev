@@ -10,7 +10,7 @@ import {
   Sun,
   UserCircle,
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import { clearAuthToken, clearAuthUser } from '@/lib/api';
 import { getStoredTheme, persistTheme } from '@/lib/theme';
@@ -30,7 +30,7 @@ type PortalMenu = {
   key: string;
   title: string;
   description: string;
-  href: string;
+  path: string;
   icon: LucideIcon;
   eyebrow: string;
   meta: string;
@@ -45,12 +45,48 @@ type PortalMenu = {
   accentBorder: string;
 };
 
+function normalizeBaseUrl(value: string) {
+  return value.replace(/\/+$/, '');
+}
+
+function getK2sBaseUrl() {
+  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+  const configured = env.VITE_K2S_BASE_URL?.trim();
+  if (configured) {
+    return normalizeBaseUrl(configured);
+  }
+
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const { protocol, hostname, port } = window.location;
+  if (hostname.startsWith('auth.')) {
+    return `${protocol}//${hostname.replace(/^auth\./, 'k2s.')}`;
+  }
+
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    const k2sPort = '5173';
+    return `${protocol}//${hostname}:${k2sPort}`;
+  }
+
+  return `${protocol}//${hostname}${port ? `:${port}` : ''}`;
+}
+
+function buildPortalUrl(path: string) {
+  const baseUrl = getK2sBaseUrl();
+  if (!baseUrl) {
+    return path;
+  }
+  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 const portalMenus: PortalMenu[] = [
   {
     key: 'dashboard',
     title: 'Dashboard',
     description: 'Ringkasan operasional admin untuk memantau review, antrian, dan prioritas tindak lanjut.',
-    href: '/admin',
+    path: '/admin',
     icon: LayoutDashboard,
     eyebrow: 'Kontrol Utama',
     meta: 'Insight admin dan prioritas harian',
@@ -68,7 +104,7 @@ const portalMenus: PortalMenu[] = [
     key: 'keamanan',
     title: 'Keamanan',
     description: 'Akses cepat ke data keamanan dan pemantauan umum dengan struktur yang tetap familiar.',
-    href: '/dashboard',
+    path: '/dashboard',
     icon: ShieldCheck,
     eyebrow: 'Monitoring',
     meta: 'Pemantauan umum dan data operasional',
@@ -86,7 +122,7 @@ const portalMenus: PortalMenu[] = [
     key: 'k3',
     title: 'K3',
     description: 'Area kerja review safety, CAP, dan monitoring K3 dengan jalur masuk yang lebih jelas.',
-    href: '/admin/self-assessment-reviews',
+    path: '/admin/self-assessment-reviews',
     icon: ClipboardCheck,
     eyebrow: 'Review Safety',
     meta: 'Safety review, CAP, dan tindak lanjut',
@@ -104,7 +140,7 @@ const portalMenus: PortalMenu[] = [
     key: 'logbook',
     title: 'Logbook',
     description: 'Portal pencatatan dan hasil review aktivitas logbook dengan alur yang lebih rapi.',
-    href: '/monitoring/protocol-question/hasil-review-dgca',
+    path: '/monitoring/protocol-question/hasil-review-dgca',
     icon: BookOpen,
     eyebrow: 'Riwayat Aktivitas',
     meta: 'Pencatatan dan review agenda monitoring',
@@ -266,11 +302,12 @@ export function AdminPortal() {
           <section className="grid gap-3 md:grid-cols-2">
             {portalMenus.map((item, index) => {
               const Icon = item.icon;
+              const targetUrl = buildPortalUrl(item.path);
 
               return (
-                <Link
+                <a
                   key={item.key}
-                  to={item.href}
+                  href={targetUrl}
                   className="group relative overflow-hidden rounded-[22px] border p-4 transition duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
                   style={isDark ? {
                     borderColor: item.accentBorder,
@@ -383,7 +420,7 @@ export function AdminPortal() {
                       </span>
                     </div>
                   </div>
-                </Link>
+                </a>
               );
             })}
           </section>

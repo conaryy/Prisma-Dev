@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, resolveApiUrl } from '@/lib/api';
 import { downloadFromSignedUrl } from '@/lib/download';
 import { toast } from '@/hooks/use-toast';
 import { Modal } from '@/components/shared/Modal';
@@ -51,11 +51,23 @@ type QuestionItem = {
   sort_order: number;
 };
 
+type DnpFillOption = {
+  code1: string;
+  code2: string;
+  area: string;
+  fill_url?: string;
+  datatable_url?: string;
+};
+
 const SCOPE_OPTIONS = [
   { value: 'audit', label: 'Audit' },
   { value: 'inspeksi', label: 'Inspeksi' },
   { value: 'surveillance', label: 'Surveillance' },
 ];
+
+const DNP_YEAR_OPTIONS = Array.from({ length: 6 }, (_, index) =>
+  String(new Date().getFullYear() - index)
+);
 
 export function SelfAssessmentQuestions() {
   const [questions, setQuestions] = useState<QuestionItem[]>([]);
@@ -65,8 +77,12 @@ export function SelfAssessmentQuestions() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isInitializingDnp, setIsInitializingDnp] = useState(false);
+  const [isLoadingDnpFills, setIsLoadingDnpFills] = useState(false);
+  const [isImportingDnp, setIsImportingDnp] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [dnpMessage, setDnpMessage] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filters, setFilters] = useState({ scope: 'audit', category: '' });
   const [showCategoryForm, setShowCategoryForm] = useState(false);
@@ -75,6 +91,15 @@ export function SelfAssessmentQuestions() {
   const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
+  const [isExportingQuestions, setIsExportingQuestions] = useState(false);
+  const [dnpSessionId, setDnpSessionId] = useState('');
+  const [dnpCaptchaUrl, setDnpCaptchaUrl] = useState('');
+  const [dnpCaptcha, setDnpCaptcha] = useState('');
+  const [dnpUsername, setDnpUsername] = useState('');
+  const [dnpPassword, setDnpPassword] = useState('');
+  const [dnpYear, setDnpYear] = useState(DNP_YEAR_OPTIONS[0]);
+  const [dnpFills, setDnpFills] = useState<DnpFillOption[]>([]);
+  const [selectedDnpFillKey, setSelectedDnpFillKey] = useState('');
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [questionCategoryForm, setQuestionCategoryForm] = useState({
     name: '',
@@ -376,6 +401,14 @@ export function SelfAssessmentQuestions() {
   const scopeLabel = useMemo(() => {
     return SCOPE_OPTIONS.find((item) => item.value === filters.scope)?.label ?? '';
   }, [filters.scope]);
+  const selectedDnpFill = useMemo(() => {
+    if (!selectedDnpFillKey) return null;
+    return (
+      dnpFills.find(
+        (item) => `${item.code1}::${item.code2}` === selectedDnpFillKey
+      ) ?? null
+    );
+  }, [dnpFills, selectedDnpFillKey]);
   const mappedQuestionCategories = useMemo(() => {
     return questionCategories;
   }, [questionCategories]);
@@ -395,6 +428,172 @@ export function SelfAssessmentQuestions() {
       );
     } finally {
       setIsDownloadingTemplate(false);
+    }
+  };
+  const handleExportQuestions = async () => {
+    setErrorMessage(null);
+    if (!canManageQuestions) {
+      setErrorMessage('Pilih scope dan kategori terlebih dahulu.');
+      return;
+    }
+
+    setIsExportingQuestions(true);
+    try {
+      const response = await apiFetch<{ data: { url: string } }>(
+        '/api/admin/self-assessment/questions/export-url',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scope: filters.scope,
+            category: filters.category,
+          }),
+        }
+      );
+      await downloadFromSignedUrl(response.data.url, 'pertanyaan-self-assessment.csv');
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : 'Gagal mengunduh export pertanyaan.'
+      );
+    } finally {
+      setIsExportingQuestions(false);
+    }
+  };
+
+  const handleInitDnp = async () => {
+    setErrorMessage(null);
+    setDnpMessage(null);
+    setIsInitializingDnp(true);
+    try {
+      const response = await apiFetch<{ data: { sessionId: string; captchaUrl: string } }>(
+        '/api/admin/self-assessment/questions/import-dnp/init',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }
+      );
+      setDnpSessionId(response.data.sessionId);
+      setDnpCaptchaUrl(response.data.captchaUrl);
+      setDnpCaptcha('');
+      setDnpFills([]);
+      setSelectedDnpFillKey('');
+      setDnpMessage('Captcha DNP siap. Lanjut login dan cari area fill.');
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Gagal inisialisasi sesi DNP.'
+      );
+    } finally {
+      setIsInitializingDnp(false);
+    }
+  };
+
+  const handleLoadDnpFills = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setErrorMessage(null);
+    setDnpMessage(null);
+    if (!canManageQuestions) {
+      setErrorMessage('Pilih scope dan kategori terlebih dahulu.');
+      return;
+    }
+    if (!dnpSessionId) {
+      setErrorMessage('Klik "Ambil Captcha" terlebih dahulu.');
+      return;
+    }
+    setIsLoadingDnpFills(true);
+    try {
+      const response = await apiFetch<{ data: { fillTargets: DnpFillOption[] } }>(
+        '/api/admin/self-assessment/questions/import-dnp/fills',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scope: filters.scope,
+            year: dnpYear,
+            sessionId: dnpSessionId,
+            captcha: dnpCaptcha,
+            username: dnpUsername,
+            password: dnpPassword,
+          }),
+        }
+      );
+      const fillTargets = response.data.fillTargets ?? [];
+      setDnpFills(fillTargets);
+      setSelectedDnpFillKey(
+        fillTargets[0] ? `${fillTargets[0].code1}::${fillTargets[0].code2}` : ''
+      );
+      if (fillTargets.length === 0) {
+        setDnpMessage('Tidak ada area fill untuk tahun tersebut.');
+      } else {
+        setDnpMessage(`Ditemukan ${fillTargets.length} area fill.`);
+      }
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Gagal mengambil daftar area fill.'
+      );
+      setDnpFills([]);
+      setSelectedDnpFillKey('');
+    } finally {
+      setIsLoadingDnpFills(false);
+    }
+  };
+
+  const handleImportDnp = async () => {
+    setErrorMessage(null);
+    setImportMessage(null);
+    setDnpMessage(null);
+    if (!canManageQuestions) {
+      setErrorMessage('Pilih scope dan kategori terlebih dahulu.');
+      return;
+    }
+    if (!dnpSessionId) {
+      setErrorMessage('Klik "Ambil Captcha" terlebih dahulu.');
+      return;
+    }
+    if (!selectedDnpFill) {
+      setErrorMessage('Pilih area fill terlebih dahulu.');
+      return;
+    }
+
+    setIsImportingDnp(true);
+    try {
+      const response = await apiFetch<{
+        data: { created: number; errors: Array<{ row: number; message: string }> };
+      }>('/api/admin/self-assessment/questions/import-dnp/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: filters.scope,
+          category: filters.category,
+          year: dnpYear,
+          sessionId: dnpSessionId,
+          fillCode1: selectedDnpFill.code1,
+          fillCode2: selectedDnpFill.code2,
+          fillArea: selectedDnpFill.area,
+          captcha: dnpCaptcha,
+          username: dnpUsername,
+          password: dnpPassword,
+        }),
+      });
+
+      const created = response.data.created ?? 0;
+      const errors = response.data.errors ?? [];
+      if (errors.length > 0) {
+        setErrorMessage(
+          `Sebagian data gagal diimport (${errors.length} baris). Contoh: Baris ${errors[0].row} - ${errors[0].message}`
+        );
+      }
+      setImportMessage(`Berhasil import ${created} pertanyaan dari DNP.`);
+      loadQuestionCategories();
+      loadQuestions();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Gagal import pertanyaan dari DNP.'
+      );
+    } finally {
+      setIsImportingDnp(false);
     }
   };
 
@@ -535,11 +734,123 @@ export function SelfAssessmentQuestions() {
           Kolom CSV: <span className="font-semibold">kategori</span>,{' '}
           <span className="font-semibold">prefix</span>,{' '}
           <span className="font-semibold">pertanyaan</span>,{' '}
-          <span className="font-semibold">deskripsi</span> (opsional). Maks 10MB.
+          <span className="font-semibold">referensi</span> (opsional). Maks 10MB.
         </div>
         {importMessage && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             {importMessage}
+          </div>
+        )}
+      </form>
+
+      <form
+        className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+        onSubmit={handleLoadDnpFills}
+      >
+        <div className="text-sm font-semibold text-slate-700">
+          Import Pertanyaan dari DNP
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Input
+            value={dnpUsername}
+            onChange={(event) => setDnpUsername(event.target.value)}
+            placeholder="Username DNP"
+            disabled={!canManageQuestions}
+          />
+          <Input
+            type="password"
+            value={dnpPassword}
+            onChange={(event) => setDnpPassword(event.target.value)}
+            placeholder="Password DNP"
+            disabled={!canManageQuestions}
+          />
+          <Select value={dnpYear} onValueChange={setDnpYear} disabled={!canManageQuestions}>
+            <SelectTrigger>
+              <SelectValue placeholder="Tahun Self Assessment" />
+            </SelectTrigger>
+            <SelectContent>
+              {DNP_YEAR_OPTIONS.map((year) => (
+                <SelectItem key={year} value={year}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-2">
+            <Input
+              value={dnpCaptcha}
+              onChange={(event) => setDnpCaptcha(event.target.value)}
+              placeholder="Isi captcha"
+              disabled={!canManageQuestions || !dnpSessionId}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleInitDnp()}
+              disabled={!canManageQuestions || isInitializingDnp}
+            >
+              {isInitializingDnp ? 'Memuat...' : 'Ambil Captcha'}
+            </Button>
+          </div>
+        </div>
+        {dnpCaptchaUrl && (
+          <div className="flex flex-wrap items-center gap-3">
+            <img
+              src={resolveApiUrl(dnpCaptchaUrl)}
+              alt="Captcha DNP"
+              className="h-12 rounded border border-slate-200 bg-white px-2"
+            />
+            <span className="text-xs text-slate-500">
+              Jika captcha sulit dibaca, klik Ambil Captcha lagi.
+            </span>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="submit"
+            disabled={!canManageQuestions || isLoadingDnpFills || !dnpSessionId}
+          >
+            {isLoadingDnpFills ? 'Mencari Fill...' : 'Cari Area Fill'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={
+              !canManageQuestions ||
+              isImportingDnp ||
+              !selectedDnpFill ||
+              dnpFills.length === 0
+            }
+            onClick={() => void handleImportDnp()}
+          >
+            {isImportingDnp ? 'Mengimpor...' : 'Import Dari Area Terpilih'}
+          </Button>
+        </div>
+        {dnpFills.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-slate-500">
+              Pilih area fill untuk proses scraping:
+            </div>
+            <Select value={selectedDnpFillKey} onValueChange={setSelectedDnpFillKey}>
+              <SelectTrigger className="max-w-2xl">
+                <SelectValue placeholder="Pilih area fill" />
+              </SelectTrigger>
+              <SelectContent>
+                {dnpFills.map((fill) => (
+                  <SelectItem
+                    key={`${fill.code1}-${fill.code2}`}
+                    value={`${fill.code1}::${fill.code2}`}
+                  >
+                    {fill.area || '(Tanpa nama area)'} [{fill.code1}/{fill.code2}]
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {dnpMessage && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            {dnpMessage}
           </div>
         )}
       </form>
@@ -704,12 +1015,21 @@ export function SelfAssessmentQuestions() {
             <span>Total: {questions.length}</span>
             <Button
               type="button"
-              variant="outline"
+              variant="destructive"
               onClick={openDeleteAll}
               disabled={!canManageQuestions || questions.length === 0}
-              className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+              className="!border !border-red-600/50 !bg-red-600/20 !text-red-700 hover:!bg-red-600/28 hover:!text-red-800 dark:!border-red-400/70 dark:!bg-red-500/15 dark:!text-red-200 dark:hover:!bg-red-500/25 dark:hover:!text-red-100"
             >
               Hapus Semua
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleExportQuestions()}
+              disabled={!canManageQuestions || isExportingQuestions}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {isExportingQuestions ? 'Mengekspor...' : 'Export CSV'}
             </Button>
           </div>
         </div>

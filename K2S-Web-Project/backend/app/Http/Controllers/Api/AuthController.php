@@ -10,6 +10,14 @@ class AuthController extends ApiController
 {
     public function login(Request $request)
     {
+        $mode = (string) config('sso.mode', 'local');
+        if ($mode === 'sso') {
+            return response()->json([
+                'error' => 'Password login is disabled. Use SSO.',
+                'data' => $this->ssoConfigPayload(),
+            ], 409);
+        }
+
         $validated = $request->validate([
             'email' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string', 'max:128'],
@@ -42,7 +50,11 @@ class AuthController extends ApiController
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()?->delete();
-        return $this->respondData(['success' => true]);
+
+        return $this->respondData([
+            'success' => true,
+            'sso' => $this->ssoConfigPayload(),
+        ]);
     }
 
     public function me(Request $request)
@@ -50,5 +62,32 @@ class AuthController extends ApiController
         return $this->respondData(
             $request->user()->only(['id', 'name', 'username', 'email', 'role', 'status', 'phone', 'position', 'can_access_external_dnp'])
         );
+    }
+
+    public function ssoConfig()
+    {
+        return $this->respondData($this->ssoConfigPayload());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function ssoConfigPayload(): array
+    {
+        $mode = (string) config('sso.mode', 'local');
+        $authorizeUrl = (string) config('sso.authorize_url', '');
+        $clientId = (string) config('sso.client_id', '');
+        $scope = (string) config('sso.scope', 'openid profile email');
+
+        return [
+            'mode' => $mode,
+            'enabled' => in_array($mode, ['hybrid', 'sso'], true),
+            'authorizeUrl' => $authorizeUrl,
+            'clientId' => $clientId,
+            'scope' => $scope,
+            'pkceRequired' => true,
+            // Optional hint for frontend cache keying across environments.
+            'issuer' => (string) config('sso.issuer', ''),
+        ];
     }
 }
