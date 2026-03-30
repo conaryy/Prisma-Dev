@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Login } from '@/pages/Login';
 import { AdminPortal } from '@/pages/admin/AdminPortal';
+import { UserManagement } from '@/pages/admin/UserManagement';
 
 function Placeholder({ title }: { title: string }) {
   return (
@@ -21,6 +22,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<Placeholder title="Dashboard User" />} />
       <Route path="/portal-admin" element={<AdminPortal />} />
+      <Route path="/portal-admin/users" element={<UserManagement />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

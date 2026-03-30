@@ -61,5 +61,19 @@
     @apply text-foreground;
     min-height: 100vh;
     background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(1100px 700px at 85% -10%, rgba(59, 130, 246, 0.18), transparent 60%),
+      radial-gradient(800px 500px at 0% 30%, rgba(14, 165, 233, 0.12), transparent 55%),
+      linear-gradient(180deg, #f7f9ff 0%, #f2f6ff 45%, #ffffff 100%);
+    background-attachment: scroll;
+  }
+
+  .dark body {
+    background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(980px 520px at 82% 14%, rgba(198, 222, 255, 0.24), transparent 58%),
+      radial-gradient(760px 540px at 45% 60%, rgba(88, 132, 255, 0.25), transparent 60%),
+      linear-gradient(140deg, #04091d 0%, #0a1950 44%, #15388f 74%, #08143f 100%);
+    background-attachment: scroll;
   }
 }

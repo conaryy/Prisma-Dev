@@ -1,6 +1,6 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Eye, EyeOff, Loader2, Lock, Mail, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -12,13 +12,23 @@ import {
   setAuthToken,
   setAuthUser,
 } from '@/lib/api';
+import { canAccessAdminPortal } from '@/lib/permissions';
+import {
+  clearSsoFlowLock,
+  isSsoEnabled,
+  resetSsoClientState,
+  startSsoLogin,
+} from '@/lib/sso';
 import supportAnimation from '../../Support.json';
 import airnavBackground from '../../airnav.webp';
 
 const LazyLottie = lazy(() => import('lottie-react'));
+const SSO_REDIRECT_TIMEOUT_MS = 8000;
 
 export function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -26,32 +36,191 @@ export function Login() {
   });
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSsoRedirecting, setIsSsoRedirecting] = useState(false);
+  const [ssoTimeoutHit, setSsoTimeoutHit] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const hasTriggeredSsoRef = useRef(false);
+  const hasRecoveredSsoRef = useRef(false);
+  const ssoEnabled = isSsoEnabled() || query.get('sso') === '1';
+  const forceLocal = query.get('local') === '1';
+  const shouldAutoSso = ssoEnabled && !forceLocal;
+  const fromPath =
+    query.get('return_to') ||
+    (location.state as { from?: string } | null)?.from ||
+    '/dashboard';
+
+  const triggerSsoRedirect = (opts: { force?: boolean } = {}) => {
+    return startSsoLogin(fromPath, { force: opts.force === true }).catch(
+      async (error: Error) => {
+        if (
+          !opts.force &&
+          /tab lain|diproses/i.test(error.message || '') &&
+          !hasRecoveredSsoRef.current
+        ) {
+          hasRecoveredSsoRef.current = true;
+          resetSsoClientState();
+          return startSsoLogin(fromPath, { force: true });
+        }
+        throw error;
+      }
+    );
+  };
 
   useEffect(() => {
+    if (shouldAutoSso) {
+      return;
+    }
+
     const token = getAuthToken();
     if (!token) {
       return;
     }
-    apiFetch<{ data: { role?: string } }>('/api/auth/me')
+    apiFetch<{ data: { role?: string; permissions?: Record<string, unknown> } }>('/api/auth/me')
       .then((response) => {
         if (response.data) {
           setAuthUser(response.data as Record<string, unknown>);
         }
-        const role = response.data?.role;
-        navigate(role === 'Admin' ? '/portal-admin' : '/dashboard');
+        navigate(canAccessAdminPortal(response.data) ? '/admin' : '/dashboard');
       })
       .catch(() => {
         clearAuthToken();
         clearAuthUser();
       });
-  }, [navigate]);
+  }, [navigate, shouldAutoSso]);
+
+  useEffect(() => {
+    if (!shouldAutoSso) {
+      return;
+    }
+    if (hasTriggeredSsoRef.current) {
+      return;
+    }
+    hasTriggeredSsoRef.current = true;
+
+    setIsSsoRedirecting(true);
+    setSsoTimeoutHit(false);
+    triggerSsoRedirect().catch((error: Error) => {
+      setIsSsoRedirecting(false);
+      hasTriggeredSsoRef.current = false;
+      setErrorMessage(error.message || 'Gagal mengarahkan ke SSO.');
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoSso, fromPath]);
+
+  useEffect(() => {
+    if (!shouldAutoSso || !isSsoRedirecting) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setIsSsoRedirecting(false);
+      setSsoTimeoutHit(true);
+      hasTriggeredSsoRef.current = false;
+      clearSsoFlowLock();
+      setErrorMessage('Redirect SSO terlalu lama. Silakan coba lagi.');
+    }, SSO_REDIRECT_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [isSsoRedirecting, shouldAutoSso]);
+
+  const retrySso = () => {
+    setErrorMessage(null);
+    setSsoTimeoutHit(false);
+    setIsSsoRedirecting(true);
+    hasTriggeredSsoRef.current = true;
+    hasRecoveredSsoRef.current = false;
+    resetSsoClientState();
+    triggerSsoRedirect({ force: true }).catch((error: Error) => {
+      setIsSsoRedirecting(false);
+      hasTriggeredSsoRef.current = false;
+      clearSsoFlowLock();
+      setErrorMessage(error.message || 'Gagal mengarahkan ke SSO.');
+    });
+  };
+
+  const hardResetSso = () => {
+    resetSsoClientState();
+    clearAuthToken();
+    clearAuthUser();
+    const params = new URLSearchParams();
+    params.set('sso', '1');
+    if (fromPath) {
+      params.set('return_to', fromPath);
+    }
+    window.location.replace(`/login?${params.toString()}`);
+  };
+
+  if (shouldAutoSso && isSsoRedirecting) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#061743] px-6 text-blue-50">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute left-1/2 top-1/2 h-[520px] w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(96,165,250,0.22)_0%,rgba(37,99,235,0)_72%)]" />
+        </div>
+        <div className="relative w-full max-w-md rounded-2xl border border-[#3158bb80] bg-[#0b1f58]/85 p-6 shadow-[0_22px_50px_rgba(2,6,23,0.55)] backdrop-blur">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-5 w-5 animate-spin text-blue-200" />
+            <span className="font-medium">Mengarahkan ke SSO K2S...</span>
+          </div>
+          <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-[#17357f]">
+            <div className="h-full w-1/3 animate-[pulse_1.1s_ease-in-out_infinite] rounded-full bg-blue-300" />
+          </div>
+          <p className="mt-3 text-sm text-blue-100/80">
+            Menunggu proses handoff ke Auth Service.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (shouldAutoSso && ssoTimeoutHit) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#061743] px-6 text-blue-50">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute left-1/2 top-1/2 h-[520px] w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(96,165,250,0.22)_0%,rgba(37,99,235,0)_72%)]" />
+        </div>
+        <div className="relative w-full max-w-md rounded-2xl border border-[#3158bb80] bg-[#0b1f58]/85 p-6 shadow-[0_22px_50px_rgba(2,6,23,0.55)] backdrop-blur">
+          <div className="space-y-2">
+            <h1 className="text-lg font-semibold">Redirect SSO Tertunda</h1>
+            <p className="text-sm text-blue-100/80">
+              Sesi sebelumnya kemungkinan belum selesai. Coba lagi sekarang.
+            </p>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button onClick={retrySso} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Coba Lagi SSO
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate('/login?local=1', { replace: true })}
+            >
+              Login Lokal Darurat
+            </Button>
+            <Button type="button" variant="outline" onClick={hardResetSso}>
+              Reset SSO Session
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (ssoEnabled) {
+      return;
+    }
     setErrorMessage(null);
     setIsSubmitting(true);
-    apiFetch<{ data: { token: string; user?: { role?: string } } }>(
+    apiFetch<{
+      data: {
+        token: string;
+        user?: { role?: string; [key: string]: unknown };
+        permissions?: Record<string, unknown>;
+        portals?: Record<string, string>;
+      };
+    }>(
       '/api/auth/login',
       {
         method: 'POST',
@@ -67,10 +236,16 @@ export function Login() {
       .then((response) => {
         setAuthToken(response.data.token);
         if (response.data.user) {
-          setAuthUser(response.data.user);
+          setAuthUser({
+            ...response.data.user,
+            permissions: response.data.permissions ?? (response.data.user.permissions as Record<string, unknown> | undefined),
+            portals: response.data.portals,
+          });
         }
-        const role = response.data.user?.role;
-        navigate(role === 'Admin' ? '/portal-admin' : '/dashboard');
+        navigate(canAccessAdminPortal({
+          role: response.data.user?.role,
+          permissions: response.data.permissions,
+        }) ? '/admin' : '/dashboard');
       })
       .catch((error: Error) => {
         setErrorMessage(error.message || 'Login gagal.');
@@ -144,6 +319,12 @@ export function Login() {
               className="space-y-6 animate-in fade-in slide-in-from-left-6 duration-700 delay-100"
               onSubmit={handleSubmit}
             >
+              {ssoEnabled && (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                  Mode SSO aktif. Anda sedang diarahkan ke Auth Service.
+                  Untuk login lokal darurat, gunakan <code>/login?local=1</code>.
+                </div>
+              )}
               <div className="space-y-4 rounded-3xl border border-white/80 bg-white/90 p-7 shadow-[0_20px_45px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8">
                 <div className="space-y-2">
                   <label className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
@@ -226,9 +407,9 @@ export function Login() {
                 <Button
                   className="h-12 w-full rounded-2xl bg-[var(--login-hero)] text-base text-white shadow-[0_18px_35px_rgba(37,99,235,0.35)] transition hover:bg-[var(--login-hero-deep)]"
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || ssoEnabled}
                 >
-                  {isSubmitting ? 'Masuk...' : 'Masuk'}
+                  {ssoEnabled ? 'SSO Aktif' : isSubmitting ? 'Masuk...' : 'Masuk'}
                 </Button>
 
                 {errorMessage && (

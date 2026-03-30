@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { RequireAuth } from '@/components/auth/RequireAuth';
 import { RequireAdmin } from '@/components/auth/RequireAdmin';
@@ -244,6 +244,9 @@ const Temuan = lazy(() =>
 const Login = lazy(() =>
   import('@/pages/Login').then((module) => ({ default: module.Login }))
 );
+const AuthCallback = lazy(() =>
+  import('@/pages/AuthCallback').then((module) => ({ default: module.AuthCallback }))
+);
 const Profile = lazy(() =>
   import('@/pages/Profile').then((module) => ({ default: module.Profile }))
 );
@@ -252,21 +255,25 @@ const AdminDashboard = lazy(() =>
     default: module.AdminDashboard,
   }))
 );
-const AdminPortal = lazy(() =>
-  import('@/pages/admin/AdminPortal').then((module) => ({
-    default: module.AdminPortal,
-  }))
-);
-const AdminUsers = lazy(() =>
-  import('@/pages/admin/UserManagement').then((module) => ({
-    default: module.UserManagement,
-  }))
-);
 const AdminSelfAssessment = lazy(() =>
   import('@/pages/admin/SelfAssessmentQuestions').then((module) => ({
     default: module.SelfAssessmentQuestions,
   }))
 );
+
+function getAuthPortalUsersUrl() {
+  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+  const base = (env.VITE_AUTH_PORTAL_URL || 'http://localhost:5174').replace(/\/+$/, '');
+  return `${base}/portal-admin/users`;
+}
+
+function ExternalAuthUserManagementRedirect() {
+  useEffect(() => {
+    window.location.replace(getAuthPortalUsersUrl());
+  }, []);
+
+  return null;
+}
 const AdminSelfAssessmentSessions = lazy(() =>
   import('@/pages/admin/SelfAssessmentSessions').then((module) => ({
     default: module.SelfAssessmentSessions,
@@ -313,13 +320,10 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         <Route
           path="/portal-admin"
-          element={
-            <RequireAdmin>
-              <AdminPortal />
-            </RequireAdmin>
-          }
+          element={<Navigate to="/admin" replace />}
         />
         <Route
           path="/"
@@ -345,7 +349,7 @@ function App() {
             path="admin/users"
             element={
               <RequireAdmin>
-                <AdminUsers />
+                <ExternalAuthUserManagementRedirect />
               </RequireAdmin>
             }
           />

@@ -131,6 +131,24 @@ class SsoUserSynchronizer
             }
         }
 
+        // Support simple role claim from internal Auth service.
+        $singleRole = Arr::get($claims, 'role');
+        if (is_string($singleRole) && trim($singleRole) !== '') {
+            $roles[] = strtolower(trim($singleRole));
+        }
+
+        // Bridge permission-based claims into pseudo roles for mapping.
+        $permissions = Arr::get($claims, 'permissions');
+        if (is_array($permissions)) {
+            if (($permissions['can_access_admin_portal'] ?? false) === true
+                || ($permissions['can_manage_admin_module'] ?? false) === true) {
+                $roles[] = 'admin';
+            }
+            if (($permissions['can_access_external_dnp'] ?? false) === true) {
+                $roles[] = 'external_dnp';
+            }
+        }
+
         return array_values(array_unique($roles));
     }
 

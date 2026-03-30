@@ -14,6 +14,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import { clearAuthToken, clearAuthUser } from '@/lib/api';
 import { getStoredTheme, persistTheme } from '@/lib/theme';
+import { buildSsoLogoutUrl, isSsoEnabled } from '@/lib/sso';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -136,6 +137,11 @@ export function AdminPortal() {
   const handleLogout = () => {
     clearAuthToken();
     clearAuthUser();
+    if (isSsoEnabled()) {
+      const target = `${window.location.origin}/login`;
+      window.location.replace(buildSsoLogoutUrl(target, 'k2s-web'));
+      return;
+    }
     navigate('/login', { replace: true });
   };
 
