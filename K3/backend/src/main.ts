@@ -11,7 +11,7 @@ async function bootstrap() {
     origin: true,
   });
 
-  const frontendDist = join(__dirname, '..', 'frontend', 'dist');
+  const frontendDist = join(__dirname, '..', '..', 'frontend', 'dist');
   const uploadsDir = join(__dirname, '..', 'uploads');
   const server = app.getHttpAdapter().getInstance();
 

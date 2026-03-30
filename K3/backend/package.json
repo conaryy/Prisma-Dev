@@ -6,8 +6,8 @@
   "scripts": {
     "build": "npm run build:frontend && npm run build:backend",
     "build:backend": "nest build",
-    "build:frontend": "npm --prefix frontend run build",
-    "frontend:dev": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix ../frontend run build",
+    "frontend:dev": "npm --prefix ../frontend run dev",
     "start": "nest start",
     "start:dev": "nest start --watch"
   },
