@@ -30,10 +30,59 @@ type UserItem = {
   role: string;
   status: string;
   can_access_external_dnp?: boolean;
+  permissions?: Partial<PermissionState> | null;
+};
+
+type PermissionState = {
+  can_access_admin_portal: boolean;
+  can_manage_users: boolean;
+  can_manage_admin_module: boolean;
+  can_access_k2s_dashboard: boolean;
+  can_access_logbook: boolean;
+  can_access_k3: boolean;
+  can_access_keamanan: boolean;
+  can_access_external_dnp: boolean;
 };
 
 const ROLE_OPTIONS = ['Admin', 'Viewer'];
 const STATUS_OPTIONS = ['Active', 'Disabled'];
+
+function defaultPermissions(role: string): PermissionState {
+  const isAdmin = role === 'Admin';
+
+  return {
+    can_access_admin_portal: isAdmin,
+    can_manage_users: isAdmin,
+    can_manage_admin_module: isAdmin,
+    can_access_k2s_dashboard: true,
+    can_access_logbook: true,
+    can_access_k3: true,
+    can_access_keamanan: true,
+    can_access_external_dnp: isAdmin,
+  };
+}
+
+function resolvePermission(user: UserItem, key: keyof PermissionState) {
+  const permissions = user.permissions ?? {};
+  const value = permissions[key];
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (key === 'can_access_external_dnp') {
+    return user.can_access_external_dnp !== false;
+  }
+
+  if (
+    key === 'can_access_admin_portal' ||
+    key === 'can_manage_users' ||
+    key === 'can_manage_admin_module'
+  ) {
+    return user.role === 'Admin';
+  }
+
+  return true;
+}
 
 export function UserManagement() {
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -57,7 +106,7 @@ export function UserManagement() {
     password: '',
     role: 'Viewer',
     status: 'Active',
-    canAccessExternalDnp: true,
+    permissions: defaultPermissions('Viewer'),
   });
 
   const loadUsers = () => {
@@ -78,7 +127,7 @@ export function UserManagement() {
       ...form,
       email: form.email.trim() || null,
       username: form.username.trim(),
-      can_access_external_dnp: form.canAccessExternalDnp,
+      can_access_external_dnp: form.permissions.can_access_external_dnp,
     };
     apiFetch('/api/users', {
       method: 'POST',
@@ -93,7 +142,7 @@ export function UserManagement() {
           password: '',
           role: 'Viewer',
           status: 'Active',
-          canAccessExternalDnp: true,
+          permissions: defaultPermissions('Viewer'),
         });
         loadUsers();
       })
@@ -178,19 +227,19 @@ export function UserManagement() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-600 shadow-sm">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-600 shadow-sm dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-200">
           <Users className="h-5 w-5" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-slate-800">Kelola User</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">Kelola User</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-300">
             Tambah user baru atau ubah aksesnya.
           </p>
         </div>
       </div>
 
       <form
-        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+        className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-blue-500/35 dark:bg-slate-950/70 dark:shadow-[0_18px_40px_rgba(2,6,23,0.5)]"
         onSubmit={handleSubmit}
         autoComplete="off"
       >
@@ -231,7 +280,7 @@ export function UserManagement() {
             />
             <button
               type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               onClick={() => setShowPassword((prev) => !prev)}
               aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
             >
@@ -241,7 +290,27 @@ export function UserManagement() {
           <div className="grid gap-3 md:grid-cols-2">
             <Select
               value={form.role}
-              onValueChange={(value) => setForm((prev) => ({ ...prev, role: value }))}
+              onValueChange={(value) =>
+                setForm((prev) => {
+                  const nextPermissions = { ...prev.permissions };
+                  if (value === 'Admin') {
+                    nextPermissions.can_access_admin_portal = true;
+                    nextPermissions.can_manage_users = true;
+                    nextPermissions.can_manage_admin_module = true;
+                    nextPermissions.can_access_external_dnp = true;
+                  } else {
+                    nextPermissions.can_access_admin_portal = false;
+                    nextPermissions.can_manage_users = false;
+                    nextPermissions.can_manage_admin_module = false;
+                  }
+
+                  return {
+                    ...prev,
+                    role: value,
+                    permissions: nextPermissions,
+                  };
+                })
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Role" />
@@ -270,17 +339,144 @@ export function UserManagement() {
               </SelectContent>
             </Select>
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-blue-500/35 dark:bg-slate-900/80">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Service Access
+            </p>
+            <div className="grid gap-2 md:grid-cols-2">
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-200">
+                <Checkbox
+                  checked={form.permissions.can_access_k2s_dashboard}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      permissions: {
+                        ...prev.permissions,
+                        can_access_k2s_dashboard: checked === true,
+                      },
+                    }))
+                  }
+                />
+                K2S Dashboard
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-200">
+                <Checkbox
+                  checked={form.permissions.can_access_logbook}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      permissions: {
+                        ...prev.permissions,
+                        can_access_logbook: checked === true,
+                      },
+                    }))
+                  }
+                />
+                Logbook
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-200">
+                <Checkbox
+                  checked={form.permissions.can_access_k3}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      permissions: {
+                        ...prev.permissions,
+                        can_access_k3: checked === true,
+                      },
+                    }))
+                  }
+                />
+                K3
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-200">
+                <Checkbox
+                  checked={form.permissions.can_access_keamanan}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      permissions: {
+                        ...prev.permissions,
+                        can_access_keamanan: checked === true,
+                      },
+                    }))
+                  }
+                />
+                Keamanan
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-blue-500/35 dark:bg-slate-900/80">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Admin Access
+            </p>
+            <div className="grid gap-2 md:grid-cols-2">
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-200">
+                <Checkbox
+                  checked={form.permissions.can_access_admin_portal}
+                  disabled={form.role !== 'Admin'}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      permissions: {
+                        ...prev.permissions,
+                        can_access_admin_portal: checked === true,
+                      },
+                    }))
+                  }
+                />
+                Portal Admin
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-200">
+                <Checkbox
+                  checked={form.permissions.can_manage_admin_module}
+                  disabled={form.role !== 'Admin'}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      permissions: {
+                        ...prev.permissions,
+                        can_manage_admin_module: checked === true,
+                      },
+                    }))
+                  }
+                />
+                Menu Admin
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-200">
+                <Checkbox
+                  checked={form.permissions.can_manage_users}
+                  disabled={form.role !== 'Admin'}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      permissions: {
+                        ...prev.permissions,
+                        can_manage_users: checked === true,
+                      },
+                    }))
+                  }
+                />
+                Kelola User
+              </label>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-200">
             <Checkbox
-              checked={form.canAccessExternalDnp}
+              checked={form.permissions.can_access_external_dnp}
               onCheckedChange={(checked) =>
                 setForm((prev) => ({
                   ...prev,
-                  canAccessExternalDnp: checked === true,
+                  permissions: {
+                    ...prev.permissions,
+                    can_access_external_dnp: checked === true,
+                  },
                 }))
               }
             />
-            Akses Menu External DNP
+            Fitur External DNP
           </label>
         </div>
 
@@ -296,7 +492,7 @@ export function UserManagement() {
         )}
       </form>
 
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-blue-500/35 dark:bg-slate-950/70 dark:shadow-[0_18px_40px_rgba(2,6,23,0.5)]">
         <Table>
           <TableHeader>
             <TableRow>
@@ -305,6 +501,8 @@ export function UserManagement() {
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Service</TableHead>
+              <TableHead>Admin Module</TableHead>
               <TableHead>External DNP</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
@@ -312,7 +510,7 @@ export function UserManagement() {
           <TableBody>
             {users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-sm text-slate-500">
+                <TableCell colSpan={9} className="text-center text-sm text-slate-500">
                   Belum ada user.
                 </TableCell>
               </TableRow>
@@ -325,7 +523,20 @@ export function UserManagement() {
                   <TableCell>{user.role}</TableCell>
                   <TableCell>{user.status}</TableCell>
                   <TableCell>
-                    {user.can_access_external_dnp === false ? 'Tidak' : 'Ya'}
+                    {[
+                      resolvePermission(user, 'can_access_k2s_dashboard') ? 'K2S' : null,
+                      resolvePermission(user, 'can_access_logbook') ? 'Logbook' : null,
+                      resolvePermission(user, 'can_access_k3') ? 'K3' : null,
+                      resolvePermission(user, 'can_access_keamanan') ? 'Keamanan' : null,
+                    ]
+                      .filter(Boolean)
+                      .join(', ') || '-'}
+                  </TableCell>
+                  <TableCell>
+                    {resolvePermission(user, 'can_manage_admin_module') ? 'Ya' : 'Tidak'}
+                  </TableCell>
+                  <TableCell>
+                    {resolvePermission(user, 'can_access_external_dnp') ? 'Ya' : 'Tidak'}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button

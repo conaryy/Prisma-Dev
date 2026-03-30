@@ -9,7 +9,6 @@ import {
   clearAuthToken,
   clearAuthUser,
   getAuthToken,
-  setAuthToken,
   setAuthUser,
 } from '@/lib/api';
 import supportAnimation from '../../Support.json';
@@ -19,6 +18,17 @@ const LazyLottie = lazy(() => import('lottie-react'));
 
 export function Login() {
   const navigate = useNavigate();
+  const searchParams = new URLSearchParams(window.location.search);
+  const ssoReturnTo = searchParams.get('return_to');
+  const isSsoUiLogin = Boolean(ssoReturnTo);
+  const centralPortalLanding =
+    typeof window === 'undefined'
+      ? '/portal-admin'
+      : `${window.location.origin}/portal-admin`;
+  const ssoBaseUrl =
+    ((import.meta as { env?: Record<string, string> }).env?.VITE_SSO_AUTH_BASE_URL ??
+      'http://localhost:4000')
+      .replace(/\/+$/, '');
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -29,6 +39,10 @@ export function Login() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isSsoUiLogin) {
+      return;
+    }
+
     const token = getAuthToken();
     if (!token) {
       return;
@@ -45,32 +59,74 @@ export function Login() {
         clearAuthToken();
         clearAuthUser();
       });
-  }, [navigate]);
+  }, [isSsoUiLogin, navigate]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage(null);
     setIsSubmitting(true);
-    apiFetch<{ data: { token: string; user?: { role?: string } } }>(
-      '/api/auth/login',
-      {
+
+    if (isSsoUiLogin) {
+      fetch(`${ssoBaseUrl}/auth/ui/login`, {
         method: 'POST',
-        skipAuth: true,
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
         body: JSON.stringify({
           email: form.email,
           password: form.password,
-          remember: form.remember,
+          return_to: centralPortalLanding,
         }),
-      }
-    )
-      .then((response) => {
-        setAuthToken(response.data.token);
-        if (response.data.user) {
-          setAuthUser(response.data.user);
+      })
+        .then(async (response) => {
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(
+              (typeof data?.error === 'string' && data.error) || 'Login gagal.'
+            );
+          }
+          const redirectTo =
+            (typeof data?.redirect_to === 'string' && data.redirect_to) ||
+            centralPortalLanding;
+          if (!redirectTo) {
+            throw new Error('Return URL tidak tersedia.');
+          }
+          window.location.assign(redirectTo);
+        })
+        .catch((error: Error) => {
+          setErrorMessage(error.message || 'Login gagal.');
+        })
+        .finally(() => setIsSubmitting(false));
+      return;
+    }
+
+    fetch(`${ssoBaseUrl}/auth/ui/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        email: form.email,
+        password: form.password,
+        return_to: `${window.location.origin}/portal-admin`,
+      }),
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            (typeof data?.error === 'string' && data.error) || 'Login gagal.'
+          );
         }
-        const role = response.data.user?.role;
-        navigate(role === 'Admin' ? '/portal-admin' : '/dashboard');
+
+        const redirectTo =
+          (typeof data?.redirect_to === 'string' && data.redirect_to) ||
+          `${window.location.origin}/portal-admin`;
+        window.location.assign(redirectTo);
       })
       .catch((error: Error) => {
         setErrorMessage(error.message || 'Login gagal.');
@@ -228,7 +284,7 @@ export function Login() {
                   type="submit"
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? 'Masuk...' : 'Masuk'}
+                  {isSubmitting ? 'Masuk...' : isSsoUiLogin ? 'Masuk SSO' : 'Masuk'}
                 </Button>
 
                 {errorMessage && (

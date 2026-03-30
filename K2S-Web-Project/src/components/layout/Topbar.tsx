@@ -24,6 +24,8 @@ import { Input } from '@/components/ui/input';
 import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 import { getStoredTheme, persistTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
+import { canAccessExternalDnp, canManageAdminModule } from '@/lib/permissions';
+import { buildSsoLogoutUrl, isSsoEnabled } from '@/lib/sso';
 import burgerMenu from '@/assets/burger-menu.json';
 import { apiFetch, clearAuthToken, clearAuthUser, getAuthToken, getAuthUser } from '@/lib/api';
 import { fetchNotifications } from '@/lib/notifications';
@@ -34,6 +36,21 @@ interface TopbarProps {
   onCollapseToggle?: () => void;
   isSidebarOpen?: boolean;
   isSidebarCollapsed?: boolean;
+}
+
+function normalizeBaseUrl(value: string) {
+  return value.replace(/\/+$/, '');
+}
+
+function getAuthPortalUrl() {
+  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+  const base = normalizeBaseUrl(env.VITE_AUTH_PORTAL_URL || 'http://localhost:5174');
+  return `${base}/portal-admin`;
+}
+
+function getLogbookPortalUrl() {
+  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+  return normalizeBaseUrl(env.VITE_LOGBOOK_BASE_URL || 'http://localhost:5175');
 }
 
 const MENU_LOTTIE_FALLBACK_END = Math.max(
@@ -131,9 +148,10 @@ export function Topbar({
     role?: string;
     name?: string;
     can_access_external_dnp?: boolean;
+    permissions?: Record<string, unknown>;
   }>();
-  const isAdmin = (authUser?.role ?? '').toLowerCase() === 'admin';
-  const canAccessExternalDnp = authUser?.can_access_external_dnp !== false;
+  const canAccessAdminMenu = canManageAdminModule(authUser);
+  const canAccessExternalDnpMenu = canAccessExternalDnp(authUser);
   const { instansi } = useAppData();
   const profileName =
     instansi?.name?.trim() || authUser?.name?.trim() || 'Pengguna';
@@ -174,7 +192,6 @@ export function Topbar({
         { label: 'External DNP - Surveillance - CAP Pemenuhan', path: '/external-dnp/surveillance/cap/pemenuhan' },
         { label: 'Temuan', path: '/temuan' },
         { label: 'CAP', path: '/cap' },
-        { label: 'Admin - Portal', path: '/portal-admin', adminOnly: true },
         { label: 'Admin - Dashboard', path: '/admin', adminOnly: true },
         { label: 'Admin - Kelola User', path: '/admin/users', adminOnly: true },
         {
@@ -208,12 +225,12 @@ export function Topbar({
           adminOnly: true,
         },
       ].filter((item) => {
-        if (item.path.startsWith('/external-dnp') && !canAccessExternalDnp) {
+        if (item.path.startsWith('/external-dnp') && !canAccessExternalDnpMenu) {
           return false;
         }
-        return item.adminOnly ? isAdmin : true;
+        return item.adminOnly ? canAccessAdminMenu : true;
       }),
-    [canAccessExternalDnp, isAdmin]
+    [canAccessAdminMenu, canAccessExternalDnpMenu]
   );
 
   const filteredMenu = useMemo(() => {
@@ -271,6 +288,14 @@ export function Topbar({
   }, [theme]);
 
   const handleLogout = () => {
+    if (isSsoEnabled()) {
+      clearAuthToken();
+      clearAuthUser();
+      const target = `${window.location.origin}/login`;
+      window.location.replace(buildSsoLogoutUrl(target, 'k2s-web'));
+      return;
+    }
+
     apiFetch('/api/auth/logout', { method: 'POST' })
       .catch(() => {})
       .finally(() => {
@@ -415,8 +440,8 @@ export function Topbar({
                       aria-label="Dashboard"
                       title="Dashboard"
                       onClick={() => {
-                        navigate('/admin');
                         setIsPortalOpen(false);
+                        window.location.assign(getAuthPortalUrl());
                       }}
                     >
                       <LayoutDashboard className="h-5 w-5" />
@@ -460,8 +485,8 @@ export function Topbar({
                       aria-label="Logbook"
                       title="Logbook"
                       onClick={() => {
-                        navigate('/monitoring/protocol-question/hasil-review-dgca');
                         setIsPortalOpen(false);
+                        window.location.assign(getLogbookPortalUrl());
                       }}
                     >
                       <BookOpen className="h-5 w-5" />

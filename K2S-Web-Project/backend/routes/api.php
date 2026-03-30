@@ -92,6 +92,7 @@ Route::get('guide/template/{type}/signed', [GuideManualController::class, 'downl
 Route::middleware('auth.api')->group(function () {
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::get('auth/me', [AuthController::class, 'me']);
+    Route::get('auth/session', [AuthController::class, 'session']);
     Route::get('dashboard/cap-summary', [DashboardController::class, 'capSummary']);
     Route::get('dashboard/user-alerts', [DashboardController::class, 'userAlerts']);
     Route::get('dashboard/cap-open-trend', [DashboardController::class, 'capOpenTrend']);

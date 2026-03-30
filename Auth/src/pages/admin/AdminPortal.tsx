@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { clearAuthToken, clearAuthUser } from '@/lib/api';
+import { clearAuthToken, clearAuthUser, getAuthToken } from '@/lib/api';
 import { getStoredTheme, persistTheme } from '@/lib/theme';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,6 +31,7 @@ type PortalMenu = {
   title: string;
   description: string;
   path: string;
+  targetApp: 'k2s' | 'logbook';
   icon: LucideIcon;
   eyebrow: string;
   meta: string;
@@ -73,12 +74,52 @@ function getK2sBaseUrl() {
   return `${protocol}//${hostname}${port ? `:${port}` : ''}`;
 }
 
-function buildPortalUrl(path: string) {
-  const baseUrl = getK2sBaseUrl();
+function getLogbookBaseUrl() {
+  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+  const configured = env.VITE_LOGBOOK_BASE_URL?.trim();
+  if (configured) {
+    return normalizeBaseUrl(configured);
+  }
+
+  return 'http://localhost:5175';
+}
+
+function getAuthServiceBaseUrl() {
+  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+  const configured = env.VITE_SSO_AUTH_BASE_URL?.trim();
+  if (configured) {
+    return normalizeBaseUrl(configured);
+  }
+  return 'http://localhost:4000';
+}
+
+function buildPortalUrl(path: string, targetApp: PortalMenu['targetApp']) {
+  const baseUrl = targetApp === 'logbook' ? getLogbookBaseUrl() : getK2sBaseUrl();
   if (!baseUrl) {
     return path;
   }
-  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const target = new URL(`${baseUrl}${normalizedPath}`);
+  const handoffMode =
+    ((import.meta as { env?: Record<string, string> }).env?.VITE_PORTAL_HANDOFF_MODE ?? 'oidc')
+      .toLowerCase()
+      .trim();
+
+  if (handoffMode === 'oidc' && targetApp === 'k2s') {
+    // Force K2S to start SSO immediately and return to desired page.
+    target.pathname = '/login';
+    target.searchParams.set('sso', '1');
+    target.searchParams.set('return_to', normalizedPath);
+  }
+
+  if (handoffMode === 'token') {
+    const token = getAuthToken();
+    if (token) {
+      target.searchParams.set('token', token);
+    }
+  }
+  return target.toString();
 }
 
 const portalMenus: PortalMenu[] = [
@@ -87,6 +128,7 @@ const portalMenus: PortalMenu[] = [
     title: 'Dashboard',
     description: 'Ringkasan operasional admin untuk memantau review, antrian, dan prioritas tindak lanjut.',
     path: '/admin',
+    targetApp: 'k2s',
     icon: LayoutDashboard,
     eyebrow: 'Kontrol Utama',
     meta: 'Insight admin dan prioritas harian',
@@ -105,6 +147,7 @@ const portalMenus: PortalMenu[] = [
     title: 'Keamanan',
     description: 'Akses cepat ke data keamanan dan pemantauan umum dengan struktur yang tetap familiar.',
     path: '/dashboard',
+    targetApp: 'k2s',
     icon: ShieldCheck,
     eyebrow: 'Monitoring',
     meta: 'Pemantauan umum dan data operasional',
@@ -123,6 +166,7 @@ const portalMenus: PortalMenu[] = [
     title: 'K3',
     description: 'Area kerja review safety, CAP, dan monitoring K3 dengan jalur masuk yang lebih jelas.',
     path: '/admin/self-assessment-reviews',
+    targetApp: 'k2s',
     icon: ClipboardCheck,
     eyebrow: 'Review Safety',
     meta: 'Safety review, CAP, dan tindak lanjut',
@@ -140,7 +184,8 @@ const portalMenus: PortalMenu[] = [
     key: 'logbook',
     title: 'Logbook',
     description: 'Portal pencatatan dan hasil review aktivitas logbook dengan alur yang lebih rapi.',
-    path: '/monitoring/protocol-question/hasil-review-dgca',
+    path: '/tower/logbook-harian',
+    targetApp: 'logbook',
     icon: BookOpen,
     eyebrow: 'Riwayat Aktivitas',
     meta: 'Pencatatan dan review agenda monitoring',
@@ -172,7 +217,10 @@ export function AdminPortal() {
   const handleLogout = () => {
     clearAuthToken();
     clearAuthUser();
-    navigate('/login', { replace: true });
+    const postLogout = `${window.location.origin}/login`;
+    const logoutUrl = new URL(`${getAuthServiceBaseUrl()}/auth/logout`);
+    logoutUrl.searchParams.set('post_logout_redirect_uri', postLogout);
+    window.location.replace(logoutUrl.toString());
   };
 
   const handleThemeToggle = () => {
@@ -285,6 +333,16 @@ export function AdminPortal() {
                   <DropdownMenuItem
                     onSelect={(event: Event) => {
                       event.preventDefault();
+                      navigate('/portal-admin/users');
+                    }}
+                    className="cursor-pointer gap-2"
+                  >
+                    <UserCircle className="h-4 w-4" />
+                    Kelola User
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={(event: Event) => {
+                      event.preventDefault();
                       handleLogout();
                     }}
                     className="cursor-pointer gap-2 font-semibold text-red-600 focus:text-red-700"
@@ -302,7 +360,7 @@ export function AdminPortal() {
           <section className="grid gap-3 md:grid-cols-2">
             {portalMenus.map((item, index) => {
               const Icon = item.icon;
-              const targetUrl = buildPortalUrl(item.path);
+              const targetUrl = buildPortalUrl(item.path, item.targetApp);
 
               return (
                 <a

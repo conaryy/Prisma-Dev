@@ -1,0 +1,24 @@
+{
+  "name": "auth-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test",
+    "migrate:dry-run": "node scripts/dry-run-k2s-users.mjs",
+    "migrate:apply": "node scripts/dry-run-k2s-users.mjs --apply",
+    "user:password": "node scripts/set-auth-user-password.mjs"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jose": "^5.9.6",
+    "nanoid": "^5.1.0",
+    "pg": "^8.13.3"
+  }
+}

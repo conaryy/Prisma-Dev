@@ -179,9 +179,102 @@ services:
       args:
         VITE_API_BASE_URL: ${AUTH_VITE_API_BASE_URL:-https://api.example.com}
         VITE_K2S_BASE_URL: ${AUTH_VITE_K2S_BASE_URL:-https://k2s.example.com}
+        VITE_LOGBOOK_BASE_URL: ${AUTH_VITE_LOGBOOK_BASE_URL:-https://logbook.example.com}
     container_name: auth-frontend
     restart: unless-stopped
+
+  logbook-backend:
+    build:
+      context: ./Logbook/backend
+      dockerfile: Dockerfile
+    container_name: logbook-backend
+    restart: unless-stopped
+    profiles: ["logbook"]
+    depends_on:
+      logbook-db:
+        condition: service_healthy
+    environment:
+      PORT: ${LOGBOOK_BACKEND_PORT:-3100}
+      DATABASE_URL: ${LOGBOOK_DATABASE_URL:-postgresql://logbook:logbook_password@logbook-db:5432/logbook?schema=public}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-https://prisma.ryvidia.my.id,https://k2s.prisma.ryvidia.my.id,https://logbook.prisma.ryvidia.my.id}
+      SSO_ISSUER: ${SSO_ISSUER:-}
+      SSO_AUDIENCE: ${SSO_AUDIENCE:-}
+      SSO_JWKS_URL: ${SSO_JWKS_URL:-}
+      SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
+    command: ["sh", "-lc", "npx prisma db push && node dist/main.js"]
+
+  logbook-frontend:
+    build:
+      context: ./Logbook/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_LOGBOOK_API_BASE_URL: ${LOGBOOK_VITE_API_BASE_URL:-/api/v1}
+        VITE_AUTH_PORTAL_URL: ${LOGBOOK_VITE_AUTH_PORTAL_URL:-https://prisma.ryvidia.my.id/login}
+    container_name: logbook-frontend
+    restart: unless-stopped
+    profiles: ["logbook"]
+    depends_on:
+      - logbook-backend
+
+  logbook-db:
+    image: postgres:16-alpine
+    container_name: logbook-db
+    restart: unless-stopped
+    profiles: ["logbook"]
+    environment:
+      POSTGRES_DB: ${LOGBOOK_DB_NAME:-logbook}
+      POSTGRES_USER: ${LOGBOOK_DB_USER:-logbook}
+      POSTGRES_PASSWORD: ${LOGBOOK_DB_PASSWORD:-logbook_password}
+    volumes:
+      - logbook_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LOGBOOK_DB_USER:-logbook} -d ${LOGBOOK_DB_NAME:-logbook}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak-db:
+    image: postgres:16-alpine
+    container_name: keycloak-db
+    restart: unless-stopped
+    profiles: ["sso-local"]
+    environment:
+      POSTGRES_DB: ${KEYCLOAK_DB_NAME:-keycloak}
+      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev_password}
+    volumes:
+      - keycloak_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KEYCLOAK_DB_USER:-keycloak} -d ${KEYCLOAK_DB_NAME:-keycloak}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    container_name: keycloak
+    restart: unless-stopped
+    profiles: ["sso-local"]
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME:-keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev_password}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123!}
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    command: ["start-dev", "--http-port=8080"]
 
 volumes:
   db_data:
   backend_storage:
+  logbook_db_data:
+  keycloak_db_data:

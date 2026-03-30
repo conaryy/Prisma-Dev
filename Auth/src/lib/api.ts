@@ -19,18 +19,42 @@ export class ApiError extends Error {
   }
 }
 
+function normalizeToken(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
+}
+
 export function getAuthToken() {
   if (typeof window === 'undefined') {
     return null;
   }
-  return window.localStorage.getItem(TOKEN_KEY);
+  return normalizeToken(window.localStorage.getItem(TOKEN_KEY));
 }
 
 export function setAuthToken(token: string) {
   if (typeof window === 'undefined') {
     return;
   }
-  window.localStorage.setItem(TOKEN_KEY, token);
+  const normalized = normalizeToken(token);
+  if (!normalized) {
+    return;
+  }
+  window.localStorage.setItem(TOKEN_KEY, normalized);
 }
 
 export function clearAuthToken() {
@@ -84,6 +108,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}) {
 
   return fetch(`${API_BASE_URL}${path}`, {
     ...fetchOptions,
+    credentials: 'include',
     headers,
   }).then(async (response) => {
     const data = await response.json().catch(() => ({}));

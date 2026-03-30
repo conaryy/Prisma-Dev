@@ -1,0 +1,133 @@
+import { Router } from 'express';
+import { queryAll } from '../db.js';
+import {
+  createManagedUser,
+  deleteManagedUser,
+  resetManagedUserPassword,
+  toUserResponse,
+  updateManagedUser,
+} from '../auth-service.js';
+import { asyncHandler, requireManageUsers, requireSessionUser } from '../middleware.js';
+import { createResetPasswordRateLimiter } from '../rate-limit.js';
+import {
+  validateCreateUserPayload,
+  validateResetPasswordPayload,
+  validateUpdateUserPayload,
+} from '../validation.js';
+
+export function createAdminRouter() {
+  const router = Router();
+  const resetPasswordRateLimiter = createResetPasswordRateLimiter();
+
+  router.get('/api/auth/me', requireSessionUser, (req, res) => {
+    res.json({ data: toUserResponse(req.authUser) });
+  });
+
+  router.get(
+    '/api/admin/users',
+    requireSessionUser,
+    requireManageUsers,
+    asyncHandler(async (_req, res) => {
+      const rows = await queryAll(
+        'SELECT * FROM users ORDER BY CASE WHEN role = ? THEN 0 ELSE 1 END, username ASC',
+        ['Admin']
+      );
+      res.json({
+        data: rows.map((row) => toUserResponse(row)),
+      });
+    })
+  );
+
+  router.post(
+    '/api/admin/users',
+    requireSessionUser,
+    requireManageUsers,
+    asyncHandler(async (req, res) => {
+      const validation = validateCreateUserPayload(req.body);
+      if (!validation.ok) {
+        res.status(validation.status).json({ error: validation.error });
+        return;
+      }
+
+      const result = await createManagedUser(validation.data);
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error });
+        return;
+      }
+      res.status(201).json({ data: toUserResponse(result.user) });
+    })
+  );
+
+  router.patch(
+    '/api/admin/users/:id',
+    requireSessionUser,
+    requireManageUsers,
+    asyncHandler(async (req, res) => {
+      const validation = validateUpdateUserPayload(req.body);
+      if (!validation.ok) {
+        res.status(validation.status).json({ error: validation.error });
+        return;
+      }
+
+      const result = await updateManagedUser(
+        String(req.params?.id || '').trim(),
+        validation.data
+      );
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error });
+        return;
+      }
+      res.json({ data: toUserResponse(result.user) });
+    })
+  );
+
+  router.delete(
+    '/api/admin/users/:id',
+    requireSessionUser,
+    requireManageUsers,
+    asyncHandler(async (req, res) => {
+      const result = await deleteManagedUser(
+        String(req.params?.id || '').trim(),
+        req.authUser?.id
+      );
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error });
+        return;
+      }
+      res.json({ data: { success: true } });
+    })
+  );
+
+  router.post(
+    '/api/admin/users/:id/reset-password',
+    requireSessionUser,
+    requireManageUsers,
+    resetPasswordRateLimiter,
+    asyncHandler(async (req, res) => {
+      const validation = validateResetPasswordPayload(req.body);
+      if (!validation.ok) {
+        res.status(validation.status).json({ error: validation.error });
+        return;
+      }
+
+      const result = await resetManagedUserPassword(
+        String(req.params?.id || '').trim(),
+        validation.data.password,
+        Boolean(validation.data.logout_sessions ?? true)
+      );
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error });
+        return;
+      }
+      res.json({
+        data: {
+          user: toUserResponse(result.user),
+          password_reset: true,
+          logged_out_sessions: result.loggedOutSessions,
+        },
+      });
+    })
+  );
+
+  return router;
+}

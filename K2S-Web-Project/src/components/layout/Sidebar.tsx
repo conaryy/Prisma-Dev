@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/collapsible';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getAuthUser } from '@/lib/api';
+import { canAccessExternalDnp, canManageAdminModule } from '@/lib/permissions';
 import { useAppData } from '@/contexts/AppDataContext';
 
 interface SidebarProps {
@@ -69,9 +70,10 @@ export function Sidebar({
     role?: string;
     name?: string;
     can_access_external_dnp?: boolean;
+    permissions?: Record<string, unknown>;
   }>();
-  const isAdmin = user?.role === 'Admin';
-  const canAccessExternalDnp = user?.can_access_external_dnp !== false;
+  const canAccessExternalDnpMenu = canAccessExternalDnp(user);
+  const canAccessAdminMenu = canManageAdminModule(user);
   const { instansi } = useAppData();
   const profileName =
     instansi?.name?.trim() || user?.name?.trim() || 'Pengguna';
@@ -1024,7 +1026,7 @@ export function Sidebar({
             </CollapsibleContent>
           </Collapsible>
 
-          {canAccessExternalDnp && (
+          {canAccessExternalDnpMenu && (
           <Collapsible open={externalDnpOpen} onOpenChange={setExternalDnpOpen}>
             <CollapsibleTrigger
               className={navClass(isExternalDnpActive)}
@@ -1200,7 +1202,7 @@ export function Sidebar({
           </Collapsible>
           )}
 
-          {isAdmin && (
+          {canAccessAdminMenu && (
             <div className="pt-4">
               <div
                 className={labelClass(
