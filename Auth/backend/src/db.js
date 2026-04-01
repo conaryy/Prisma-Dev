@@ -58,6 +58,12 @@ export async function initDb() {
 
 export async function seedDefaults() {
   const now = Date.now();
+  const defaultK3RedirectUris = Array.from(
+    new Set([config.defaultK3Client.redirectUri, 'http://localhost:3000/auth/callback'])
+  );
+  const defaultK3PostLogoutRedirectUris = Array.from(
+    new Set([config.defaultK3Client.postLogoutRedirectUri, 'http://localhost:3000/'])
+  );
   const existingAdmin = await queryOne('SELECT id FROM users WHERE username = ? LIMIT 1', [config.devAdmin.username]);
   if (!existingAdmin) {
     const admin = {
@@ -127,6 +133,54 @@ export async function seedDefaults() {
       now,
       now,
     ]);
+  }
+
+  const existingK3Client = await queryOne('SELECT * FROM oauth_clients WHERE id = ? LIMIT 1', [config.defaultK3Client.clientId]);
+  if (!existingK3Client) {
+    await execQuery(`
+      INSERT INTO oauth_clients (
+        id, client_secret, name, redirect_uris_json, post_logout_redirect_uris_json, grant_types_json, scope, created_at, updated_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )
+    `, [
+      config.defaultK3Client.clientId,
+      config.defaultK3Client.clientSecret,
+      'K3 Web (dev)',
+      JSON.stringify(defaultK3RedirectUris),
+      JSON.stringify(defaultK3PostLogoutRedirectUris),
+      JSON.stringify(['authorization_code', 'refresh_token']),
+      'openid profile email',
+      now,
+      now,
+    ]);
+  } else {
+    const mergedRedirectUris = Array.from(
+      new Set([
+        ...parseJson(existingK3Client.redirect_uris_json, []),
+        ...defaultK3RedirectUris,
+      ])
+    );
+    const mergedPostLogoutRedirectUris = Array.from(
+      new Set([
+        ...parseJson(existingK3Client.post_logout_redirect_uris_json, []),
+        ...defaultK3PostLogoutRedirectUris,
+      ])
+    );
+
+    await execQuery(
+      `
+        UPDATE oauth_clients
+        SET redirect_uris_json = ?, post_logout_redirect_uris_json = ?, updated_at = ?
+        WHERE id = ?
+      `,
+      [
+        JSON.stringify(mergedRedirectUris),
+        JSON.stringify(mergedPostLogoutRedirectUris),
+        now,
+        config.defaultK3Client.clientId,
+      ]
+    );
   }
 }
 

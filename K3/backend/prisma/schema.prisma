@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model K3AuditDocument {
+  id                   String   @id
+  fileName             String
+  storageName          String   @unique
+  branch               String?
+  documentNumber       String?
+  auditDate            String?
+  analyzedAt           DateTime
+  expectedCriteria     Int?
+  detectedCriteria     Int
+  compliancePercentage Float
+  completionPercentage Float
+  totalGroups          Int      @default(0)
+  analysisJson         Json
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("k3_audit_documents")
+}
+
+model K3GoogleDriveConnection {
+  userSub           String   @id
+  userEmail         String?
+  userName          String?
+  googleSubject     String?
+  googleEmail       String?
+  googleDisplayName String?
+  refreshToken      String
+  scope             String?
+  connectedAt       DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("k3_google_drive_connections")
+}
+
+model K3GoogleDriveAuthState {
+  state     String   @id
+  userSub   String
+  userEmail String?
+  returnTo  String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userSub])
+  @@index([expiresAt])
+  @@map("k3_google_drive_auth_states")
+}

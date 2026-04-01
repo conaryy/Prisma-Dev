@@ -1,5 +1,51 @@
 export type AuditStatus = 'V' | 'M' | 'm' | 'X' | 'unknown';
 
+export type GoogleDriveStatus = {
+  oauthReady: boolean;
+  connected: boolean;
+  uploadReady: boolean;
+  redirectUri: string | null;
+  rootFolderId: string | null;
+  rootFolderName: string | null;
+  scopes: string[];
+  accountEmail: string | null;
+  accountName: string | null;
+  missingOauthConfig: string[];
+};
+
+export type GoogleDriveFolder = {
+  id: string;
+  name: string;
+};
+
+export type GoogleDriveFolderListing = {
+  currentFolder: GoogleDriveFolder;
+  children: GoogleDriveFolder[];
+};
+
+export type SessionUser = {
+  sub: string;
+  email?: string;
+  username?: string;
+  name?: string;
+  roles: string[];
+};
+
+export type ChecklistDocumentSummary = {
+  id: string;
+  fileName: string;
+  documentUrl: string;
+  analyzedAt: string;
+  branch: string | null;
+  documentNumber: string | null;
+  auditDate: string | null;
+  expectedCriteria: number | null;
+  detectedCriteria: number;
+  compliancePercentage: number;
+  completionPercentage: number;
+  groupCount: number;
+};
+
 export type UploadedQuestionFile = {
   id: string;
   name: string;
@@ -7,6 +53,13 @@ export type UploadedQuestionFile = {
   size: number;
   uploadedAt: string;
   storageName: string;
+  storageProvider?: 'local' | 'google-drive';
+  driveSyncStatus?: 'pending' | 'synced';
+  driveFileId?: string | null;
+  driveFolderId?: string | null;
+  driveUrl?: string | null;
+  driveOwnerSub?: string | null;
+  driveOwnerEmail?: string | null;
 };
 
 export type ChecklistItem = {
@@ -41,6 +94,7 @@ export type SectionSummary = {
 };
 
 export type AuditAnalysis = {
+  documentId?: string;
   fileName: string;
   analyzedAt: string;
   metadata: {

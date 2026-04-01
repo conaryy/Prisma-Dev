@@ -22,10 +22,10 @@ export function AnalysisSummary({ analysis }: Props) {
     <div className="content-stack">
       <section className="overview-banner">
         <div>
-          <p className="panel-kicker">Ringkasan audit terbaru</p>
+          <p className="panel-kicker">Ringkasan audit terpilih</p>
           <h3 className="overview-banner-title">{analysis.metadata.branch || 'Cabang belum terdeteksi'}</h3>
           <p className="overview-banner-copy">
-            Dokumen terakhir yang dianalisis adalah <strong>{analysis.fileName}</strong>. Nilai penerapan saat ini berada di{' '}
+            Dokumen yang sedang ditampilkan adalah <strong>{analysis.fileName}</strong>. Nilai penerapan saat ini berada di{' '}
             <strong>{formatPercent(analysis.totals.compliancePercentage)}</strong>.
           </p>
         </div>
@@ -86,7 +86,7 @@ export function AnalysisSummary({ analysis }: Props) {
               <p className="panel-kicker">Dokumen</p>
               <h3 className="panel-title">Ringkasan Dokumen</h3>
               <p className="panel-description">
-                Dashboard membaca hasil upload Word terakhir dan merangkum nilai audit secara otomatis.
+                Dashboard membaca hasil dokumen audit yang dipilih dan merangkum nilai auditnya secara otomatis.
               </p>
             </div>
           </div>

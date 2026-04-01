@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import type { K3AuditDocument, Prisma } from '@prisma/client';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -6,14 +7,17 @@ import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import { promisify } from 'node:util';
 import * as mammoth from 'mammoth';
+import { PrismaService } from './database/prisma.service';
+import { GoogleDriveService } from './google-drive.service';
+import type { CurrentUser } from './common/current-user';
 
 const execFileAsync = promisify(execFile);
 const CRITERION_CODE_REGEX = /^\d{1,2}\.\d{1,2}\.\d{1,2}$/;
 const CATEGORY_CODE_REGEX = /^\d{1,2}\.\d{1,2}$/;
 const SECTION_CODE_REGEX = /^\d{1,2}$/;
-const STATUS_VALUES = new Set(['V', 'M', 'm', 'X']);
 
 type AuditStatus = 'V' | 'M' | 'm' | 'X' | 'unknown';
+type ParsedAuditStatus = Exclude<AuditStatus, 'unknown'>;
 
 export type UploadedQuestionFile = {
   id: string;
@@ -22,6 +26,13 @@ export type UploadedQuestionFile = {
   size: number;
   uploadedAt: string;
   storageName: string;
+  storageProvider: 'local' | 'google-drive';
+  driveSyncStatus?: 'pending' | 'synced';
+  driveFileId?: string | null;
+  driveFolderId?: string | null;
+  driveUrl?: string | null;
+  driveOwnerSub?: string | null;
+  driveOwnerEmail?: string | null;
 };
 
 export type ChecklistItem = {
@@ -56,6 +67,7 @@ type SectionSummary = {
 };
 
 export type AuditAnalysis = {
+  documentId?: string;
   fileName: string;
   analyzedAt: string;
   metadata: {
@@ -82,13 +94,88 @@ export type AuditAnalysis = {
   groups: QuestionGroup[];
 };
 
+export type ChecklistDocumentSummary = {
+  id: string;
+  fileName: string;
+  documentUrl: string;
+  analyzedAt: string;
+  branch: string | null;
+  documentNumber: string | null;
+  auditDate: string | null;
+  expectedCriteria: number | null;
+  detectedCriteria: number;
+  compliancePercentage: number;
+  completionPercentage: number;
+  groupCount: number;
+};
+
 @Injectable()
 export class ChecklistAuditService {
-  private latestAnalysis: AuditAnalysis | null = null;
-  private readonly uploadsRoot = join(__dirname, '..', 'uploads', 'checklist-evidence');
+  private readonly uploadsRoot = join(__dirname, '..', 'uploads');
+  private readonly evidenceUploadsRoot = join(this.uploadsRoot, 'checklist-evidence');
+  private readonly documentUploadsRoot = join(this.uploadsRoot, 'documents');
 
-  getLatestAnalysis() {
-    return this.latestAnalysis;
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly googleDriveService: GoogleDriveService
+  ) {}
+
+  async listDocuments() {
+    const documents = await this.prisma.k3AuditDocument.findMany({
+      orderBy: {
+        analyzedAt: 'desc',
+      },
+    });
+
+    return documents.map((document) => this.toDocumentSummary(document));
+  }
+
+  async getDocumentSummary(documentId: string) {
+    const document = await this.prisma.k3AuditDocument.findUnique({
+      where: { id: documentId },
+    });
+
+    if (!document) {
+      return null;
+    }
+
+    return this.toDocumentSummary(document);
+  }
+
+  async getLatestAnalysis() {
+    const document = await this.prisma.k3AuditDocument.findFirst({
+      orderBy: {
+        analyzedAt: 'desc',
+      },
+    });
+
+    return document ? this.parseStoredAnalysis(document) : null;
+  }
+
+  async getDocumentAnalysis(documentId: string) {
+    const document = await this.prisma.k3AuditDocument.findUnique({
+      where: { id: documentId },
+    });
+
+    return document ? this.parseStoredAnalysis(document) : null;
+  }
+
+  async deleteDocument(documentId: string) {
+    const { document, analysis } = await this.requireStoredAnalysis(documentId);
+    const evidenceFiles = this.collectEvidenceFiles(analysis);
+
+    await this.prisma.k3AuditDocument.delete({
+      where: { id: document.id },
+    });
+
+    await Promise.allSettled([
+      fs.rm(join(this.documentUploadsRoot, document.storageName), { force: true }),
+      ...evidenceFiles.map((file) => this.deleteStoredEvidenceFile(file)),
+    ]);
+
+    return {
+      id: document.id,
+    };
   }
 
   async analyzeUploadedDocument(file: Express.Multer.File) {
@@ -107,17 +194,36 @@ export class ChecklistAuditService {
         : await this.extractDocxText(file.buffer);
 
     const normalizedText = rawText.replace(/\r\n/g, '\n');
-    const analysis = this.buildAnalysis(normalizedText, file.originalname);
+    const baseAnalysis = this.buildAnalysis(normalizedText, file.originalname);
+    const documentId = randomUUID();
+    const analysis = this.attachDocumentId(baseAnalysis, documentId);
 
-    if (this.latestAnalysis) {
-      await this.cleanupAnalysisFiles(this.latestAnalysis);
+    await fs.mkdir(this.documentUploadsRoot, { recursive: true });
+
+    const safeOriginalName = basename(file.originalname).replace(/[^a-zA-Z0-9._-]+/g, '-');
+    const storageName = `${Date.now()}-${randomUUID()}-${safeOriginalName}`;
+    const filePath = join(this.documentUploadsRoot, storageName);
+    await fs.writeFile(filePath, file.buffer);
+
+    try {
+      await this.prisma.k3AuditDocument.create({
+        data: this.buildDocumentPersistencePayload({
+          id: documentId,
+          fileName: file.originalname,
+          storageName,
+          analysis,
+        }),
+      });
+    } catch (error) {
+      await fs.rm(filePath, { force: true });
+      throw error;
     }
 
-    this.latestAnalysis = analysis;
     return analysis;
   }
 
   async uploadQuestionEvidence(params: {
+    documentId: string;
     questionCode: string;
     file: Express.Multer.File;
   }) {
@@ -125,40 +231,118 @@ export class ChecklistAuditService {
       throw new BadRequestException('Pilih file evidence terlebih dahulu.');
     }
 
-    const analysis = this.ensureLatestAnalysis();
+    const { document, analysis } = await this.requireStoredAnalysis(params.documentId);
     const item = analysis.items.find((entry) => entry.code === params.questionCode);
 
     if (!item) {
-      throw new BadRequestException('Pertanyaan tidak ditemukan pada hasil audit terbaru.');
+      throw new BadRequestException('Pertanyaan tidak ditemukan pada dokumen audit terpilih.');
     }
 
-    await fs.mkdir(this.uploadsRoot, { recursive: true });
-
-    const safeOriginalName = basename(params.file.originalname).replace(/[^a-zA-Z0-9._-]+/g, '-');
-    const storageName = `${Date.now()}-${randomUUID()}-${safeOriginalName}`;
-    const filePath = join(this.uploadsRoot, storageName);
-    await fs.writeFile(filePath, params.file.buffer);
-
-    const uploadedFile: UploadedQuestionFile = {
-      id: randomUUID(),
-      name: params.file.originalname,
-      size: params.file.size,
-      uploadedAt: new Date().toISOString(),
-      url: `/uploads/checklist-evidence/${storageName}`,
-      storageName,
-    };
-
     const targetFiles = this.resolveEvidenceCollection(analysis, item);
+    const uploadedFile = await this.storeEvidenceFile(params.file);
     targetFiles.unshift(uploadedFile);
-    return analysis;
+
+    try {
+      return await this.updateStoredAnalysis(document, analysis);
+    } catch (error) {
+      if (item.groupId) {
+        const group = analysis.groups.find((entry) => entry.id === item.groupId);
+        if (group) {
+          group.uploadedFiles = group.uploadedFiles.filter((entry) => entry.id !== uploadedFile.id);
+        }
+      } else {
+        item.uploadedFiles = item.uploadedFiles.filter((entry) => entry.id !== uploadedFile.id);
+      }
+
+      await this.deleteStoredEvidenceFile(uploadedFile);
+      throw error;
+    }
   }
 
-  async deleteQuestionEvidence(questionCode: string, fileId: string) {
-    const analysis = this.ensureLatestAnalysis();
+  async syncQuestionEvidenceToDrive(params: {
+    documentId: string;
+    questionCode: string;
+    targetFolderId?: string;
+    targetSubfolderName?: string;
+    user: CurrentUser;
+  }) {
+    const googleDriveStatus = await this.googleDriveService.getStatusForUser(params.user);
+    if (!googleDriveStatus.uploadReady) {
+      throw new BadRequestException('Akun Google Drive belum terhubung untuk user ini.');
+    }
+
+    const { document, analysis } = await this.requireStoredAnalysis(params.documentId);
+    const item = analysis.items.find((entry) => entry.code === params.questionCode);
+
+    if (!item) {
+      throw new BadRequestException('Pertanyaan tidak ditemukan pada dokumen audit terpilih.');
+    }
+
+    const targetFiles = this.resolveEvidenceCollection(analysis, item);
+    const pendingFiles = targetFiles.filter((file) => this.isDriveSyncPending(file));
+    if (pendingFiles.length === 0) {
+      return {
+        analysis,
+        syncedCount: 0,
+      };
+    }
+
+    const group = item.groupId ? analysis.groups.find((entry) => entry.id === item.groupId) ?? null : null;
+    const snapshots = pendingFiles.map((file) => ({
+      file,
+      snapshot: { ...file },
+    }));
+    const uploadedDriveFileIds: string[] = [];
+
+    try {
+      for (const pendingFile of pendingFiles) {
+        const driveFile = await this.googleDriveService.uploadEvidenceForUser(params.user.sub, {
+          file: await this.readStoredEvidenceFile(pendingFile),
+          documentFileName: document.fileName,
+          documentNumber: analysis.metadata.documentNumber,
+          branch: analysis.metadata.branch,
+          sectionCode: item.sectionCode,
+          sectionTitle: item.sectionTitle,
+          groupName: group?.name ?? null,
+          questionCode: item.code,
+          targetFolderId: params.targetFolderId,
+          targetSubfolderName: params.targetSubfolderName,
+        });
+
+        pendingFile.driveSyncStatus = 'synced';
+        pendingFile.driveFileId = driveFile.fileId;
+        pendingFile.driveFolderId = driveFile.folderId;
+        pendingFile.driveUrl = driveFile.webViewLink;
+        pendingFile.driveOwnerSub = params.user.sub;
+        pendingFile.driveOwnerEmail = params.user.email ?? null;
+        uploadedDriveFileIds.push(driveFile.fileId);
+      }
+
+      return {
+        analysis: await this.updateStoredAnalysis(document, analysis),
+        syncedCount: pendingFiles.length,
+      };
+    } catch (error) {
+      snapshots.forEach(({ file, snapshot }) => {
+        Object.assign(file, snapshot);
+      });
+
+      await Promise.allSettled(
+        uploadedDriveFileIds.map((fileId) =>
+          this.googleDriveService.deleteFileForUser(params.user.sub, fileId)
+        )
+      );
+
+      throw error;
+    }
+  }
+
+  async deleteQuestionEvidence(documentId: string, questionCode: string, fileId: string) {
+    const { document, analysis } = await this.requireStoredAnalysis(documentId);
     const item = analysis.items.find((entry) => entry.code === questionCode);
 
     if (!item) {
-      throw new BadRequestException('Pertanyaan tidak ditemukan pada hasil audit terbaru.');
+      throw new BadRequestException('Pertanyaan tidak ditemukan pada dokumen audit terpilih.');
     }
 
     const targetFiles = this.resolveEvidenceCollection(analysis, item);
@@ -176,13 +360,15 @@ export class ChecklistAuditService {
     } else {
       item.uploadedFiles = item.uploadedFiles.filter((entry) => entry.id !== fileId);
     }
-    await this.cleanupStoredFileIfUnused(analysis, targetFile.storageName);
 
-    return analysis;
+    const nextAnalysis = await this.updateStoredAnalysis(document, analysis);
+    await this.cleanupStoredFileIfUnused(nextAnalysis, targetFile);
+
+    return nextAnalysis;
   }
 
-  createQuestionGroup(questionCodes: string[]) {
-    const analysis = this.ensureLatestAnalysis();
+  async createQuestionGroup(documentId: string, questionCodes: string[]) {
+    const { document, analysis } = await this.requireStoredAnalysis(documentId);
     const seedCodes = Array.from(new Set(questionCodes)).filter(Boolean);
     const expandedCodes = new Set(seedCodes);
 
@@ -201,7 +387,7 @@ export class ChecklistAuditService {
     const items = uniqueCodes.map((code) => {
       const item = analysis.items.find((entry) => entry.code === code);
       if (!item) {
-        throw new BadRequestException(`Butir ${code} tidak ditemukan pada hasil audit terbaru.`);
+        throw new BadRequestException(`Butir ${code} tidak ditemukan pada dokumen audit terpilih.`);
       }
       return item;
     });
@@ -238,11 +424,11 @@ export class ChecklistAuditService {
     });
 
     analysis.groups.unshift(group);
-    return analysis;
+    return this.updateStoredAnalysis(document, analysis);
   }
 
-  updateQuestionGroup(groupId: string, questionCodes: string[]) {
-    const analysis = this.ensureLatestAnalysis();
+  async updateQuestionGroup(documentId: string, groupId: string, questionCodes: string[]) {
+    const { document, analysis } = await this.requireStoredAnalysis(documentId);
     const group = analysis.groups.find((entry) => entry.id === groupId);
 
     if (!group) {
@@ -258,7 +444,7 @@ export class ChecklistAuditService {
     const nextItems = uniqueCodes.map((code) => {
       const item = analysis.items.find((entry) => entry.code === code);
       if (!item) {
-        throw new BadRequestException(`Butir ${code} tidak ditemukan pada hasil audit terbaru.`);
+        throw new BadRequestException(`Butir ${code} tidak ditemukan pada dokumen audit terpilih.`);
       }
       if (item.groupId && item.groupId !== groupId) {
         throw new BadRequestException(
@@ -291,11 +477,11 @@ export class ChecklistAuditService {
     group.name = this.buildGroupName(uniqueCodes);
     group.uploadedFiles = this.mergeUploadedFiles(group.uploadedFiles, transferredFiles);
 
-    return analysis;
+    return this.updateStoredAnalysis(document, analysis);
   }
 
-  deleteQuestionGroup(groupId: string) {
-    const analysis = this.ensureLatestAnalysis();
+  async deleteQuestionGroup(documentId: string, groupId: string) {
+    const { document, analysis } = await this.requireStoredAnalysis(documentId);
     const groupIndex = analysis.groups.findIndex((entry) => entry.id === groupId);
 
     if (groupIndex < 0) {
@@ -311,7 +497,7 @@ export class ChecklistAuditService {
     });
 
     analysis.groups.splice(groupIndex, 1);
-    return analysis;
+    return this.updateStoredAnalysis(document, analysis);
   }
 
   private async extractDocxText(buffer: Buffer) {
@@ -427,9 +613,10 @@ export class ChecklistAuditService {
 
         while (index < lines.length) {
           const value = lines[index];
+          const parsedStatus = this.parseStatusValue(value);
 
-          if (STATUS_VALUES.has(value)) {
-            status = value as AuditStatus;
+          if (parsedStatus) {
+            status = parsedStatus;
             index += 1;
             break;
           }
@@ -468,27 +655,30 @@ export class ChecklistAuditService {
   }
 
   private calculateTotals(items: ChecklistItem[], expectedCriteria: number) {
+    const detectedCriteria = items.length;
     const sesuai = items.filter((item) => item.status === 'V').length;
     const major = items.filter((item) => item.status === 'M').length;
     const minor = items.filter((item) => item.status === 'm').length;
     const tidakBerlaku = items.filter((item) => item.status === 'X').length;
     const unknown = items.filter((item) => item.status === 'unknown').length;
-    const applicableCriteria = Math.max(items.length - tidakBerlaku, 0);
+    const applicableCriteria = Math.max(detectedCriteria - tidakBerlaku, 0);
+    const compliancePercentage =
+      applicableCriteria > 0 ? Number(((sesuai / applicableCriteria) * 100).toFixed(2)) : 0;
+    const completionPercentage =
+      expectedCriteria > 0 ? Number(((detectedCriteria / expectedCriteria) * 100).toFixed(2)) : 0;
 
     return {
       totalCriteria: expectedCriteria,
       expectedCriteria,
-      detectedCriteria: items.length,
+      detectedCriteria,
       sesuai,
       major,
       minor,
       tidakBerlaku,
       unknown,
       applicableCriteria,
-      compliancePercentage:
-        applicableCriteria > 0 ? Number(((sesuai / applicableCriteria) * 100).toFixed(2)) : 0,
-      completionPercentage:
-        expectedCriteria > 0 ? Number(((items.length / expectedCriteria) * 100).toFixed(2)) : 0,
+      compliancePercentage,
+      completionPercentage,
     };
   }
 
@@ -496,73 +686,39 @@ export class ChecklistAuditService {
     const sectionMap = new Map<string, SectionSummary>();
 
     items.forEach((item) => {
-      const key = item.sectionCode ?? 'lainnya';
-      const title = item.sectionTitle ?? 'Tanpa Bab';
+      const sectionKey = item.sectionCode ?? 'tanpa-bab';
+      const existing = sectionMap.get(sectionKey) ?? {
+        sectionCode: item.sectionCode ?? '-',
+        sectionTitle: item.sectionTitle ?? 'Tanpa Bab',
+        total: 0,
+        sesuai: 0,
+        major: 0,
+        minor: 0,
+        tidakBerlaku: 0,
+        percentage: 0,
+      };
 
-      if (!sectionMap.has(key)) {
-        sectionMap.set(key, {
-          sectionCode: key,
-          sectionTitle: title,
-          total: 0,
-          sesuai: 0,
-          major: 0,
-          minor: 0,
-          tidakBerlaku: 0,
-          percentage: 0,
-        });
-      }
+      existing.total += 1;
+      if (item.status === 'V') existing.sesuai += 1;
+      if (item.status === 'M') existing.major += 1;
+      if (item.status === 'm') existing.minor += 1;
+      if (item.status === 'X') existing.tidakBerlaku += 1;
 
-      const summary = sectionMap.get(key)!;
-      summary.total += 1;
-      if (item.status === 'V') summary.sesuai += 1;
-      if (item.status === 'M') summary.major += 1;
-      if (item.status === 'm') summary.minor += 1;
-      if (item.status === 'X') summary.tidakBerlaku += 1;
+      const applicable = existing.total - existing.tidakBerlaku;
+      existing.percentage = applicable > 0 ? Number(((existing.sesuai / applicable) * 100).toFixed(2)) : 0;
+
+      sectionMap.set(sectionKey, existing);
     });
 
-    return Array.from(sectionMap.values())
-      .map((summary) => {
-        const applicable = summary.total - summary.tidakBerlaku;
-        return {
-          ...summary,
-          percentage:
-            applicable > 0 ? Number(((summary.sesuai / applicable) * 100).toFixed(2)) : 0,
-        };
-      })
-      .sort((left, right) => {
-        const leftCode = Number.parseInt(left.sectionCode, 10);
-        const rightCode = Number.parseInt(right.sectionCode, 10);
-
-        if (Number.isNaN(leftCode) || Number.isNaN(rightCode)) {
-          return left.sectionCode.localeCompare(right.sectionCode);
-        }
-
-        return leftCode - rightCode;
-      });
+    return Array.from(sectionMap.values()).sort((left, right) => {
+      const leftCode = Number(left.sectionCode.replace(/\D/g, '')) || 0;
+      const rightCode = Number(right.sectionCode.replace(/\D/g, '')) || 0;
+      return leftCode - rightCode;
+    });
   }
 
   private captureFirst(source: string, pattern: RegExp) {
     return source.match(pattern)?.[1]?.trim() ?? null;
-  }
-
-  private ensureLatestAnalysis() {
-    if (!this.latestAnalysis) {
-      throw new BadRequestException('Belum ada hasil audit. Upload dokumen checklist terlebih dahulu.');
-    }
-
-    return this.latestAnalysis;
-  }
-
-  private async cleanupAnalysisFiles(analysis: AuditAnalysis) {
-    const files = [
-      ...analysis.items.flatMap((item) => item.uploadedFiles),
-      ...analysis.groups.flatMap((group) => group.uploadedFiles),
-    ];
-    await Promise.all(
-      Array.from(new Set(files.map((file) => file.storageName))).map((storageName) =>
-        fs.rm(join(this.uploadsRoot, storageName), { force: true })
-      )
-    );
   }
 
   private buildGroupName(questionCodes: string[]) {
@@ -604,6 +760,35 @@ export class ChecklistAuditService {
     return group.uploadedFiles;
   }
 
+  private async storeEvidenceFile(file: Express.Multer.File) {
+    return this.storeEvidenceFileLocally(file);
+  }
+
+  private async storeEvidenceFileLocally(file: Express.Multer.File): Promise<UploadedQuestionFile> {
+    await fs.mkdir(this.evidenceUploadsRoot, { recursive: true });
+
+    const safeOriginalName = basename(file.originalname).replace(/[^a-zA-Z0-9._-]+/g, '-');
+    const storageName = `${Date.now()}-${randomUUID()}-${safeOriginalName}`;
+    const filePath = join(this.evidenceUploadsRoot, storageName);
+    await fs.writeFile(filePath, file.buffer);
+
+    return {
+      id: randomUUID(),
+      name: file.originalname,
+      size: file.size,
+      uploadedAt: new Date().toISOString(),
+      url: `/uploads/checklist-evidence/${storageName}`,
+      storageName,
+      storageProvider: 'local',
+      driveSyncStatus: 'pending',
+      driveFileId: null,
+      driveFolderId: null,
+      driveUrl: null,
+      driveOwnerSub: null,
+      driveOwnerEmail: null,
+    };
+  }
+
   private cloneUploadedFiles(files: UploadedQuestionFile[]) {
     return files.map((file) => ({
       ...file,
@@ -616,27 +801,79 @@ export class ChecklistAuditService {
 
     return collections.flatMap((files) =>
       files.filter((file) => {
-        if (seen.has(file.storageName)) {
+        const storageKey = this.buildUploadedFileStorageKey(file);
+        if (seen.has(storageKey)) {
           return false;
         }
 
-        seen.add(file.storageName);
+        seen.add(storageKey);
         return true;
       })
     );
   }
 
-  private async cleanupStoredFileIfUnused(analysis: AuditAnalysis, storageName: string) {
-    const stillReferenced = [
-      ...analysis.items.flatMap((item) => item.uploadedFiles),
-      ...analysis.groups.flatMap((group) => group.uploadedFiles),
-    ].some((file) => file.storageName === storageName);
+  private async cleanupStoredFileIfUnused(analysis: AuditAnalysis, targetFile: UploadedQuestionFile) {
+    const targetStorageKey = this.buildUploadedFileStorageKey(targetFile);
+    const stillReferenced = this.collectEvidenceFiles(analysis).some(
+      (file) => this.buildUploadedFileStorageKey(file) === targetStorageKey
+    );
 
     if (stillReferenced) {
       return;
     }
 
-    await fs.rm(join(this.uploadsRoot, storageName), { force: true });
+    await this.deleteStoredEvidenceFile(targetFile);
+  }
+
+  private collectEvidenceFiles(analysis: AuditAnalysis) {
+    const seen = new Set<string>();
+
+    return [...analysis.items.flatMap((item) => item.uploadedFiles), ...analysis.groups.flatMap((group) => group.uploadedFiles)].filter(
+      (file) => {
+        const storageKey = this.buildUploadedFileStorageKey(file);
+        if (seen.has(storageKey)) {
+          return false;
+        }
+
+        seen.add(storageKey);
+        return true;
+      }
+    );
+  }
+
+  private buildUploadedFileStorageKey(file: UploadedQuestionFile) {
+    return `${file.storageProvider}:${file.storageName}`;
+  }
+
+  private async deleteStoredEvidenceFile(file: UploadedQuestionFile) {
+    const driveFileId = file.storageProvider === 'google-drive' ? file.storageName : file.driveFileId;
+    if (driveFileId) {
+      await this.googleDriveService
+        .deleteFileForUser(file.driveOwnerSub, driveFileId)
+        .catch(() => undefined);
+    }
+
+    if (file.storageProvider === 'google-drive') {
+      return;
+    }
+
+    await fs.rm(join(this.evidenceUploadsRoot, file.storageName), { force: true });
+  }
+
+  private isDriveSyncPending(file: UploadedQuestionFile) {
+    return file.storageProvider !== 'google-drive' && file.driveSyncStatus !== 'synced';
+  }
+
+  private async readStoredEvidenceFile(file: UploadedQuestionFile) {
+    if (file.storageProvider === 'google-drive') {
+      throw new BadRequestException('File evidence ini sudah tersimpan penuh di Google Drive.');
+    }
+
+    const buffer = await fs.readFile(join(this.evidenceUploadsRoot, file.storageName));
+    return {
+      originalname: file.name,
+      buffer,
+    };
   }
 
   private looksLikeCode(value: string) {
@@ -644,7 +881,149 @@ export class ChecklistAuditService {
       SECTION_CODE_REGEX.test(value) ||
       CATEGORY_CODE_REGEX.test(value) ||
       CRITERION_CODE_REGEX.test(value) ||
-      STATUS_VALUES.has(value)
+      Boolean(this.parseStatusValue(value))
     );
+  }
+
+  private parseStatusValue(value: string): ParsedAuditStatus | null {
+    if (value === 'V' || value === 'M' || value === 'm' || value === 'X') {
+      return value;
+    }
+
+    if (value === 'v') {
+      return 'V';
+    }
+
+    if (value === 'x') {
+      return 'X';
+    }
+
+    return null;
+  }
+
+  private async requireStoredAnalysis(documentId: string) {
+    if (!documentId.trim()) {
+      throw new BadRequestException('Pilih dokumen audit terlebih dahulu.');
+    }
+
+    const document = await this.prisma.k3AuditDocument.findUnique({
+      where: { id: documentId },
+    });
+
+    if (!document) {
+      throw new BadRequestException('Dokumen audit tidak ditemukan.');
+    }
+
+    return {
+      document,
+      analysis: this.parseStoredAnalysis(document),
+    };
+  }
+
+  private parseStoredAnalysis(document: K3AuditDocument) {
+    const analysis = document.analysisJson as unknown as AuditAnalysis;
+    return this.attachDocumentId(this.normalizeStoredAnalysis(analysis), document.id);
+  }
+
+  private attachDocumentId(analysis: AuditAnalysis, documentId: string): AuditAnalysis {
+    return {
+      ...analysis,
+      documentId,
+    };
+  }
+
+  private normalizeStoredAnalysis(analysis: AuditAnalysis): AuditAnalysis {
+    return {
+      ...analysis,
+      items: analysis.items.map((item) => ({
+        ...item,
+        uploadedFiles: this.normalizeUploadedFiles(item.uploadedFiles),
+      })),
+      groups: analysis.groups.map((group) => ({
+        ...group,
+        uploadedFiles: this.normalizeUploadedFiles(group.uploadedFiles),
+      })),
+    };
+  }
+
+  private normalizeUploadedFiles(files: UploadedQuestionFile[] | undefined) {
+    return (files ?? []).map<UploadedQuestionFile>((file) => ({
+      ...file,
+      storageProvider: file.storageProvider === 'google-drive' ? 'google-drive' : 'local',
+      driveSyncStatus:
+        file.driveSyncStatus === 'synced' ||
+        file.storageProvider === 'google-drive' ||
+        Boolean(file.driveFileId)
+          ? 'synced'
+          : 'pending',
+      driveFileId:
+        file.driveFileId ?? (file.storageProvider === 'google-drive' ? file.storageName : null),
+      driveFolderId: file.driveFolderId ?? null,
+      driveUrl: file.driveUrl ?? (file.storageProvider === 'google-drive' ? file.url : null),
+      driveOwnerSub: file.driveOwnerSub ?? null,
+      driveOwnerEmail: file.driveOwnerEmail ?? null,
+    }));
+  }
+
+  private buildDocumentPersistencePayload(params: {
+    id: string;
+    fileName: string;
+    storageName: string;
+    analysis: AuditAnalysis;
+  }) {
+    return {
+      id: params.id,
+      fileName: params.fileName,
+      storageName: params.storageName,
+      branch: params.analysis.metadata.branch,
+      documentNumber: params.analysis.metadata.documentNumber,
+      auditDate: params.analysis.metadata.auditDate,
+      analyzedAt: new Date(params.analysis.analyzedAt),
+      expectedCriteria: params.analysis.metadata.expectedCriteria,
+      detectedCriteria: params.analysis.totals.detectedCriteria,
+      compliancePercentage: params.analysis.totals.compliancePercentage,
+      completionPercentage: params.analysis.totals.completionPercentage,
+      totalGroups: params.analysis.groups.length,
+      analysisJson: params.analysis as Prisma.InputJsonValue,
+    };
+  }
+
+  private async updateStoredAnalysis(document: K3AuditDocument, analysis: AuditAnalysis) {
+    const nextAnalysis = this.attachDocumentId(analysis, document.id);
+
+    await this.prisma.k3AuditDocument.update({
+      where: { id: document.id },
+      data: {
+        branch: nextAnalysis.metadata.branch,
+        documentNumber: nextAnalysis.metadata.documentNumber,
+        auditDate: nextAnalysis.metadata.auditDate,
+        analyzedAt: new Date(nextAnalysis.analyzedAt),
+        expectedCriteria: nextAnalysis.metadata.expectedCriteria,
+        detectedCriteria: nextAnalysis.totals.detectedCriteria,
+        compliancePercentage: nextAnalysis.totals.compliancePercentage,
+        completionPercentage: nextAnalysis.totals.completionPercentage,
+        totalGroups: nextAnalysis.groups.length,
+        analysisJson: nextAnalysis as Prisma.InputJsonValue,
+      },
+    });
+
+    return nextAnalysis;
+  }
+
+  private toDocumentSummary(document: K3AuditDocument): ChecklistDocumentSummary {
+    return {
+      id: document.id,
+      fileName: document.fileName,
+      documentUrl: `/uploads/documents/${document.storageName}`,
+      analyzedAt: document.analyzedAt.toISOString(),
+      branch: document.branch,
+      documentNumber: document.documentNumber,
+      auditDate: document.auditDate,
+      expectedCriteria: document.expectedCriteria,
+      detectedCriteria: document.detectedCriteria,
+      compliancePercentage: document.compliancePercentage,
+      completionPercentage: document.completionPercentage,
+      groupCount: document.totalGroups,
+    };
   }
 }

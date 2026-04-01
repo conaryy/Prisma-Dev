@@ -75,6 +75,15 @@ export const config = {
     postLogoutRedirectUri:
       process.env.AUTH_LOGBOOK_POST_LOGOUT_URI || 'http://localhost:5175/',
   },
+  defaultK3Client: {
+    clientId: process.env.AUTH_K3_CLIENT_ID || 'k3-web',
+    clientSecret: process.env.AUTH_K3_CLIENT_SECRET || 'dev-secret-k3',
+    redirectUri:
+      process.env.AUTH_K3_REDIRECT_URI ||
+      'http://localhost:5175/auth/callback',
+    postLogoutRedirectUri:
+      process.env.AUTH_K3_POST_LOGOUT_URI || 'http://localhost:5175/',
+  },
   allowedOrigins: toList(process.env.AUTH_ALLOWED_ORIGINS),
   sessionCookieName: process.env.AUTH_SESSION_COOKIE_NAME || 'auth_sid',
   sessionTtlSeconds: toInt(process.env.AUTH_SESSION_TTL_SECONDS, 8 * 60 * 60),
