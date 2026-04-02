@@ -22,6 +22,7 @@ import type {
   ChecklistDocumentSummary,
   ChecklistItem,
   GoogleDriveFolder,
+  GoogleDriveItem,
   QuestionGroup,
 } from '@/types';
 
@@ -31,7 +32,7 @@ type QuestionListBlock =
 
 type DriveSendDialogState = {
   path: GoogleDriveFolder[];
-  children: GoogleDriveFolder[];
+  children: GoogleDriveItem[];
   isLoading: boolean;
   mode: 'existing' | 'new';
   subfolderName: string;
@@ -833,7 +834,7 @@ export function ChecklistAuditPage() {
 
     try {
       setIsLoadingDriveFolderPicker(true);
-      setFeedback('Memuat folder Google Drive...');
+      setFeedback('Memuat isi Google Drive...');
       setFeedbackTone('neutral');
       const payload = await fetchGoogleDriveFolders();
       setDriveSendDialog({
@@ -844,7 +845,7 @@ export function ChecklistAuditPage() {
         subfolderName: activeGroupCodeRange ?? activeItem.code,
       });
     } catch (reason) {
-      setFeedback(reason instanceof Error ? reason.message : 'Gagal memuat folder Google Drive.');
+      setFeedback(reason instanceof Error ? reason.message : 'Gagal memuat isi Google Drive.');
       setFeedbackTone('error');
     } finally {
       setIsLoadingDriveFolderPicker(false);
@@ -884,7 +885,7 @@ export function ChecklistAuditPage() {
             }
           : previous
       );
-      setFeedback(reason instanceof Error ? reason.message : 'Gagal memuat folder Google Drive.');
+      setFeedback(reason instanceof Error ? reason.message : 'Gagal memuat isi Google Drive.');
       setFeedbackTone('error');
     }
   };
@@ -1503,24 +1504,47 @@ export function ChecklistAuditPage() {
 
                 <div className="drive-folder-list">
                   {driveSendDialog.isLoading ? (
-                    <p className="detail-help">Memuat folder...</p>
+                    <p className="detail-help">Memuat folder dan file...</p>
                   ) : driveSendDialog.children.length === 0 ? (
-                    <p className="detail-help">Folder ini belum punya subfolder.</p>
+                    <p className="detail-help">Folder ini belum punya subfolder atau file.</p>
                   ) : (
-                    driveSendDialog.children.map((folder) => (
-                      <button
-                        key={folder.id}
-                        type="button"
-                        className="drive-folder-row"
-                        onClick={() =>
-                          void handleBrowseDriveFolder(folder, [...driveSendDialog.path, folder])
-                        }
-                        disabled={driveSendDialog.isLoading}
-                      >
-                        <span>{folder.name}</span>
-                        <span>Buka</span>
-                      </button>
-                    ))
+                    driveSendDialog.children.map((item) =>
+                      item.type === 'folder' ? (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="drive-folder-row"
+                          onClick={() =>
+                            void handleBrowseDriveFolder(item, [...driveSendDialog.path, item])
+                          }
+                          disabled={driveSendDialog.isLoading}
+                        >
+                          <span>{item.name}</span>
+                          <span>Buka</span>
+                        </button>
+                      ) : (
+                        <div key={item.id} className="drive-folder-row is-file">
+                          <div className="drive-folder-row-copy">
+                            <span>{item.name}</span>
+                            <span className="drive-folder-row-meta">
+                              {item.mimeType?.trim() || 'File Google Drive'}
+                            </span>
+                          </div>
+                          {item.webViewLink ? (
+                            <a
+                              href={item.webViewLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-action"
+                            >
+                              Lihat
+                            </a>
+                          ) : (
+                            <span className="drive-folder-row-meta">File</span>
+                          )}
+                        </div>
+                      )
+                    )
                   )}
                 </div>
               </div>

@@ -18,9 +18,17 @@ export type GoogleDriveFolder = {
   name: string;
 };
 
+export type GoogleDriveItem = {
+  id: string;
+  name: string;
+  type: 'folder' | 'file';
+  mimeType: string | null;
+  webViewLink: string | null;
+};
+
 export type GoogleDriveFolderListing = {
   currentFolder: GoogleDriveFolder;
-  children: GoogleDriveFolder[];
+  children: GoogleDriveItem[];
 };
 
 export type SessionUser = {

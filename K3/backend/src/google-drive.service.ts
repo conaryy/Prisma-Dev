@@ -50,9 +50,17 @@ export type GoogleDriveFolderReference = {
   name: string;
 };
 
+export type GoogleDriveItemReference = {
+  id: string;
+  name: string;
+  type: 'folder' | 'file';
+  mimeType: string | null;
+  webViewLink: string | null;
+};
+
 export type GoogleDriveFolderListing = {
   currentFolder: GoogleDriveFolderReference;
-  children: GoogleDriveFolderReference[];
+  children: GoogleDriveItemReference[];
 };
 
 @Injectable()
@@ -273,7 +281,7 @@ export class GoogleDriveService {
 
       return {
         currentFolder,
-        children: await this.listChildFolders(drive, currentFolder.id),
+        children: await this.listChildItems(drive, currentFolder.id),
       };
     } catch (error) {
       throw this.toDriveException(error, 'Gagal memuat daftar folder Google Drive.');
@@ -497,22 +505,45 @@ export class GoogleDriveService {
     };
   }
 
-  private async listChildFolders(drive: drive_v3.Drive, parentId: string): Promise<GoogleDriveFolderReference[]> {
+  private async listChildItems(drive: drive_v3.Drive, parentId: string): Promise<GoogleDriveItemReference[]> {
     const response = await drive.files.list({
-      q: `'${parentId}' in parents and mimeType = '${this.folderMimeType}' and trashed = false`,
-      fields: 'files(id, name)',
+      q: `'${parentId}' in parents and trashed = false`,
+      fields: 'files(id, name, mimeType, webViewLink)',
       pageSize: 100,
       includeItemsFromAllDrives: true,
       supportsAllDrives: true,
-      orderBy: 'name_natural',
     });
 
     return (response.data.files ?? [])
-      .filter((folder): folder is { id: string; name?: string | null } => Boolean(folder.id))
-      .map((folder) => ({
-        id: folder.id,
-        name: folder.name?.trim() || 'Folder tanpa nama',
-      }));
+      .filter(
+        (
+          item
+        ): item is { id: string; name?: string | null; mimeType?: string | null; webViewLink?: string | null } =>
+          Boolean(item.id)
+      )
+      .map((item) => {
+        const isFolder = item.mimeType === this.folderMimeType;
+
+        return {
+          id: item.id,
+          name: item.name?.trim() || (isFolder ? 'Folder tanpa nama' : 'File tanpa nama'),
+          type: isFolder ? ('folder' as const) : ('file' as const),
+          mimeType: item.mimeType ?? null,
+          webViewLink: isFolder
+            ? null
+            : item.webViewLink ?? `https://drive.google.com/file/d/${item.id}/view`,
+        };
+      })
+      .sort((left, right) => {
+        if (left.type !== right.type) {
+          return left.type === 'folder' ? -1 : 1;
+        }
+
+        return left.name.localeCompare(right.name, 'id', {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      });
   }
 
   private buildDocumentFolderName(fileName: string, documentNumber: string | null, branch: string | null) {

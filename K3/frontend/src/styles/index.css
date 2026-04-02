@@ -1860,10 +1860,10 @@ th {
 }
 
 .drive-send-modal {
-  width: min(420px, 100%);
+  width: min(680px, 100%);
   display: grid;
   gap: 14px;
-  padding: 18px;
+  padding: 22px;
 }
 
 .modal-header,
@@ -2171,7 +2171,7 @@ th {
 .drive-folder-list {
   display: grid;
   gap: 8px;
-  max-height: 220px;
+  max-height: 340px;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -2194,6 +2194,27 @@ th {
 .drive-folder-row:hover {
   border-color: rgba(47, 143, 87, 0.3);
   background: var(--surface-soft);
+}
+
+.drive-folder-row.is-file {
+  cursor: default;
+  background: var(--surface-soft);
+}
+
+.drive-folder-row.is-file:hover {
+  border-color: var(--line);
+  background: var(--surface-soft);
+}
+
+.drive-folder-row-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.drive-folder-row-meta {
+  color: var(--muted);
+  font-size: 0.76rem;
 }
 
 .drive-folder-row:disabled,
@@ -2732,6 +2753,7 @@ th {
   }
 
   .drive-send-modal {
+    width: min(100%, 100%);
     padding: 16px;
   }
 
