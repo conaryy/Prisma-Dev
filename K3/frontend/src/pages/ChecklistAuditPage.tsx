@@ -1,5 +1,5 @@
 import Lottie from 'lottie-react';
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '@/components/EmptyState';
 import type { AppShellOutletContext } from '@/components/AppShell';
@@ -150,6 +150,7 @@ export function ChecklistAuditPage() {
   } = useOutletContext<AppShellOutletContext>();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedDocumentId = searchParams.get('document') ?? '';
+  const requestedQuestionCode = searchParams.get('question') ?? '';
   const [documents, setDocuments] = useState<ChecklistDocumentSummary[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState('');
   const [analysis, setAnalysis] = useState<AuditAnalysis | null>(null);
@@ -175,8 +176,19 @@ export function ChecklistAuditPage() {
   const [deletingEvidenceFileId, setDeletingEvidenceFileId] = useState<string | null>(null);
   const [driveSendDialog, setDriveSendDialog] = useState<DriveSendDialogState | null>(null);
   const [driveSyncSuccess, setDriveSyncSuccess] = useState<DriveSyncSuccessState | null>(null);
+  const questionListScrollRef = useRef<HTMLDivElement | null>(null);
+  const questionNavigationRefs = useRef(new Map<string, HTMLButtonElement>());
+  const pendingQuestionScrollCodeRef = useRef<string | null>(null);
   const shouldShowFeedback =
     feedbackTone !== 'neutral' || feedback.trim() !== DEFAULT_CHECKLIST_FEEDBACK;
+
+  useEffect(() => {
+    if (!requestedQuestionCode) {
+      return;
+    }
+
+    pendingQuestionScrollCodeRef.current = requestedQuestionCode;
+  }, [requestedQuestionCode]);
 
   useEffect(() => {
     let ignore = false;
@@ -302,10 +314,27 @@ export function ChecklistAuditPage() {
       return;
     }
 
+    const requestedQuestionExists = requestedQuestionCode
+      ? analysis.items.some((item) => item.code === requestedQuestionCode)
+      : false;
+
+    if (requestedQuestionExists) {
+      if (selectedQuestionCode !== requestedQuestionCode) {
+        setSelectedQuestionCode(requestedQuestionCode);
+      }
+
+      if (searchParams.has('question')) {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete('question');
+        setSearchParams(nextParams, { replace: true });
+      }
+      return;
+    }
+
     if (!selectedQuestionCode || !analysis.items.some((item) => item.code === selectedQuestionCode)) {
       setSelectedQuestionCode(analysis.items[0].code);
     }
-  }, [analysis, selectedQuestionCode]);
+  }, [analysis, requestedQuestionCode, searchParams, selectedQuestionCode, setSearchParams]);
 
   const deferredQuery = useDeferredValue(query);
   const filteredItems = useMemo(() => {
@@ -471,12 +500,57 @@ export function ChecklistAuditPage() {
       setSelectedQuestionCode(visibleQuestionCodes[0]);
     }
   }, [selectedQuestionCode, visibleQuestionCodes]);
+  useEffect(() => {
+    const targetCode = pendingQuestionScrollCodeRef.current;
+
+    if (!targetCode || selectedQuestionCode !== targetCode) {
+      return;
+    }
+
+    const container = questionListScrollRef.current;
+    const targetElement = questionNavigationRefs.current.get(targetCode);
+
+    if (!container || !targetElement) {
+      return;
+    }
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = targetElement.getBoundingClientRect();
+      const isVisible = targetRect.top >= containerRect.top && targetRect.bottom <= containerRect.bottom;
+
+      if (!isVisible) {
+        const nextTop =
+          container.scrollTop + (targetRect.top - containerRect.top) - 16;
+        container.scrollTo({
+          top: Math.max(nextTop, 0),
+          behavior: 'smooth',
+        });
+      }
+
+      pendingQuestionScrollCodeRef.current = null;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [selectedQuestionCode, visibleQuestionCodes]);
   const groupModalBlocks = useMemo(
     () => buildQuestionBlocks(groupModalItems, groupLookup, groupDisplayLookup),
     [groupDisplayLookup, groupLookup, groupModalItems]
   );
   const isGroupSelectionDisabled = (item: ChecklistItem) =>
     editingGroupId ? Boolean(item.groupId && item.groupId !== editingGroupId) : Boolean(item.groupId);
+  const setQuestionNavigationTarget = (questionCodes: string[]) => (element: HTMLButtonElement | null) => {
+    if (element) {
+      questionCodes.forEach((code) => questionNavigationRefs.current.set(code, element));
+      return;
+    }
+
+    questionCodes.forEach((code) => {
+      questionNavigationRefs.current.delete(code);
+    });
+  };
 
   const renderQuestionRow = (
     item: ChecklistItem,
@@ -526,6 +600,7 @@ export function ChecklistAuditPage() {
       <button
         key={item.code}
         type="button"
+        ref={setQuestionNavigationTarget([item.code])}
         className={className}
         onClick={() => setSelectedQuestionCode(item.code)}
       >
@@ -627,6 +702,7 @@ export function ChecklistAuditPage() {
   };
 
   useEffect(() => {
+    pendingQuestionScrollCodeRef.current = requestedQuestionCode || null;
     setSelectedQuestionCode(null);
     setQuery('');
     setGroupFilterId('');
@@ -1194,7 +1270,7 @@ export function ChecklistAuditPage() {
               </div>
             </div>
 
-            <div className="question-list-scroll">
+            <div ref={questionListScrollRef} className="question-list-scroll">
               {visibleQuestionListBlocks.length === 0 ? (
                 <div className="question-empty">
                   {groupFilterId
@@ -1213,6 +1289,7 @@ export function ChecklistAuditPage() {
                     <button
                       key={`group-${block.group.id}-${block.items[0]?.code ?? 'empty'}`}
                       type="button"
+                      ref={setQuestionNavigationTarget(block.items.map((item) => item.code))}
                       className={`question-group-card${isGroupActive ? ' has-active' : ''}`}
                       onClick={() => setSelectedQuestionCode(block.items[0]?.code ?? null)}
                     >

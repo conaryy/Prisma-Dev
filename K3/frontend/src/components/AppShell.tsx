@@ -35,6 +35,7 @@ export function AppShell() {
   const [searchParams, setSearchParams] = useSearchParams();
   const isDashboardPage = location.pathname === '/';
   const isChecklistPage = location.pathname === '/checklist-audit';
+  const hasUnifiedPageScroll = isDashboardPage || location.pathname === '/upload-dokumen';
   const showsDocumentSwitcher = isDashboardPage || isChecklistPage;
   const navItems = [
     {
@@ -358,7 +359,9 @@ export function AppShell() {
       </aside>
 
       <div className={`app-main${isChecklistPage ? ' is-checklist-page' : ''}`}>
-        <header className={`app-topbar${showsDocumentSwitcher ? ' has-centered-document-switcher' : ''}`}>
+        <header
+          className={`app-topbar${showsDocumentSwitcher ? ' has-centered-document-switcher' : ''}${isChecklistPage ? ' is-checklist-page' : ''}`}
+        >
           <div className="app-topbar-identity">
             <span className="app-topbar-kicker">Workspace SMK3</span>
             <div className="app-topbar-route">
@@ -379,8 +382,10 @@ export function AppShell() {
                     const nextParams = new URLSearchParams(searchParams);
                     if (event.target.value) {
                       nextParams.set('document', event.target.value);
+                      nextParams.delete('question');
                     } else {
                       nextParams.delete('document');
+                      nextParams.delete('question');
                     }
                     setSearchParams(nextParams, { replace: true });
                   }}
@@ -491,7 +496,9 @@ export function AppShell() {
           </div>
         </header>
 
-        <main className={`app-content${isChecklistPage ? ' is-checklist-page' : ''}`}>
+        <main
+          className={`app-content${isChecklistPage ? ' is-checklist-page' : ''}${hasUnifiedPageScroll ? ' has-unified-page-scroll' : ''}`}
+        >
           <Outlet context={outletContext} />
         </main>
       </div>

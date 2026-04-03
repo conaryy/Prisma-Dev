@@ -63,18 +63,40 @@ function getRedirectUri() {
   return `${window.location.origin}/auth/callback`;
 }
 
+function readStoredSsoFlow() {
+  if (typeof window === 'undefined') {
+    return {
+      state: null,
+      verifier: null,
+      returnTo: null,
+    };
+  }
+
+  return {
+    state: sessionStorage.getItem(STATE_KEY),
+    verifier: sessionStorage.getItem(VERIFIER_KEY),
+    returnTo: sessionStorage.getItem(RETURN_TO_KEY),
+  };
+}
+
 export function isSsoEnabled() {
   return String(env().VITE_SSO_ENABLED || 'true').toLowerCase() !== 'false';
 }
 
 export async function startSsoLogin(returnTo = '/') {
-  const state = randomString(32);
-  const verifier = randomString(64);
+  const existingFlow = readStoredSsoFlow();
+  const canReuseExistingFlow =
+    Boolean(existingFlow.state && existingFlow.verifier) && existingFlow.returnTo === returnTo;
+  const state = canReuseExistingFlow && existingFlow.state ? existingFlow.state : randomString(32);
+  const verifier =
+    canReuseExistingFlow && existingFlow.verifier ? existingFlow.verifier : randomString(64);
   const challenge = await sha256Base64Url(verifier);
 
-  sessionStorage.setItem(STATE_KEY, state);
-  sessionStorage.setItem(VERIFIER_KEY, verifier);
-  sessionStorage.setItem(RETURN_TO_KEY, returnTo);
+  if (typeof window !== 'undefined') {
+    sessionStorage.setItem(STATE_KEY, state);
+    sessionStorage.setItem(VERIFIER_KEY, verifier);
+    sessionStorage.setItem(RETURN_TO_KEY, returnTo);
+  }
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -89,14 +111,20 @@ export async function startSsoLogin(returnTo = '/') {
   window.location.assign(`${getAuthorizeUrl()}?${params.toString()}`);
 }
 
-export function consumeSsoState() {
-  const state = sessionStorage.getItem(STATE_KEY);
-  const verifier = sessionStorage.getItem(VERIFIER_KEY);
-  const returnTo = sessionStorage.getItem(RETURN_TO_KEY);
+export function readSsoState() {
+  const { state, verifier, returnTo } = readStoredSsoFlow();
+
+  return { state, verifier, returnTo: returnTo || '/' };
+}
+
+export function clearSsoState() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
   sessionStorage.removeItem(STATE_KEY);
   sessionStorage.removeItem(VERIFIER_KEY);
   sessionStorage.removeItem(RETURN_TO_KEY);
-  return { state, verifier, returnTo: returnTo || '/' };
 }
 
 type TokenResponse = {

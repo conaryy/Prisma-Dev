@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { AnalysisSummary } from '@/components/AnalysisSummary';
 import { EmptyState } from '@/components/EmptyState';
 import { fetchChecklistDocument, fetchChecklistDocuments } from '@/lib/api';
+import { buildEvidenceMonitoringSummary } from '@/lib/evidence';
 import type { AuditAnalysis, ChecklistDocumentSummary } from '@/types';
 
 export function DashboardPage() {
@@ -117,22 +118,23 @@ export function DashboardPage() {
 
   const selectedDocumentSummary =
     documents.find((document) => document.id === selectedDocumentId) ?? null;
+  const evidenceMonitoring = analysis ? buildEvidenceMonitoringSummary(analysis) : null;
 
   return (
     <div className="content-stack page-scroll">
       <section className="workspace-toolbar checklist-overview-strip">
         <div className="workspace-toolbar-stats checklist-overview-grid">
           <div className="mini-stat checklist-mini-stat">
-            <span>Target</span>
-            <strong>{analysis?.totals.expectedCriteria ?? selectedDocumentSummary?.expectedCriteria ?? 166}</strong>
+            <span>Perlu Evidence</span>
+            <strong>{evidenceMonitoring?.totals.evidenceTargets ?? 0}</strong>
           </div>
           <div className="mini-stat checklist-mini-stat">
-            <span>Terdeteksi</span>
-            <strong>{analysis?.totals.detectedCriteria ?? selectedDocumentSummary?.detectedCriteria ?? 0}</strong>
+            <span>Belum Ada File</span>
+            <strong>{evidenceMonitoring?.totals.withoutFiles ?? 0}</strong>
           </div>
           <div className="mini-stat checklist-mini-stat">
-            <span>Kelompok</span>
-            <strong>{analysis?.groups.length ?? selectedDocumentSummary?.groupCount ?? 0}</strong>
+            <span>Belum Up Drive</span>
+            <strong>{evidenceMonitoring?.totals.pendingDriveFiles ?? 0}</strong>
           </div>
           <div className="mini-stat checklist-mini-stat">
             <span>Penerapan</span>

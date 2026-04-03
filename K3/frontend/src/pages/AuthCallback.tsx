@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { setSessionTokens } from '@/lib/session';
-import { consumeSsoState, exchangeAuthorizationCode } from '@/lib/sso';
+import { clearSsoState, exchangeAuthorizationCode, readSsoState } from '@/lib/sso';
+
+type CallbackResolution = {
+  accessToken: string;
+  refreshToken?: string;
+  returnTo: string;
+};
+
+let activeCallbackExchange: { key: string; promise: Promise<CallbackResolution> } | null = null;
 
 export function AuthCallbackPage() {
   const navigate = useNavigate();
@@ -11,38 +19,81 @@ export function AuthCallbackPage() {
   useEffect(() => {
     const code = params.get('code');
     const returnedState = params.get('state');
-    const flow = consumeSsoState();
 
     if (!code || !returnedState) {
+      clearSsoState();
       setError('Kode otorisasi tidak ditemukan.');
       return;
     }
 
+    const flow = readSsoState();
+
     if (!flow.state || flow.state !== returnedState) {
+      clearSsoState();
       setError('State tidak valid. Ulangi login.');
       return;
     }
 
     if (!flow.verifier) {
+      clearSsoState();
       setError('PKCE verifier tidak ditemukan.');
       return;
     }
 
-    exchangeAuthorizationCode(code, flow.verifier)
+    const callbackKey = `${returnedState}:${code}`;
+    const callbackPromise =
+      activeCallbackExchange?.key === callbackKey
+        ? activeCallbackExchange.promise
+        : exchangeAuthorizationCode(code, flow.verifier)
+            .then((result) => {
+              if (!result.access_token) {
+                throw new Error('Access token tidak ditemukan.');
+              }
+
+              return {
+                accessToken: result.access_token,
+                refreshToken: result.refresh_token,
+                returnTo: flow.returnTo || '/',
+              };
+            })
+            .finally(() => {
+              clearSsoState();
+
+              if (activeCallbackExchange?.key === callbackKey) {
+                activeCallbackExchange = null;
+              }
+            });
+
+    if (activeCallbackExchange?.key !== callbackKey) {
+      activeCallbackExchange = {
+        key: callbackKey,
+        promise: callbackPromise,
+      };
+    }
+
+    let ignore = false;
+
+    callbackPromise
       .then((result) => {
-        if (!result.access_token) {
-          throw new Error('Access token tidak ditemukan.');
+        if (ignore) {
+          return;
         }
 
         setSessionTokens({
-          accessToken: result.access_token,
-          refreshToken: result.refresh_token,
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
         });
-        navigate(flow.returnTo || '/', { replace: true });
+        navigate(result.returnTo, { replace: true });
       })
       .catch((reason: Error) => {
-        setError(reason.message || 'Gagal menyelesaikan login SSO.');
+        if (!ignore) {
+          setError(reason.message || 'Gagal menyelesaikan login SSO.');
+        }
       });
+
+    return () => {
+      ignore = true;
+    };
   }, [navigate, params]);
 
   return (
