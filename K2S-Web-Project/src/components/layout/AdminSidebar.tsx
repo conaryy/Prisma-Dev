@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { ClipboardCheck, ClipboardList, LayoutDashboard, Users } from 'lucide-react';
+import { ClipboardCheck, ClipboardList, LayoutDashboard, Share2, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const linkBase =
@@ -38,6 +38,10 @@ export function AdminSidebar() {
           <Link to="/admin/users" className={navClass(navItem('/admin/users'))}>
             <Users className="h-4 w-4" />
             <span className="flex-1">Kelola User</span>
+          </Link>
+          <Link to="/admin/whatsapp" className={navClass(navItem('/admin/whatsapp'))}>
+            <Share2 className="h-4 w-4" />
+            <span className="flex-1">WhatsApp API</span>
           </Link>
           <Link
             to="/admin/self-assessment"

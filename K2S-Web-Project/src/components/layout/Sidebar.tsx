@@ -148,6 +148,9 @@ export function Sidebar({
   const isExternalDnpAuditActive = location.pathname.startsWith(
     '/external-dnp/audit'
   );
+  const isExternalDnpExportDocumentActive = location.pathname.startsWith(
+    '/external-dnp/export-document'
+  );
   const isExternalDnpAuditCapDraftActive = location.pathname.startsWith(
     '/external-dnp/audit/cap/penyusunan'
   );
@@ -175,6 +178,7 @@ export function Sidebar({
   const isAdminDashboardActive =
     location.pathname === '/admin' || location.pathname === '/admin/dashboard';
   const isAdminUsersActive = location.pathname.startsWith('/admin/users');
+  const isAdminWhatsappApiActive = location.pathname.startsWith('/admin/whatsapp');
   const isAdminSelfAssessmentQuestionActive =
     location.pathname === '/admin/self-assessment';
   const isAdminSelfAssessmentSessionActive =
@@ -1049,6 +1053,17 @@ export function Sidebar({
                 isCollapsed && 'invisible pointer-events-none'
               )}
             >
+              <Link
+                to="/external-dnp/export-document"
+                className={cn(
+                  subNavClass(isExternalDnpExportDocumentActive),
+                  'pr-2'
+                )}
+              >
+                <FileText className={navIconClass} />
+                <span className={labelClass('flex-1')}>Export Document</span>
+              </Link>
+
               <Collapsible
                 open={externalDnpAuditOpen}
                 onOpenChange={setExternalDnpAuditOpen}
@@ -1218,6 +1233,10 @@ export function Sidebar({
               <Link to="/admin/users" className={navClass(isAdminUsersActive)}>
                 <Users className={navIconClass} />
                 <span className={labelClass('flex-1')}>Kelola User</span>
+              </Link>
+              <Link to="/admin/whatsapp" className={navClass(isAdminWhatsappApiActive)}>
+                <Share2 className={navIconClass} />
+                <span className={labelClass('flex-1')}>WhatsApp API</span>
               </Link>
               <Collapsible
                 open={adminSelfAssessmentMenuOpen}

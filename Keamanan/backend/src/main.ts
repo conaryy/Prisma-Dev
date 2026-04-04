@@ -7,15 +7,13 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
   app.enableCors({
     origin: true,
   });
 
-  const frontendDist = join(__dirname, '..', 'frontend', 'dist');
-  const uploadsDir = join(__dirname, '..', 'uploads');
   const server = app.getHttpAdapter().getInstance();
-
-  server.use('/uploads', express.static(uploadsDir));
+  const frontendDist = join(__dirname, '..', '..', 'frontend', 'dist');
 
   if (existsSync(frontendDist)) {
     server.use(express.static(frontendDist));
@@ -24,7 +22,8 @@ async function bootstrap() {
     });
   }
 
-  await app.listen(3000);
+  const port = Number(process.env.PORT || 3000);
+  await app.listen(port);
 }
 
 void bootstrap();

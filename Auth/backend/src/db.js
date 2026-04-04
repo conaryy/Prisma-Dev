@@ -128,6 +128,27 @@ export async function seedDefaults() {
       now,
     ]);
   }
+
+  const existingK3Client = await queryOne('SELECT id FROM oauth_clients WHERE id = ? LIMIT 1', [config.defaultK3Client.clientId]);
+  if (!existingK3Client) {
+    await execQuery(`
+      INSERT INTO oauth_clients (
+        id, client_secret, name, redirect_uris_json, post_logout_redirect_uris_json, grant_types_json, scope, created_at, updated_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )
+    `, [
+      config.defaultK3Client.clientId,
+      config.defaultK3Client.clientSecret,
+      'K3 Web (dev)',
+      JSON.stringify([config.defaultK3Client.redirectUri]),
+      JSON.stringify([config.defaultK3Client.postLogoutRedirectUri]),
+      JSON.stringify(['authorization_code', 'refresh_token']),
+      'openid profile email',
+      now,
+      now,
+    ]);
+  }
 }
 
 export function parseJson(value, fallback) {

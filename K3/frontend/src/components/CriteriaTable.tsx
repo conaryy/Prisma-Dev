@@ -1,4 +1,5 @@
 import { useDeferredValue } from 'react';
+import { getDisplayEvidence } from '@/lib/evidence';
 import type { ChecklistItem } from '@/types';
 
 type Props = {
@@ -65,31 +66,37 @@ export function CriteriaTable({ items, query, onQueryChange }: Props) {
           </thead>
           <tbody>
             {filteredItems.map((item) => (
-              <tr key={item.code}>
-                <td>
-                  <strong>{item.code}</strong>
-                </td>
-                <td>
-                  <div>{item.description}</div>
-                  <div className="meta-copy">
-                    {[item.sectionTitle, item.categoryTitle].filter(Boolean).join(' • ') || '-'}
-                  </div>
-                </td>
-                <td>
-                  {item.evidence.length > 0 ? (
-                    <ul className="criteria-evidence">
-                      {item.evidence.slice(0, 4).map((evidence) => (
-                        <li key={`${item.code}-${evidence}`}>{evidence}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span className="meta-copy">Tidak ada evidence terbaca.</span>
-                  )}
-                </td>
-                <td>
-                  <span className={`status-pill ${item.status}`}>{statusLabel(item.status)}</span>
-                </td>
-              </tr>
+              (() => {
+                const visibleEvidence = getDisplayEvidence(item.evidence);
+
+                return (
+                  <tr key={item.code}>
+                    <td>
+                      <strong>{item.code}</strong>
+                    </td>
+                    <td>
+                      <div>{item.description}</div>
+                      <div className="meta-copy">
+                        {[item.sectionTitle, item.categoryTitle].filter(Boolean).join(' • ') || '-'}
+                      </div>
+                    </td>
+                    <td>
+                      {visibleEvidence.length > 0 ? (
+                        <ul className="criteria-evidence">
+                          {visibleEvidence.slice(0, 4).map((evidence) => (
+                            <li key={`${item.code}-${evidence}`}>{evidence}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span className="meta-copy">Tidak ada evidence terbaca.</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`status-pill ${item.status}`}>{statusLabel(item.status)}</span>
+                    </td>
+                  </tr>
+                );
+              })()
             ))}
           </tbody>
         </table>

@@ -1,0 +1,35 @@
+{
+  "name": "keamanan-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend NestJS untuk dashboard keamanan Prisma Dev",
+  "scripts": {
+    "build": "nest build",
+    "start": "PORT=${PORT:-6000} node dist/main.js",
+    "start:dev": "PORT=${PORT:-6001} nest start --watch",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:push": "prisma db push",
+    "prisma:seed": "node prisma/seed.js",
+    "prisma:setup": "npm run prisma:push && npm run prisma:seed",
+    "prebuild": "prisma generate"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.12",
+    "@nestjs/config": "^4.0.3",
+    "@nestjs/core": "^11.0.12",
+    "@nestjs/platform-express": "^11.0.12",
+    "@prisma/client": "^5.21.1",
+    "express": "^4.21.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.5",
+    "@nestjs/schematics": "^11.0.2",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.13.10",
+    "prisma": "^5.21.1",
+    "typescript": "^5.7.3"
+  }
+}

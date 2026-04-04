@@ -81,20 +81,20 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <aside
         className={`
           fixed top-0 left-0 h-full w-64 z-50
-          bg-gray-900/40 backdrop-blur-xl border-r border-violet-300/25
+          bg-[#241f43] border-r border-violet-200/14 shadow-[18px_0_50px_rgba(10,10,22,0.58)]
           transition-transform duration-300 ease-in-out
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
         <div className="flex flex-col h-full">
-          <div className="p-6 border-b border-violet-300/25">
+          <div className="border-b border-violet-200/14 bg-black/10 p-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-violet-300/40 bg-[#241049]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-violet-200/18 bg-[#2a2346] shadow-[0_8px_24px_rgba(18,15,34,0.44)]">
                 <img src="/airnavpp.png" alt="AirNav" className="h-7 w-7 object-contain" />
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-white leading-tight">Logbook</h2>
-                <p className="text-gray-400 text-sm mt-0.5">Management System</p>
+                <p className="mt-0.5 text-sm text-slate-400">Management System</p>
               </div>
             </div>
           </div>
@@ -110,17 +110,17 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                     onClick={() => toggleMenu(menu.id)}
                     className={`
                       w-full flex items-center justify-between px-4 py-3 rounded-lg
-                      bg-white/5 border border-violet-300/25
-                      hover:bg-white/10 hover:border-violet-300/40
+                      bg-white/[0.035] border border-violet-200/12
+                      hover:bg-white/[0.06] hover:border-violet-200/22
                       transition-all duration-300 group
                     `}
                   >
                     <div className="flex items-center gap-3">
-                      <Icon className="w-5 h-5 text-gray-300 group-hover:text-purple-400 transition-colors" />
-                      <span className="text-gray-200 font-medium">{menu.label}</span>
+                      <Icon className="w-5 h-5 text-violet-100/85 group-hover:text-violet-100 transition-colors" />
+                      <span className="font-medium text-slate-200">{menu.label}</span>
                     </div>
                     <ChevronDown
-                      className={`w-4 h-4 text-gray-400 transition-transform duration-300 ${
+                      className={`w-4 h-4 text-slate-500 transition-transform duration-300 ${
                         isExpanded ? 'rotate-180' : ''
                       }`}
                     />
@@ -132,7 +132,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                       ${isExpanded ? 'max-h-40 mt-2' : 'max-h-0'}
                     `}
                   >
-                    <div className="space-y-1 ml-4 pl-4 border-l border-violet-300/20">
+                    <div className="ml-4 space-y-1 border-l border-violet-200/14 pl-4">
                       {menu.submenu?.map(submenu => {
                         const SubIcon = getSubmenuIcon(submenu.label);
                         const isActive = location.pathname === submenu.path;
@@ -146,8 +146,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                               transition-all duration-300
                               ${
                                 isActive
-                                  ? 'bg-purple-500/20 border border-purple-400/40 text-purple-300'
-                                  : 'bg-white/5 border border-violet-300/10 text-gray-300 hover:bg-white/10 hover:border-violet-300/30'
+                                  ? 'bg-[#4f3a92]/24 border border-violet-300/30 text-violet-100 shadow-[0_10px_30px_rgba(35,29,68,0.32)]'
+                                  : 'bg-white/[0.03] border border-violet-200/10 text-slate-200 hover:bg-white/[0.06] hover:border-violet-200/24'
                               }
                             `}
                           >

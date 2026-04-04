@@ -194,6 +194,7 @@ export function Topbar({
         { label: 'CAP', path: '/cap' },
         { label: 'Admin - Dashboard', path: '/admin', adminOnly: true },
         { label: 'Admin - Kelola User', path: '/admin/users', adminOnly: true },
+        { label: 'Admin - WhatsApp API', path: '/admin/whatsapp', adminOnly: true },
         {
           label: 'Admin - Pertanyaan Self Assessment',
           path: '/admin/self-assessment',

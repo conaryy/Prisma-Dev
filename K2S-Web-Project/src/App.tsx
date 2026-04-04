@@ -238,6 +238,11 @@ const ExternalDnpSurveillanceCapFulfillment = lazy(() =>
     })
   )
 );
+const ExternalDnpExportDocument = lazy(() =>
+  import('@/pages/external-dnp/ExternalDnpExportDocument').then((module) => ({
+    default: module.ExternalDnpExportDocument,
+  }))
+);
 const Temuan = lazy(() =>
   import('@/pages/Temuan').then((module) => ({ default: module.Temuan }))
 );
@@ -312,6 +317,11 @@ const AdminSelfAssessmentCapFulfillmentList = lazy(() =>
 const AdminSelfAssessmentCapFulfillmentDetail = lazy(() =>
   import('@/pages/admin/SelfAssessmentCapFulfillmentDetail').then((module) => ({
     default: module.SelfAssessmentCapFulfillmentDetail,
+  }))
+);
+const AdminWhatsappApi = lazy(() =>
+  import('@/pages/admin/WhatsappApi').then((module) => ({
+    default: module.WhatsappApi,
   }))
 );
 
@@ -429,6 +439,14 @@ function App() {
               </RequireAdmin>
             }
           />
+          <Route
+            path="admin/whatsapp"
+            element={
+              <RequireAdmin>
+                <AdminWhatsappApi />
+              </RequireAdmin>
+            }
+          />
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="profile" element={<Profile />} />
@@ -524,6 +542,14 @@ function App() {
           <Route
             path="surveillance/cap/pemenuhan/:sessionAreaId"
             element={<SurveillanceCapFulfillment />}
+          />
+          <Route
+            path="external-dnp/export-document"
+            element={
+              <RequireExternalDnp>
+                <ExternalDnpExportDocument />
+              </RequireExternalDnp>
+            }
           />
           <Route
             path="external-dnp/audit/cap/penyusunan"

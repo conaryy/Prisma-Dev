@@ -31,7 +31,7 @@ type PortalMenu = {
   title: string;
   description: string;
   path: string;
-  targetApp: 'k2s' | 'logbook';
+  targetApp: 'k2s' | 'logbook' | 'k3';
   icon: LucideIcon;
   eyebrow: string;
   meta: string;
@@ -84,6 +84,16 @@ function getLogbookBaseUrl() {
   return 'http://localhost:5175';
 }
 
+function getK3BaseUrl() {
+  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+  const configured = env.VITE_K3_BASE_URL?.trim();
+  if (configured) {
+    return normalizeBaseUrl(configured);
+  }
+
+  return 'http://localhost:5176';
+}
+
 function getAuthServiceBaseUrl() {
   const env = (import.meta as { env?: Record<string, string> }).env ?? {};
   const configured = env.VITE_SSO_AUTH_BASE_URL?.trim();
@@ -94,7 +104,12 @@ function getAuthServiceBaseUrl() {
 }
 
 function buildPortalUrl(path: string, targetApp: PortalMenu['targetApp']) {
-  const baseUrl = targetApp === 'logbook' ? getLogbookBaseUrl() : getK2sBaseUrl();
+  const baseUrl =
+    targetApp === 'logbook'
+      ? getLogbookBaseUrl()
+      : targetApp === 'k3'
+        ? getK3BaseUrl()
+        : getK2sBaseUrl();
   if (!baseUrl) {
     return path;
   }
@@ -107,7 +122,7 @@ function buildPortalUrl(path: string, targetApp: PortalMenu['targetApp']) {
       .trim();
 
   if (handoffMode === 'oidc' && targetApp === 'k2s') {
-    // Force K2S to start SSO immediately and return to desired page.
+    // K2S has an explicit login entry route that starts the SSO flow.
     target.pathname = '/login';
     target.searchParams.set('sso', '1');
     target.searchParams.set('return_to', normalizedPath);
@@ -165,8 +180,8 @@ const portalMenus: PortalMenu[] = [
     key: 'k3',
     title: 'K3',
     description: 'Area kerja review safety, CAP, dan monitoring K3 dengan jalur masuk yang lebih jelas.',
-    path: '/admin/self-assessment-reviews',
-    targetApp: 'k2s',
+    path: '/',
+    targetApp: 'k3',
     icon: ClipboardCheck,
     eyebrow: 'Review Safety',
     meta: 'Safety review, CAP, dan tindak lanjut',

@@ -3,7 +3,7 @@
 ## Project Overview
 - Repo ini adalah monorepo multi-service untuk platform Prisma Dev.
 - Service utama:
-  - `K2S-Web-Project`: frontend React/Vite, backend Laravel 12, dan Python wrapper untuk integrasi DNP eksternal.
+  - `K2S-Web-Project`: frontend React/Vite, backend Laravel 12, Python wrapper untuk integrasi DNP eksternal, dan service Python `whatsapp_api` untuk bridge WAHA/WhatsApp.
   - `Auth`: portal login React/Vite dan service auth Express/OIDC sederhana untuk tahap pemisahan auth/SSO.
   - `Logbook`: frontend React/Vite dan backend NestJS + Prisma/PostgreSQL dengan validasi token SSO via JWKS.
   - `K3`: backend NestJS + frontend React/Vite untuk dashboard dan checklist audit K3 tanpa login.
@@ -42,6 +42,9 @@
 - `K2S-Web-Project/backend/wrapping`:
   - `cd K2S-Web-Project/backend/wrapping && pip install -r requirements.txt`
   - `python app.py`
+- `K2S-Web-Project/backend/whatsapp_api`:
+  - `cd K2S-Web-Project/backend/whatsapp_api && pip install -r requirements.txt`
+  - `python app.py`
 - `K3`:
   - `cd K3 && npm install && npm run start:dev`
   - `cd K3/frontend && npm install && npm run dev`
@@ -67,16 +70,19 @@
   - validasi input dan normalisasi data dilakukan dekat boundary request.
 - Backend Laravel:
   - ikuti konvensi Laravel 12, controller tipis, route API eksplisit, middleware untuk auth/role/signed URL.
-  - untuk perubahan PHP, jaga kompatibilitas dengan flow migrasi, queue, dan file storage.
+  - untuk perubahan PHP, jaga kompatibilitas dengan flow migrasi, queue, file storage, dan integrasi internal HTTP ke wrapper Python.
 - Python wrapper:
   - perubahan harus hati-hati karena service ini menjadi jembatan ke sistem eksternal.
+  - di K2S sekarang ada dua service Python terpisah: `wrapping` untuk DNP dan `whatsapp_api` untuk WAHA.
 - Hindari mengubah `.env`, kredensial, atau file hasil build kecuali memang diminta.
 
 ## Testing Instructions
 - Coverage test otomatis belum merata di seluruh repo.
 - Minimum verification per perubahan:
   - frontend Vite: jalankan `npm run build`; untuk `K2S-Web-Project` tambahkan `npm run lint` dan `npm run typecheck`.
-  - `K2S-Web-Project/backend`: jalankan `composer test` bila perubahan menyentuh Laravel/PHP.
+- `K2S-Web-Project/backend`: jalankan `composer test` bila perubahan menyentuh Laravel/PHP.
+  - `K2S-Web-Project/backend/whatsapp_api`: minimum `python3 -m py_compile app.py`; bila menyentuh webhook/session WAHA, lakukan smoke test manual `POST /` atau `POST /webhook/waha` dan kirim satu pesan uji.
+  - untuk menu admin `WhatsApp API`, perhatikan bahwa `send-batch` sekarang masuk queue Laravel; verifikasi worker aktif dan uji preview pesan bila format kirim berubah.
   - `Logbook/backend`: jalankan `npm run build` dan, bila menyentuh Prisma, `npm run prisma:generate`.
   - `Auth/backend`: jalankan `npm test`; lanjutkan smoke test `npm run dev` untuk `GET /health`, login admin dev, dan endpoint auth/OIDC terkait.
   - `K3`: tidak tampak suite test formal; verifikasi dengan `npm run build`, upload dokumen audit contoh, dan cek upload evidence.
@@ -98,13 +104,15 @@
 - K2S dan Logbook bergantung pada konfigurasi CORS, issuer, audience, dan JWKS. Salah konfigurasi bisa membuka akses lintas origin atau membuat validasi token salah.
 - Laravel memakai signed routes untuk download tertentu; pertahankan middleware `signed`/`signed:relative` saat mengubah route file/download.
 - Upload file ada di K2S backend dan K3. Validasi ukuran, tipe file, dan akses file publik harus dipertahankan.
+- `K2S-Web-Project/backend/whatsapp_api` memakai token internal bersama dengan Laravel dan berbicara ke WAHA; jaga `WHATSAPP_BOT_INTERNAL_TOKEN`, URL WAHA, session name, dan webhook path tetap sinkron.
+- Batch kirim WhatsApp admin sekarang diproses asynchronous oleh queue Laravel; untuk banyak nomor, worker memberi delay acak 5-15 detik antar nomor.
 - `K3` saat ini tidak punya auth dan menyimpan state/evidence lokal; jangan anggap service ini aman untuk internet publik tanpa hardening tambahan.
 - `folder_referensi` adalah bahan referensi, bukan service production.
 - `legacy_file` adalah area arsip; jangan deploy, jangan pakai sebagai source of truth, dan perlakukan isinya sebagai data yang bisa tetap sensitif.
 
 ## Folder Guides
 - Lihat `Auth/AGENTS.md` untuk portal auth dan auth backend.
-- Lihat `K2S-Web-Project/AGENTS.md` untuk frontend K2S, backend Laravel, dan wrapper Python.
+- Lihat `K2S-Web-Project/AGENTS.md` untuk frontend K2S, backend Laravel, wrapper DNP, dan `whatsapp_api`.
 - Lihat `K3/AGENTS.md` untuk dashboard/checklist audit K3.
 - Lihat `Logbook/AGENTS.md` untuk service logbook.
 - Lihat `Keamanan/AGENTS.md` untuk status folder keamanan.

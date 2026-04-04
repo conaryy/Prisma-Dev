@@ -1,28 +1,100 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { fetchLogbookEntries, fetchLogbookOverview } from '../lib/logbook';
-import type { LogbookCategory, LogbookOverview, UnifiedLogbookEntry } from '../types';
+import type {
+  LogbookCategory,
+  LogbookListResponse,
+  LogbookOverview,
+  UnifiedLogbookEntry,
+} from '../types';
 
-export function useLogbookEntries(category: LogbookCategory | null, limit = 500) {
+const EMPTY_META: LogbookListResponse['meta'] = {
+  category: '',
+  total: 0,
+  page: 1,
+  pageSize: 20,
+  totalPages: 1,
+  search: '',
+  sort: 'desc',
+  year: null,
+  month: null,
+  availableYears: [],
+  availableMonths: [],
+};
+
+const logbookEntriesCache = new Map<
+  string,
+  {
+    entries: UnifiedLogbookEntry[];
+    meta: LogbookListResponse['meta'];
+  }
+>();
+
+type UseLogbookEntriesParams = {
+  category: LogbookCategory | null;
+  page: number;
+  pageSize?: number;
+  search?: string;
+  sort?: 'desc' | 'asc';
+  year?: number | null;
+  month?: number | null;
+};
+
+export function useLogbookEntries({
+  category,
+  page,
+  pageSize = 20,
+  search = '',
+  sort = 'desc',
+  year = null,
+  month = null,
+}: UseLogbookEntriesParams) {
   const [entries, setEntries] = useState<UnifiedLogbookEntry[]>([]);
+  const [meta, setMeta] = useState<LogbookListResponse['meta']>(EMPTY_META);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const refresh = useCallback(() => {
+    setReloadKey((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     if (!category) {
       setEntries([]);
+      setMeta(EMPTY_META);
       setIsLoading(false);
       setError(null);
       return;
     }
 
+    const cacheKey = JSON.stringify({
+      category,
+      page,
+      pageSize,
+      search,
+      sort,
+      year,
+      month,
+    });
+    const cached = logbookEntriesCache.get(cacheKey);
     let cancelled = false;
-    setIsLoading(true);
+    if (cached) {
+      setEntries(cached.entries);
+      setMeta(cached.meta);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
     setError(null);
 
-    fetchLogbookEntries(category, limit)
+    fetchLogbookEntries({ category, page, pageSize, search, sort, year, month })
       .then((result) => {
         if (!cancelled) {
-          setEntries(result);
+          setEntries(result.entries);
+          setMeta(result.meta);
+          logbookEntriesCache.set(cacheKey, {
+            entries: result.entries,
+            meta: result.meta,
+          });
         }
       })
       .catch((err: unknown) => {
@@ -39,9 +111,15 @@ export function useLogbookEntries(category: LogbookCategory | null, limit = 500)
     return () => {
       cancelled = true;
     };
-  }, [category, limit]);
+  }, [category, page, pageSize, search, sort, year, month, reloadKey]);
 
-  return { entries, isLoading, error };
+  return {
+    entries,
+    meta,
+    isLoading,
+    error,
+    refresh,
+  };
 }
 
 export function useLogbookOverview() {

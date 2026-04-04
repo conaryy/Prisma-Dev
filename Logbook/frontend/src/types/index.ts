@@ -32,23 +32,25 @@ export type LogbookCategory = 'tower' | 'app' | 'teknik';
 
 export type TowerOrAppEntryRecord = {
   id: string;
-  entryNo: number;
-  entryDate: string;
-  entryTime: string;
+  no: number;
+  date: string;
+  time: string;
   operationType: string;
   facility: string;
   callSign: string;
   description: string;
+  sourceType?: string;
 };
 
 export type TeknikEntryRecord = {
   id: string;
-  entryNo: number;
-  entryDate: string;
-  entryTime: string;
+  no: number;
+  date: string;
+  time: string;
   equipment: string;
-  frequencySection: string;
+  frequencyOrSection: string;
   incident: string;
+  sourceType?: string;
 };
 
 export type LogbookEntryRecord = TowerOrAppEntryRecord | TeknikEntryRecord;
@@ -58,8 +60,21 @@ export interface LogbookListResponse {
   meta: {
     category: string;
     total: number;
-    limit: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    search: string;
+    sort: 'desc' | 'asc';
+    year: number | null;
+    month: number | null;
+    availableYears: number[];
+    availableMonths: number[];
   };
+}
+
+export interface PaginatedLogbookEntries {
+  entries: UnifiedLogbookEntry[];
+  meta: LogbookListResponse['meta'];
 }
 
 export interface UnifiedLogbookEntry {

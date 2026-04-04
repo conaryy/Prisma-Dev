@@ -55,10 +55,34 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         equipment TEXT NOT NULL,
         frequency_section TEXT NOT NULL,
         incident TEXT NOT NULL,
+        import_batch_id TEXT NULL,
         source_type TEXT NOT NULL DEFAULT 'manual',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+    `);
+
+    await this.$executeRaw(Prisma.sql`
+      CREATE TABLE IF NOT EXISTS logbook_import_batches (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        source_period TEXT NULL,
+        source_file_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        total_rows INTEGER NOT NULL DEFAULT 0,
+        valid_rows INTEGER NOT NULL DEFAULT 0,
+        invalid_rows INTEGER NOT NULL DEFAULT 0,
+        sheet_name TEXT NULL,
+        notes TEXT NULL,
+        imported_by TEXT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ NULL
+      );
+    `);
+
+    await this.$executeRaw(Prisma.sql`
+      ALTER TABLE teknik_logbook_entries
+      ADD COLUMN IF NOT EXISTS import_batch_id TEXT NULL;
     `);
 
     await this.$executeRaw(Prisma.sql`
@@ -72,6 +96,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     await this.$executeRaw(Prisma.sql`
       CREATE INDEX IF NOT EXISTS idx_teknik_logbook_date_time
       ON teknik_logbook_entries (entry_date DESC, entry_time DESC);
+    `);
+    await this.$executeRaw(Prisma.sql`
+      CREATE INDEX IF NOT EXISTS idx_teknik_logbook_import_batch
+      ON teknik_logbook_entries (import_batch_id);
+    `);
+    await this.$executeRaw(Prisma.sql`
+      CREATE INDEX IF NOT EXISTS idx_logbook_import_batches_category_created
+      ON logbook_import_batches (category, created_at DESC);
     `);
   }
 }

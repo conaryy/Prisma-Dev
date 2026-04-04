@@ -1,6 +1,25 @@
 import { apiFetch } from '@/lib/api';
 import type { SelfAssessmentScope } from '@/types/selfAssessment';
 
+export type ExternalDnpExportDocumentItem = {
+  id: string;
+  sessionAreaId: string;
+  scope: string;
+  scopeLabel: string;
+  instansiName: string;
+  area: string;
+  schedule: string;
+  leader: string;
+  members: string[];
+  audity: string[];
+  pqNumber: string;
+  questionText: string;
+  reference: string;
+  temuan: string;
+  actionPlan: string;
+  progress: number;
+};
+
 export async function fetchExternalDnpCapSessions(params: {
   scope: SelfAssessmentScope;
   month?: string;
@@ -246,5 +265,31 @@ export async function fetchExternalDnpSyncJobStatus(jobId: string) {
     finishedAt?: string | null;
     createdAt?: string | null;
   } }>(`/api/external-dnp/sync/jobs/${jobId}`);
+  return response.data;
+}
+
+export async function fetchExternalDnpExportDocumentItems(scope: SelfAssessmentScope) {
+  const response = await apiFetch<{ data: ExternalDnpExportDocumentItem[] }>(
+    `/api/external-dnp/export-document/items?scope=${scope}`
+  );
+  return response.data;
+}
+
+export async function generateExternalDnpExportDocument(payload: {
+  scope: SelfAssessmentScope;
+  itemIds: string[];
+}) {
+  const response = await apiFetch<{ data: {
+    generated: boolean;
+    scope: string;
+    filename: string;
+    totalItems: number;
+    generatedAt: string;
+    downloadUrl: string;
+  } }>('/api/external-dnp/export-document/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
   return response.data;
 }

@@ -3,6 +3,7 @@ import type {
   LogbookCategory,
   LogbookEntryRecord,
   LogbookListResponse,
+  PaginatedLogbookEntries,
   LogbookSummaryItem,
   TeknikEntryRecord,
   TowerOrAppEntryRecord,
@@ -24,22 +25,40 @@ export function getCategoryLabel(category: LogbookCategory | string | undefined)
 }
 
 function formatDate(dateValue: string) {
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) {
+  const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
     return dateValue;
   }
 
-  return new Intl.DateTimeFormat('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(date);
+  const [, yearText, monthText, dayText] = match;
+  const year = Number.parseInt(yearText, 10);
+  const month = Number.parseInt(monthText, 10);
+  const day = Number.parseInt(dayText, 10);
+  const monthLabel = new Intl.DateTimeFormat('id-ID', { month: 'short', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(year, month - 1, 1))
+  );
+
+  return `${String(day).padStart(2, '0')} ${monthLabel} ${year}`;
 }
 
 function toSortDate(dateValue: string, timeValue: string) {
-  const combined = new Date(`${dateValue}T${timeValue}`);
-  if (!Number.isNaN(combined.getTime())) {
-    return combined;
+  const dateMatch = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const timeMatch = (timeValue || '00:00').match(/^(\d{1,2}):(\d{2})$/);
+
+  if (dateMatch) {
+    const [, yearText, monthText, dayText] = dateMatch;
+    const hours = timeMatch ? Number.parseInt(timeMatch[1], 10) : 0;
+    const minutes = timeMatch ? Number.parseInt(timeMatch[2], 10) : 0;
+
+    return new Date(
+      Date.UTC(
+        Number.parseInt(yearText, 10),
+        Number.parseInt(monthText, 10) - 1,
+        Number.parseInt(dayText, 10),
+        hours,
+        minutes
+      )
+    );
   }
 
   const date = new Date(dateValue);
@@ -51,11 +70,11 @@ function toSortDate(dateValue: string, timeValue: string) {
 }
 
 function isTeknikEntryRecord(entry: LogbookEntryRecord): entry is TeknikEntryRecord {
-  return 'equipment' in entry;
+  return 'equipment' in entry && 'incident' in entry;
 }
 
 function isTowerOrAppEntryRecord(entry: LogbookEntryRecord): entry is TowerOrAppEntryRecord {
-  return 'operationType' in entry;
+  return 'operationType' in entry && 'facility' in entry;
 }
 
 export function toUnifiedLogbookEntry(
@@ -66,18 +85,18 @@ export function toUnifiedLogbookEntry(
     return {
       id: entry.id,
       category,
-      entryNo: entry.entryNo,
-      entryDate: entry.entryDate,
-      entryTime: entry.entryTime,
-      dateLabel: formatDate(entry.entryDate),
-      sortDate: toSortDate(entry.entryDate, entry.entryTime),
+      entryNo: entry.no,
+      entryDate: entry.date,
+      entryTime: entry.time,
+      dateLabel: formatDate(entry.date),
+      sortDate: toSortDate(entry.date, entry.time),
       title: entry.equipment,
-      subtitle: entry.frequencySection,
+      subtitle: entry.frequencyOrSection,
       description: entry.incident,
-      searchText: `${entry.equipment} ${entry.frequencySection} ${entry.incident}`.toLowerCase(),
+      searchText: `${entry.no} ${entry.date} ${entry.time} ${entry.equipment} ${entry.frequencyOrSection} ${entry.incident}`.toLowerCase(),
       detail: {
         equipment: entry.equipment,
-        frequencySection: entry.frequencySection,
+        frequencySection: entry.frequencyOrSection,
         incident: entry.incident,
       },
     };
@@ -90,16 +109,16 @@ export function toUnifiedLogbookEntry(
   return {
     id: entry.id,
     category,
-    entryNo: entry.entryNo,
-    entryDate: entry.entryDate,
-    entryTime: entry.entryTime,
-    dateLabel: formatDate(entry.entryDate),
-    sortDate: toSortDate(entry.entryDate, entry.entryTime),
+    entryNo: entry.no,
+    entryDate: entry.date,
+    entryTime: entry.time,
+    dateLabel: formatDate(entry.date),
+    sortDate: toSortDate(entry.date, entry.time),
     title: entry.operationType,
     subtitle: entry.facility,
     description: entry.description,
     searchText:
-      `${entry.operationType} ${entry.facility} ${entry.callSign} ${entry.description}`.toLowerCase(),
+      `${entry.no} ${entry.date} ${entry.time} ${entry.operationType} ${entry.facility} ${entry.callSign} ${entry.description}`.toLowerCase(),
     detail: {
       operationType: entry.operationType,
       facility: entry.facility,
@@ -109,16 +128,55 @@ export function toUnifiedLogbookEntry(
   };
 }
 
-export async function fetchLogbookEntries(category: LogbookCategory, limit = 500) {
-  const response = await apiFetch<LogbookListResponse>(`/logbook/entries?category=${category}&limit=${limit}`);
-  return response.data.map((entry) => toUnifiedLogbookEntry(category, entry));
+type FetchLogbookEntriesParams = {
+  category: LogbookCategory;
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  sort?: 'desc' | 'asc';
+  year?: number | null;
+  month?: number | null;
+};
+
+export async function fetchLogbookEntries({
+  category,
+  page = 1,
+  pageSize = 20,
+  search = '',
+  sort = 'desc',
+  year = null,
+  month = null,
+}: FetchLogbookEntriesParams): Promise<PaginatedLogbookEntries> {
+  const params = new URLSearchParams({
+    category,
+    page: String(page),
+    pageSize: String(pageSize),
+    sort,
+  });
+
+  if (search.trim()) {
+    params.set('search', search.trim());
+  }
+  if (year) {
+    params.set('year', String(year));
+  }
+  if (month) {
+    params.set('month', String(month));
+  }
+
+  const response = await apiFetch<LogbookListResponse>(`/logbook/entries?${params.toString()}`);
+
+  return {
+    entries: response.data.map((entry) => toUnifiedLogbookEntry(category, entry)),
+    meta: response.meta,
+  };
 }
 
 export async function fetchLogbookOverview() {
   const results = await Promise.all(
     LOGBOOK_CATEGORIES.map(async (category) => ({
       category,
-      entries: await fetchLogbookEntries(category, 200),
+      entries: (await fetchLogbookEntries({ category, page: 1, pageSize: 200 })).entries,
     }))
   );
 

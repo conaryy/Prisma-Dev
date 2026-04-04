@@ -41,4 +41,9 @@ return [
         'web2_url' => env('EXTERNAL_DNP_WEB2_URL', 'http://180.214.246.148'),
     ],
 
+    'whatsapp_api' => [
+        'service_url' => env('WHATSAPP_API_SERVICE_URL', 'http://127.0.0.1:5100'),
+        'internal_token' => env('WHATSAPP_BOT_INTERNAL_TOKEN'),
+    ],
+
 ];

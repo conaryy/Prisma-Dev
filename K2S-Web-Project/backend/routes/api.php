@@ -16,6 +16,8 @@ use App\Http\Controllers\Api\InstansiController;
 use App\Http\Controllers\Api\MonitoringController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ExternalDnpCapController;
+use App\Http\Controllers\Api\ExternalDnpExportDocumentController;
+use App\Http\Controllers\Api\ExternalDnpWhatsappController;
 use App\Http\Controllers\Api\SelfAssessmentResultController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\PersonilController;
@@ -148,6 +150,9 @@ Route::middleware('auth.api')->group(function () {
     Route::middleware('external-dnp-access')->group(function () {
         Route::get('external-dnp/cap', [ExternalDnpCapController::class, 'index']);
         Route::get('external-dnp/cap/sessions', [ExternalDnpCapController::class, 'sessions']);
+        Route::get('external-dnp/export-document/items', [ExternalDnpExportDocumentController::class, 'items']);
+        Route::post('external-dnp/export-document/generate', [ExternalDnpExportDocumentController::class, 'generate']);
+        Route::get('external-dnp/export-document/download', [ExternalDnpExportDocumentController::class, 'download']);
         Route::post('external-dnp/sync', [ExternalDnpCapController::class, 'sync']);
         Route::post('external-dnp/sync/init', [ExternalDnpCapController::class, 'syncInit']);
         Route::post('external-dnp/sync/start', [ExternalDnpCapController::class, 'syncStart']);
@@ -230,9 +235,20 @@ Route::middleware('auth.api')->group(function () {
         Route::apiResource('monitoring', MonitoringController::class)->only(['store', 'update', 'destroy']);
         Route::apiResource('findings', FindingController::class)->only(['store', 'update', 'destroy']);
         Route::apiResource('follow-ups', FollowUpController::class)->only(['store', 'update', 'destroy']);
+        Route::get('admin/whatsapp/options', [ExternalDnpWhatsappController::class, 'adminOptions']);
+        Route::get('admin/whatsapp/session', [ExternalDnpWhatsappController::class, 'adminSessionStatus']);
+        Route::post('admin/whatsapp/session/logout', [ExternalDnpWhatsappController::class, 'adminSessionLogout']);
+        Route::post('admin/whatsapp/session/new', [ExternalDnpWhatsappController::class, 'adminSessionNew']);
+        Route::post('admin/whatsapp/preview-batch', [ExternalDnpWhatsappController::class, 'adminPreviewBatch']);
+        Route::post('admin/whatsapp/send', [ExternalDnpWhatsappController::class, 'adminSend']);
+        Route::post('admin/whatsapp/send-batch', [ExternalDnpWhatsappController::class, 'adminSendBatch']);
 
         Route::post('follow-ups/{followUp}/history', [FollowUpHistoryController::class, 'store']);
         Route::post('follow-ups/{followUp}/evidence', [FollowUpEvidenceController::class, 'store']);
         Route::delete('follow-ups/{followUp}/evidence/{evidence}', [FollowUpEvidenceController::class, 'destroy']);
     });
+});
+
+Route::prefix('internal/whatsapp')->middleware('internal.api')->group(function () {
+    Route::get('external-dnp/temuan', [ExternalDnpWhatsappController::class, 'temuan']);
 });

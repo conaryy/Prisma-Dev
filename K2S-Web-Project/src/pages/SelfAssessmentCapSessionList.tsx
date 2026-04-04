@@ -3,6 +3,14 @@ import { ClipboardCheck, FolderOpen, Loader2, RefreshCw, Search } from 'lucide-r
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 import { toast } from '@/hooks/use-toast';
 import { formatDateRangeIndonesian } from '@/lib/date';
 import {
@@ -103,6 +111,7 @@ interface SelfAssessmentCapSessionListProps {
     error?: string | null;
     summary?: Record<string, unknown> | null;
   }>;
+  pageSize?: number;
 }
 
 export function SelfAssessmentCapSessionList({
@@ -117,9 +126,11 @@ export function SelfAssessmentCapSessionList({
   syncRun,
   syncStart,
   syncJobStatus,
+  pageSize,
 }: SelfAssessmentCapSessionListProps) {
   const navigate = useNavigate();
   const showInstansi = basePath === 'external-dnp';
+  const effectivePageSize = pageSize ?? (showInstansi ? 5 : 0);
   const [items, setItems] = useState<SessionItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -135,6 +146,7 @@ export function SelfAssessmentCapSessionList({
   const [activeSearch, setActiveSearch] = useState('');
   const [instansiFilter, setInstansiFilter] = useState(ALL_INSTANSI_OPTION);
   const [activeSessionInstansi, setActiveSessionInstansi] = useState<string>('');
+  const [page, setPage] = useState(1);
   const syncJobStorageKey = `k2s.externalDnp.syncJob.${scope}`;
 
   const extractInstansiName = (value: unknown): string => {
@@ -326,12 +338,37 @@ export function SelfAssessmentCapSessionList({
     return Array.from(grouped.values());
   }, [filteredItems]);
 
+  const totalPages =
+    effectivePageSize > 0
+      ? Math.max(1, Math.ceil(groupedItems.length / effectivePageSize))
+      : 1;
+
+  useEffect(() => {
+    setPage(1);
+  }, [month, year, instansiFilter, activeSearch, effectivePageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const paginatedItems = useMemo(() => {
+    if (effectivePageSize <= 0) {
+      return groupedItems;
+    }
+
+    const start = (page - 1) * effectivePageSize;
+    return groupedItems.slice(start, start + effectivePageSize);
+  }, [effectivePageSize, groupedItems, page]);
+
   const resetFilters = () => {
     setMonth(MONTH_OPTIONS[0].value);
     setYear(YEAR_OPTIONS[0]);
     setInstansiFilter(ALL_INSTANSI_OPTION);
     setSearchText('');
     setActiveSearch('');
+    setPage(1);
   };
 
   const handleSync = async () => {
@@ -739,9 +776,13 @@ export function SelfAssessmentCapSessionList({
                       </TableCell>
                     </TableRow>
                   ) : (
-                    groupedItems.map((item, index) => (
+                    paginatedItems.map((item, index) => (
                       <TableRow key={item.key}>
-                        <TableCell className="text-center text-sm">{index + 1}</TableCell>
+                        <TableCell className="text-center text-sm">
+                          {effectivePageSize > 0
+                            ? (page - 1) * effectivePageSize + index + 1
+                            : index + 1}
+                        </TableCell>
                         {showInstansi && (
                           <TableCell className="text-center text-sm text-slate-600">
                             {item.instansiName || '-'}
@@ -796,6 +837,56 @@ export function SelfAssessmentCapSessionList({
                 </TableBody>
               </Table>
             </div>
+            {effectivePageSize > 0 && groupedItems.length > 0 && (
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-slate-500">
+                  Menampilkan {(page - 1) * effectivePageSize + 1}-
+                  {Math.min(page * effectivePageSize, groupedItems.length)} dari {groupedItems.length} data
+                </div>
+                <Pagination className="justify-end">
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (page > 1) {
+                            setPage(page - 1);
+                          }
+                        }}
+                        className={page <= 1 ? 'pointer-events-none opacity-50' : ''}
+                      />
+                    </PaginationItem>
+                    {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+                      <PaginationItem key={pageNumber}>
+                        <PaginationLink
+                          href="#"
+                          isActive={pageNumber === page}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setPage(pageNumber);
+                          }}
+                        >
+                          {pageNumber}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ))}
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (page < totalPages) {
+                            setPage(page + 1);
+                          }
+                        }}
+                        className={page >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            )}
           </div>
         </div>
       </section>

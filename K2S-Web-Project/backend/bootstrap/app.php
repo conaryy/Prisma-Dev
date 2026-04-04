@@ -22,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth.api' => \App\Http\Middleware\AuthenticateApiRequest::class,
             'admin' => \App\Http\Middleware\EnsureAdmin::class,
             'external-dnp-access' => \App\Http\Middleware\EnsureExternalDnpAccess::class,
+            'internal.api' => \App\Http\Middleware\EnsureInternalApiToken::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

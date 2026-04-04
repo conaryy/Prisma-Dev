@@ -13,7 +13,11 @@ export default function RekapLogbook() {
   const normalizedCategory = (category ?? '').toLowerCase();
   const activeCategory = (isLogbookCategory(normalizedCategory) ? normalizedCategory : null) as LogbookCategory | null;
   const categoryName = getCategoryLabel(activeCategory ?? category);
-  const { entries, isLoading, error } = useLogbookEntries(activeCategory, 1000);
+  const { entries, isLoading, error } = useLogbookEntries({
+    category: activeCategory,
+    page: 1,
+    pageSize: 100,
+  });
 
   const periodStart = useMemo(() => getPeriodStart(selectedPeriod), [selectedPeriod]);
   const filteredEntries = useMemo(
