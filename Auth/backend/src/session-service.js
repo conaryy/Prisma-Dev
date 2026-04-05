@@ -32,8 +32,11 @@ export async function getClientById(clientId) {
   if (!client) {
     return null;
   }
+  const isPublicClient = config.publicClientIds.includes(String(client.id || '').trim());
   return {
     ...client,
+    isPublicClient,
+    tokenEndpointAuthMethod: isPublicClient ? 'none' : 'client_secret_post',
     redirectUris: parseJson(client.redirect_uris_json, []),
     postLogoutRedirectUris: parseJson(client.post_logout_redirect_uris_json, []),
     grantTypes: parseJson(client.grant_types_json, []),
@@ -155,7 +158,7 @@ export async function resolvePostLogoutRedirect(req) {
 
   return sanitizeRedirectTarget(requested, null, {
     allowRelative: false,
-    allowedPaths: ['/login', '/portal-admin'],
+    allowedPaths: ['/login', '/portal-admin', '/portal-user', '/profile', '/dashboard'],
   });
 }
 

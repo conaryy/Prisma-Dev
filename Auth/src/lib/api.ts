@@ -1,6 +1,17 @@
+function getDefaultApiBaseUrl() {
+  if (typeof window !== 'undefined') {
+    const { hostname } = window.location;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:3104';
+    }
+  }
+
+  return 'https://authapi.ryvidia.my.id';
+}
+
 const API_BASE_URL =
   (import.meta as { env?: Record<string, string> }).env?.VITE_API_BASE_URL ??
-  'http://localhost:8000';
+  getDefaultApiBaseUrl();
 
 const TOKEN_KEY = 'auth.portal.token';
 const USER_KEY = 'auth.portal.user';

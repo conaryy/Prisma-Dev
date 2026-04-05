@@ -2,34 +2,18 @@
 
 Website K3 ini sekarang memakai:
 
-- `NestJS` sebagai backend API.
-- `PostgreSQL + Prisma` untuk penyimpanan dokumen audit dan hasil analisis.
-- `React + TypeScript + Vite` sebagai frontend.
-- Tanpa login.
-- Tiga halaman utama: `Dashboard`, `Upload Dokumen`, dan `Checklist Audit`.
-- Dokumen Word utama diupload dari menu khusus, lalu `Checklist Audit` memilih dokumen yang ingin dipakai.
+- `NestJS` sebagai backend API
+- `PostgreSQL + Prisma` untuk penyimpanan dokumen audit dan hasil analisis
+- `React + TypeScript + Vite` sebagai frontend
+- SSO pusat untuk login aplikasi
+- integrasi Google Drive OAuth untuk flow dokumen tertentu
 
 ## Struktur utama
 
-- `backend/` backend NestJS.
-- `backend/prisma/schema.prisma` schema PostgreSQL untuk dokumen audit K3.
-- `backend/src/` source utama backend.
-- `backend/src/checklist-audit.service.ts` parser Word dan kalkulasi audit.
-- `frontend/` aplikasi React TypeScript.
-- `frontend/src/pages/UploadDocumentsPage.tsx` halaman upload dan daftar dokumen audit tersimpan.
-- `frontend/src/pages/DashboardPage.tsx` halaman dashboard.
-- `frontend/src/pages/ChecklistAuditPage.tsx` halaman checklist yang memilih dokumen audit tersimpan.
-- `backend/uploads/documents/` penyimpanan file Word audit yang diupload.
-- `backend/uploads/checklist-evidence/` penyimpanan file evidence per pertanyaan.
-
-## Catatan parser
-
-- File `.docx` dibaca dengan `mammoth`.
-- File `.doc` dibaca lewat ekstraksi teks berbasis `strings` karena template audit yang diberikan masih Word 97-2003.
-- Rumus penerapan saat ini: `V / (total kriteria - X) x 100%`.
-- Hasil analisis sekarang disimpan per dokumen di PostgreSQL, jadi tidak hilang saat backend restart.
-- File Word audit utama disimpan ke folder lokal `backend/uploads/documents`.
-- File evidence per pertanyaan disimpan ke folder lokal `backend/uploads/checklist-evidence`.
+- `backend/` backend NestJS
+- `backend/prisma/schema.prisma` schema PostgreSQL
+- `backend/src/` source utama backend
+- `frontend/` aplikasi React TypeScript
 
 ## Menjalankan saat development
 
@@ -51,9 +35,6 @@ npm install
 npm run dev
 ```
 
-Akses frontend di `http://localhost:5173`.
-API backend berjalan di `http://localhost:3000`.
-
 ## Build production
 
 Dari folder `K3/backend`:
@@ -64,10 +45,21 @@ npm run build
 
 Perintah ini akan build frontend React lalu build backend NestJS.
 
-Jika frontend sudah dibuild, backend NestJS akan melayani file React hasil build dari `../frontend/dist`.
+## Catatan Deploy Penting
+
+- Frontend production K3 sekarang harus memakai `VITE_SSO_*` dari deploy env, bukan fallback `.env` localhost.
+- OAuth client `k3-web` di auth backend harus sinkron dengan:
+  - `AUTH_K3_CLIENT_SECRET`
+  - `AUTH_K3_REDIRECT_URI`
+- Redirect URI Google Drive harus sinkron dengan:
+  - `GOOGLE_REDIRECT_URI=https://apik3.ryvidia.my.id/api/google-drive/callback`
+- URI tersebut juga harus didaftarkan di Google Cloud Console pada `Authorized redirect URIs`.
 
 ## Flow penggunaan
 
-1. Buka menu `Upload Dokumen` dan upload file Word audit.
-2. Dokumen tersimpan di PostgreSQL dan muncul di daftar dokumen.
-3. Buka menu `Checklist Audit`, lalu pilih dokumen yang ingin dipakai dari selector di panel atas.
+1. Login via auth pusat.
+2. Akses dashboard K3.
+3. Upload dokumen audit.
+4. Pilih dokumen di checklist audit.
+5. Tambah/hapus evidence.
+6. Jika memakai Google Drive, verifikasi OAuth callback tidak `redirect_uri_mismatch`.

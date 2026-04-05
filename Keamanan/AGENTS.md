@@ -1,11 +1,13 @@
 # AGENTS.md
 
 ## Project Overview
-- Folder `Keamanan` sekarang berisi service dashboard keamanan dengan dua aplikasi:
-  - `backend`: NestJS API + Prisma + PostgreSQL untuk menyajikan data dashboard dan fallback static serving frontend build.
-  - `frontend`: React + TypeScript + Vite untuk dashboard keamanan.
-- Service ini masih standalone dan belum terhubung ke `docker-compose.central.yml` atau gateway pusat.
-- Data `Personil Keamanan` sekarang dipersist ke PostgreSQL, sedangkan section dashboard lain masih memakai data contoh dari backend.
+- Folder `Keamanan` berisi service dashboard keamanan dengan dua aplikasi:
+  - `backend`: NestJS API + Prisma + PostgreSQL
+  - `frontend`: React + TypeScript + Vite
+- Status terkini:
+  - service ini sudah ikut `docker-compose.central.yml`
+  - domain deploy aktif memakai `keamanan.ryvidia.my.id` dan `apikeamanan.ryvidia.my.id`
+- Data `Personil Keamanan` dipersist ke PostgreSQL; section lain masih banyak memakai data contoh.
 
 ## Build And Test Commands
 - Backend:
@@ -22,25 +24,22 @@
   - `npm run build`
 
 ## Code Style Guidelines
-- Backend mengikuti pola NestJS sederhana seperti service lain di repo:
+- Backend mengikuti pola NestJS sederhana:
   - controller tipis
-  - service menyimpan logika dan source data
-  - `main.ts` mengatur CORS dan static serving bila diperlukan
+  - service menyimpan logika
+  - `main.ts` mengatur CORS/static serving
 - Frontend mengikuti pola React function component + CSS lokal.
-- Hindari menambah dependency UI besar bila belum perlu; dashboard saat ini sengaja dibuat ringan tanpa component library eksternal.
+- Jika perubahan menyentuh deploy production, perhatikan bahwa frontend build disajikan lewat backend/gateway pusat, bukan hanya dev local.
 
 ## Testing Instructions
 - Minimum check:
   - `cd Keamanan/backend && npm run prisma:push`
   - `cd Keamanan/backend && npm run build`
   - `cd Keamanan/frontend && npm run build`
-  - jalankan backend dan frontend dev lalu pastikan `GET /api/health` dan `GET /api/dashboard` merespons
-  - verifikasi `POST /api/personnel` menyimpan data baru ke PostgreSQL
-  - buka dashboard dan cek sidebar, hero, kartu KPI, chart, dan tabel section tampil
-  - verifikasi fallback static build bila frontend sudah dibuild lalu backend dijalankan sendiri
+  - verifikasi `GET /api/health` dan `GET /api/dashboard`
+  - verifikasi dashboard tampil lewat domain production
 
 ## Security Considerations
-- Service ini belum memiliki auth/login; jangan expose ke internet publik tanpa lapisan auth/proxy/rate limiting tambahan.
-- Jangan tambahkan secret langsung ke source code. Gunakan `.env.example` sebagai template.
-- User PostgreSQL untuk development saat ini bisa memakai role terbatas; bila `prisma migrate dev` gagal karena shadow database, gunakan `prisma db push` atau siapkan `shadowDatabaseUrl` terpisah.
+- Service ini sekarang sudah terbuka lewat gateway pusat, jadi jangan perlakukan lagi sebagai service local-only.
+- Jangan tambahkan secret langsung ke source code.
 - Jika nanti data dashboard diambil dari sumber nyata, validasi input query/filter dan perketat CORS sesuai origin resmi.

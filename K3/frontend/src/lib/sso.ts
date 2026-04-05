@@ -28,7 +28,19 @@ async function sha256Base64Url(input: string) {
 }
 
 function getAuthBaseUrl() {
-  return (env().VITE_SSO_AUTH_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+  const configured = env().VITE_SSO_AUTH_BASE_URL;
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+
+  if (typeof window !== 'undefined') {
+    const { hostname } = window.location;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:3104';
+    }
+  }
+
+  return 'https://authapi.ryvidia.my.id';
 }
 
 function getAuthorizeUrl() {
@@ -45,10 +57,6 @@ function getLogoutUrl() {
 
 function getClientId() {
   return env().VITE_SSO_CLIENT_ID || 'k3-web';
-}
-
-function getClientSecret() {
-  return env().VITE_SSO_CLIENT_SECRET || 'dev-secret-k3';
 }
 
 function getScope() {
@@ -160,7 +168,6 @@ export async function exchangeAuthorizationCode(code: string, verifier: string) 
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     client_id: getClientId(),
-    client_secret: getClientSecret(),
     code,
     redirect_uri: getRedirectUri(),
     code_verifier: verifier,
@@ -173,7 +180,6 @@ export async function refreshAccessToken(refreshToken: string) {
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
     client_id: getClientId(),
-    client_secret: getClientSecret(),
     refresh_token: refreshToken,
   });
 

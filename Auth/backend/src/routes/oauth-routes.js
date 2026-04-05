@@ -117,8 +117,16 @@ export function createOauthRouter(deps = {}) {
       const { clientId, clientSecret } = services.extractClientCredentials(req);
       const client = await services.getClientById(clientId);
 
-      if (!client || client.client_secret !== clientSecret) {
+      if (!client) {
         res.status(401).json({ error: 'invalid_client' });
+        return;
+      }
+      if (!client.isPublicClient && client.client_secret !== clientSecret) {
+        res.status(401).json({ error: 'invalid_client' });
+        return;
+      }
+      if (client.isPublicClient && clientSecret) {
+        res.status(400).json({ error: 'invalid_request', message: 'Public PKCE clients must not send client_secret' });
         return;
       }
 

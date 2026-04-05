@@ -46,9 +46,9 @@ function getPgConfig() {
 
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
-  port: toInt(process.env.AUTH_PORT, 4000),
-  baseUrl: process.env.AUTH_BASE_URL || `http://localhost:${toInt(process.env.AUTH_PORT, 4000)}`,
-  issuer: process.env.AUTH_ISSUER || process.env.AUTH_BASE_URL || `http://localhost:${toInt(process.env.AUTH_PORT, 4000)}`,
+  port: toInt(process.env.AUTH_PORT, 3104),
+  baseUrl: process.env.AUTH_BASE_URL || `http://localhost:${toInt(process.env.AUTH_PORT, 3104)}`,
+  issuer: process.env.AUTH_ISSUER || process.env.AUTH_BASE_URL || `http://localhost:${toInt(process.env.AUTH_PORT, 3104)}`,
   audience: process.env.AUTH_AUDIENCE || 'k2s-platform',
   loginUiUrl: process.env.AUTH_LOGIN_UI_URL || 'http://localhost:5174/login',
   isSecureCookies: toBoolean(
@@ -56,7 +56,12 @@ export const config = {
     String(process.env.AUTH_BASE_URL || '').startsWith('https://')
   ),
   pg: getPgConfig(),
-  jwkPath: path.join(dataDir, 'jwks-private.json'),
+  jwkJson: String(process.env.AUTH_JWK_JSON || '').trim() || null,
+  jwkPath: String(process.env.AUTH_JWK_PATH || '').trim() || path.join(dataDir, 'jwks-private.json'),
+  allowEphemeralJwk: toBoolean(
+    process.env.AUTH_ALLOW_EPHEMERAL_JWK,
+    (process.env.NODE_ENV || 'development') !== 'production'
+  ),
   defaultClient: {
     clientId: process.env.AUTH_DEFAULT_CLIENT_ID || 'k2s-web',
     clientSecret: process.env.AUTH_DEFAULT_CLIENT_SECRET || 'dev-secret-k2s',
@@ -84,6 +89,7 @@ export const config = {
     postLogoutRedirectUri:
       process.env.AUTH_K3_POST_LOGOUT_URI || 'http://localhost:5176/',
   },
+  publicClientIds: toList(process.env.AUTH_PUBLIC_CLIENT_IDS || 'k2s-web,logbook-web,k3-web'),
   allowedOrigins: toList(process.env.AUTH_ALLOWED_ORIGINS),
   sessionCookieName: process.env.AUTH_SESSION_COOKIE_NAME || 'auth_sid',
   sessionTtlSeconds: toInt(process.env.AUTH_SESSION_TTL_SECONDS, 8 * 60 * 60),

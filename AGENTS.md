@@ -2,26 +2,32 @@
 
 ## Project Overview
 - Repo ini adalah monorepo multi-service untuk platform Prisma Dev.
-- Service utama:
-  - `K2S-Web-Project`: frontend React/Vite, backend Laravel 12, Python wrapper untuk integrasi DNP eksternal, dan service Python `whatsapp_api` untuk bridge WAHA/WhatsApp.
-  - `Auth`: portal login React/Vite dan service auth Express/OIDC sederhana untuk tahap pemisahan auth/SSO.
-  - `Logbook`: frontend React/Vite dan backend NestJS + Prisma/PostgreSQL dengan validasi token SSO via JWKS.
-  - `K3`: backend NestJS + frontend React/Vite untuk dashboard dan checklist audit K3 tanpa login.
-  - `Keamanan`: masih placeholder, belum terlihat service aktif selain penanda folder.
+- Service utama yang sekarang aktif di jalur deploy pusat:
+  - `K2S-Web-Project`: frontend React/Vite, backend Laravel 12, Python wrapper DNP, dan service Python `whatsapp_api` untuk bridge WAHA/WhatsApp.
+  - `Auth`: portal login React/Vite dan auth service Express/OIDC sederhana.
+  - `Logbook`: frontend React/Vite dan backend NestJS + Prisma/PostgreSQL dengan validasi JWT via JWKS.
+  - `K3`: backend NestJS + frontend React/Vite untuk dashboard/checklist audit, sekarang sudah ikut flow SSO pusat dan integrasi Google Drive OAuth.
+  - `Keamanan`: backend NestJS + frontend React/Vite, sudah ikut `docker-compose.central.yml`.
 - Folder non-runtime:
-  - `legacy_file`: arsip untuk backup, artefak migrasi, dan file lama yang tidak lagi dipakai jalur aktif.
+  - `legacy_file`: arsip file lama/nonaktif.
+  - `folder_referensi`: bahan acuan, bukan source of truth runtime.
 - Orkestrasi container terpusat ada di `docker-compose.central.yml`.
 - Gateway reverse proxy terpusat ada di `deploy/nginx/gateway.conf`.
-- Profile opsional di compose pusat:
-  - `logbook`: menyalakan stack Logbook.
-  - `sso-local`: menyalakan Keycloak lokal untuk uji SSO.
+- Domain publik yang sedang dipakai:
+  - `auth.ryvidia.my.id` dan `authapi.ryvidia.my.id`
+  - `k2s.ryvidia.my.id` dan `apik2s.ryvidia.my.id`
+  - `logbook.ryvidia.my.id` dan `apilogbook.ryvidia.my.id`
+  - `k3.ryvidia.my.id` dan `apik3.ryvidia.my.id`
+  - `keamanan.ryvidia.my.id` dan `apikeamanan.ryvidia.my.id`
 
 ## Build And Test Commands
 - Central Docker:
   - `cp .env.central.example .env.central`
   - `docker compose --env-file .env.central -f docker-compose.central.yml up -d --build`
-  - `docker compose --env-file .env.central -f docker-compose.central.yml --profile logbook up -d --build`
-  - `docker compose --env-file .env.central -f docker-compose.central.yml --profile sso-local up -d --build`
+  - untuk restart bersih tanpa menghapus volume DB:
+    - `docker compose --env-file .env.central -f docker-compose.central.yml down`
+    - `docker compose --env-file .env.central -f docker-compose.central.yml up -d --build`
+  - hindari `down -v` kecuali memang ingin menghapus data database.
 - `Auth` frontend:
   - `cd Auth && npm install && npm run dev`
   - `cd Auth && npm run build`
@@ -46,9 +52,9 @@
   - `cd K2S-Web-Project/backend/whatsapp_api && pip install -r requirements.txt`
   - `python app.py`
 - `K3`:
-  - `cd K3 && npm install && npm run start:dev`
+  - `cd K3/backend && npm install && npm run start:dev`
   - `cd K3/frontend && npm install && npm run dev`
-  - `cd K3 && npm run build`
+  - `cd K3/backend && npm run build`
 - `Logbook/backend`:
   - `cd Logbook/backend && cp .env.example .env && npm install`
   - `npm run start:dev`
@@ -60,62 +66,57 @@
   - `npm run build`
 
 ## Code Style Guidelines
-- Ikuti gaya yang sudah ada per service, jangan paksa standard baru lintas stack.
+- Ikuti gaya yang sudah ada per service; jangan paksa standard lintas stack.
 - Frontend React/TypeScript:
   - gunakan function component, import ESM, dan strict TypeScript bila sudah aktif.
-  - pertahankan alias/import pattern yang sudah ada, misalnya `@/` pada `Auth` dan `K2S-Web-Project`.
-  - styling dominan memakai Tailwind/CSS lokal; perubahan visual sebaiknya konsisten dengan pola file yang sedang disentuh.
+  - pertahankan alias/import pattern yang sudah ada, misalnya `@/`.
+  - bila service memakai `.env` frontend untuk dev lokal, jangan anggap file itu aman untuk build production; build production sekarang lebih banyak dipaksa dari `docker-compose.central.yml`.
 - Backend Node/Nest/Express:
-  - pertahankan modul kecil dan utilitas terpisah seperti di `Auth/backend/src`.
-  - validasi input dan normalisasi data dilakukan dekat boundary request.
+  - pertahankan modul kecil dan boundary jelas.
+  - validasi input dan normalisasi data dilakukan dekat request boundary.
 - Backend Laravel:
   - ikuti konvensi Laravel 12, controller tipis, route API eksplisit, middleware untuk auth/role/signed URL.
-  - untuk perubahan PHP, jaga kompatibilitas dengan flow migrasi, queue, file storage, dan integrasi internal HTTP ke wrapper Python.
-- Python wrapper:
-  - perubahan harus hati-hati karena service ini menjadi jembatan ke sistem eksternal.
-  - di K2S sekarang ada dua service Python terpisah: `wrapping` untuk DNP dan `whatsapp_api` untuk WAHA.
+- Python services:
+  - `wrapping` dan `whatsapp_api` punya responsibility berbeda; jangan dicampur.
 - Hindari mengubah `.env`, kredensial, atau file hasil build kecuali memang diminta.
 
 ## Testing Instructions
-- Coverage test otomatis belum merata di seluruh repo.
+- Coverage test otomatis belum merata.
 - Minimum verification per perubahan:
-  - frontend Vite: jalankan `npm run build`; untuk `K2S-Web-Project` tambahkan `npm run lint` dan `npm run typecheck`.
-- `K2S-Web-Project/backend`: jalankan `composer test` bila perubahan menyentuh Laravel/PHP.
-  - `K2S-Web-Project/backend/whatsapp_api`: minimum `python3 -m py_compile app.py`; bila menyentuh webhook/session WAHA, lakukan smoke test manual `POST /` atau `POST /webhook/waha` dan kirim satu pesan uji.
-  - untuk menu admin `WhatsApp API`, perhatikan bahwa `send-batch` sekarang masuk queue Laravel; verifikasi worker aktif dan uji preview pesan bila format kirim berubah.
-  - `Logbook/backend`: jalankan `npm run build` dan, bila menyentuh Prisma, `npm run prisma:generate`.
-  - `Auth/backend`: jalankan `npm test`; lanjutkan smoke test `npm run dev` untuk `GET /health`, login admin dev, dan endpoint auth/OIDC terkait.
-  - `K3`: tidak tampak suite test formal; verifikasi dengan `npm run build`, upload dokumen audit contoh, dan cek upload evidence.
+  - frontend Vite: `npm run build`
+  - `K2S-Web-Project`: tambah `npm run lint` dan `npm run typecheck`
+  - `K2S-Web-Project/backend`: `composer test` bila perubahan menyentuh Laravel
+  - `K2S-Web-Project/backend/whatsapp_api`: minimum `python3 -m py_compile app.py`
+  - `Logbook/backend`: `npm run build` dan, bila menyentuh Prisma, `npm run prisma:generate`
+  - `Auth/backend`: `npm test`
+  - `K3`: `cd K3/backend && npm run build`
 - Saat memakai Docker central, verifikasi health dasar:
-  - Auth portal terbuka.
-  - K2S frontend terbuka.
-  - API backend K2S merespons.
-  - profile opsional (`logbook`, `sso-local`) hanya diuji jika service itu ikut dijalankan.
+  - auth portal terbuka
+  - OIDC discovery `/.well-known/openid-configuration` hidup
+  - `k2s`, `logbook`, `k3`, `keamanan` frontend terbuka
+  - API terkait merespons lewat gateway
+- Setelah recreate frontend/backend container yang menjadi upstream Nginx, restart `gateway` agar resolusi DNS upstream di Nginx segar lagi.
 
 ## Security Considerations
-- Repo memuat beberapa file `.env` lokal yang berpotensi berisi rahasia; jangan disalin ke dokumentasi atau commit rahasia baru.
+- Repo memuat beberapa file `.env` lokal yang berpotensi berisi rahasia; jangan disalin ke dokumentasi.
 - Ganti seluruh kredensial default sebelum deploy:
-  - MySQL/Postgres password di `.env.central`.
-  - Keycloak bootstrap admin default.
-  - dev admin `Auth/backend`.
-  - client secret default OIDC di `Auth/backend`.
-- `Auth/backend` sudah PostgreSQL-only dan punya rate limiting ringan + validation layer internal; jaga konfigurasi `AUTH_SESSION_COOKIE_SECURE` dan `AUTH_RATE_LIMIT_*` sesuai environment.
-- `Auth/backend/data/jwks-private.json` disebut sebagai private key lokal; file private key tidak boleh masuk repo production.
-- K2S dan Logbook bergantung pada konfigurasi CORS, issuer, audience, dan JWKS. Salah konfigurasi bisa membuka akses lintas origin atau membuat validasi token salah.
-- Laravel memakai signed routes untuk download tertentu; pertahankan middleware `signed`/`signed:relative` saat mengubah route file/download.
-- Upload file ada di K2S backend dan K3. Validasi ukuran, tipe file, dan akses file publik harus dipertahankan.
-- `K2S-Web-Project/backend/whatsapp_api` memakai token internal bersama dengan Laravel dan berbicara ke WAHA; jaga `WHATSAPP_BOT_INTERNAL_TOKEN`, URL WAHA, session name, dan webhook path tetap sinkron.
-- Batch kirim WhatsApp admin sekarang diproses asynchronous oleh queue Laravel; untuk banyak nomor, worker memberi delay acak 5-15 detik antar nomor.
-- `K3` saat ini tidak punya auth dan menyimpan state/evidence lokal; jangan anggap service ini aman untuk internet publik tanpa hardening tambahan.
-- `folder_referensi` adalah bahan referensi, bukan service production.
-- `legacy_file` adalah area arsip; jangan deploy, jangan pakai sebagai source of truth, dan perlakukan isinya sebagai data yang bisa tetap sensitif.
+  - MySQL/Postgres password di `.env.central`
+  - dev admin `Auth/backend`
+  - client secret OIDC dan Google OAuth
+- `Auth/backend/data/jwks-private.json` adalah private key lokal; file private key tidak boleh masuk repo production.
+- K2S, Logbook, dan K3 sekarang bergantung pada konfigurasi issuer, audience, redirect URI, dan JWKS yang sinkron.
+- Build frontend `K3` dan `Logbook` production sekarang sensitif terhadap `.env` lokal dev; pastikan build deploy memakai value dari compose/env production, bukan fallback localhost.
+- Laravel memakai signed routes untuk download tertentu; pertahankan middleware `signed`/`signed:relative`.
+- `K2S-Web-Project/backend/whatsapp_api` memakai token internal dan berbicara ke WAHA; jaga `WHATSAPP_BOT_INTERNAL_TOKEN`, `WAHA_API_BASE_URL`, `WAHA_API_KEY`, dan session name tetap sinkron.
+- `K3` memakai Google OAuth untuk Drive; `GOOGLE_REDIRECT_URI` di env deploy harus cocok persis dengan `Authorized redirect URIs` di Google Cloud Console.
+- `legacy_file` dan `folder_referensi` bukan source of truth runtime.
 
 ## Folder Guides
 - Lihat `Auth/AGENTS.md` untuk portal auth dan auth backend.
 - Lihat `K2S-Web-Project/AGENTS.md` untuk frontend K2S, backend Laravel, wrapper DNP, dan `whatsapp_api`.
 - Lihat `K3/AGENTS.md` untuk dashboard/checklist audit K3.
 - Lihat `Logbook/AGENTS.md` untuk service logbook.
-- Lihat `Keamanan/AGENTS.md` untuk status folder keamanan.
+- Lihat `Keamanan/AGENTS.md` untuk dashboard keamanan.
 - Lihat `deploy/AGENTS.md` untuk gateway/infrastruktur.
 - Lihat `folder_referensi/AGENTS.md` untuk folder referensi/non-production.
 - Lihat `legacy_file/AGENTS.md` untuk aturan arsip legacy/non-runtime.

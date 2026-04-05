@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { RequireAuth } from '@/components/auth/RequireAuth';
 import { RequireAdmin } from '@/components/auth/RequireAdmin';
@@ -260,25 +260,16 @@ const AdminDashboard = lazy(() =>
     default: module.AdminDashboard,
   }))
 );
+const AdminUserManagement = lazy(() =>
+  import('@/pages/admin/UserManagement').then((module) => ({
+    default: module.UserManagement,
+  }))
+);
 const AdminSelfAssessment = lazy(() =>
   import('@/pages/admin/SelfAssessmentQuestions').then((module) => ({
     default: module.SelfAssessmentQuestions,
   }))
 );
-
-function getAuthPortalUsersUrl() {
-  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
-  const base = (env.VITE_AUTH_PORTAL_URL || 'http://localhost:5174').replace(/\/+$/, '');
-  return `${base}/portal-admin/users`;
-}
-
-function ExternalAuthUserManagementRedirect() {
-  useEffect(() => {
-    window.location.replace(getAuthPortalUsersUrl());
-  }, []);
-
-  return null;
-}
 const AdminSelfAssessmentSessions = lazy(() =>
   import('@/pages/admin/SelfAssessmentSessions').then((module) => ({
     default: module.SelfAssessmentSessions,
@@ -359,7 +350,7 @@ function App() {
             path="admin/users"
             element={
               <RequireAdmin>
-                <ExternalAuthUserManagementRedirect />
+                <AdminUserManagement />
               </RequireAdmin>
             }
           />

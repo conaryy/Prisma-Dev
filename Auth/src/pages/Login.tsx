@@ -25,9 +25,14 @@ export function Login() {
     typeof window === 'undefined'
       ? '/portal-admin'
       : `${window.location.origin}/portal-admin`;
+  const defaultSsoBaseUrl =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://localhost:3104'
+      : 'https://authapi.ryvidia.my.id';
   const ssoBaseUrl =
     ((import.meta as { env?: Record<string, string> }).env?.VITE_SSO_AUTH_BASE_URL ??
-      'http://localhost:4000')
+      defaultSsoBaseUrl)
       .replace(/\/+$/, '');
   const [form, setForm] = useState({
     email: '',
@@ -53,7 +58,7 @@ export function Login() {
           setAuthUser(response.data as Record<string, unknown>);
         }
         const role = response.data?.role;
-        navigate(role === 'Admin' ? '/portal-admin' : '/dashboard');
+        navigate(role === 'Admin' ? '/portal-admin' : '/portal-user');
       })
       .catch(() => {
         clearAuthToken();
@@ -192,7 +197,7 @@ export function Login() {
                 </div>
               </div>
               <p className="text-base text-slate-500 dark:text-slate-300">
-                Masuk untuk melanjutkan pemantauan dan inspeksi K3.
+                Masuk untuk membuka portal pengguna atau portal admin Prisma sesuai akses akun Anda.
               </p>
             </div>
 

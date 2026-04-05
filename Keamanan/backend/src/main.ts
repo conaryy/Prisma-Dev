@@ -22,7 +22,7 @@ async function bootstrap() {
     });
   }
 
-  const port = Number(process.env.PORT || 3000);
+  const port = Number(process.env.PORT || 3107);
   await app.listen(port);
 }
 

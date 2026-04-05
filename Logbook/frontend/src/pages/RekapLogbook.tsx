@@ -34,10 +34,13 @@ export default function RekapLogbook() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Rekap Logbook - {categoryName}</h1>
-          <p className="text-gray-400">Ringkasan data logbook berdasarkan hasil import dan periode terpilih</p>
+          <h1 className="theme-page-title mb-2 text-3xl font-bold">Rekap Logbook - {categoryName}</h1>
+          <p className="theme-page-subtitle">Ringkasan data logbook berdasarkan hasil import dan periode terpilih</p>
         </div>
-        <button className="px-6 py-3 bg-white/5 border border-violet-300/25 rounded-lg text-white font-medium opacity-70 flex items-center gap-2 justify-center cursor-not-allowed">
+        <button
+          className="theme-soft-panel flex cursor-not-allowed items-center justify-center gap-2 rounded-lg px-6 py-3 font-medium opacity-70"
+          style={{ color: 'var(--text-secondary)' }}
+        >
           <Download className="w-5 h-5" />
           Export Menyusul
         </button>
@@ -50,9 +53,10 @@ export default function RekapLogbook() {
             onClick={() => setSelectedPeriod(period)}
             className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 whitespace-nowrap ${
               selectedPeriod === period
-                ? 'bg-purple-500/80 border border-purple-400/50 text-white shadow-lg shadow-purple-500/20'
-                : 'bg-white/5 border border-violet-300/25 text-gray-300 hover:bg-white/10 hover:border-violet-300/40'
+                ? 'theme-primary-button shadow-lg'
+                : 'theme-soft-panel'
             }`}
+            style={selectedPeriod === period ? undefined : { color: 'var(--text-secondary)' }}
           >
             {period.charAt(0).toUpperCase() + period.slice(1)} Ini
           </button>
@@ -72,27 +76,27 @@ export default function RekapLogbook() {
       </div>
 
       <GlassCard className="p-6">
-        <h2 className="text-xl font-semibold text-white mb-6">Rekap Per Kategori Aktivitas</h2>
+        <h2 className="mb-6 text-xl font-semibold theme-page-title">Rekap Per Kategori Aktivitas</h2>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-violet-300/18">
-                <th className="px-4 py-3 text-left text-gray-400 font-medium">Kategori</th>
-                <th className="px-4 py-3 text-center text-gray-400 font-medium">Jumlah</th>
-                <th className="px-4 py-3 text-center text-gray-400 font-medium">Persentase</th>
-                <th className="px-4 py-3 text-left text-gray-400 font-medium">Distribusi</th>
+                <th className="px-4 py-3 text-left font-medium" style={{ color: 'var(--text-muted)' }}>Kategori</th>
+                <th className="px-4 py-3 text-center font-medium" style={{ color: 'var(--text-muted)' }}>Jumlah</th>
+                <th className="px-4 py-3 text-center font-medium" style={{ color: 'var(--text-muted)' }}>Persentase</th>
+                <th className="px-4 py-3 text-left font-medium" style={{ color: 'var(--text-muted)' }}>Distribusi</th>
               </tr>
             </thead>
             <tbody>
               {groupedData.map((item) => {
                 const percentage = totalLogbook > 0 ? Math.round((item.total / totalLogbook) * 100) : 0;
                 return (
-                  <tr key={item.label} className="border-b border-violet-300/10 hover:bg-white/5 transition-colors duration-200">
-                    <td className="px-4 py-4 text-white font-medium">{item.label}</td>
-                    <td className="px-4 py-4 text-center text-gray-300">{item.total}</td>
-                    <td className="px-4 py-4 text-center text-white font-semibold">{percentage}%</td>
+                  <tr key={item.label} className="theme-data-row transition-colors duration-200">
+                    <td className="px-4 py-4 font-medium theme-page-title">{item.label}</td>
+                    <td className="px-4 py-4 text-center" style={{ color: 'var(--text-secondary)' }}>{item.total}</td>
+                    <td className="px-4 py-4 text-center font-semibold theme-page-title">{percentage}%</td>
                     <td className="px-4 py-4">
-                      <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                      <div className="theme-progress-track h-2 w-full overflow-hidden rounded-full">
                         <div
                           className="h-full bg-gradient-to-r from-purple-500 to-purple-400 rounded-full transition-all duration-500"
                           style={{ width: `${percentage}%` }}
@@ -106,7 +110,7 @@ export default function RekapLogbook() {
           </table>
         </div>
         {!groupedData.length && (
-          <p className="mt-6 text-sm text-gray-400">
+          <p className="theme-page-subtitle mt-6 text-sm">
             {isLoading ? 'Memuat rekap logbook...' : error ?? 'Belum ada data pada periode yang dipilih.'}
           </p>
         )}
@@ -114,8 +118,8 @@ export default function RekapLogbook() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <GlassCard className="p-6">
-          <h2 className="text-xl font-semibold text-white mb-4">Catatan Rekap</h2>
-          <div className="space-y-4 text-sm text-gray-300">
+          <h2 className="mb-4 text-xl font-semibold theme-page-title">Catatan Rekap</h2>
+          <div className="space-y-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
             <p>Rekap dihitung dari entry yang sudah masuk ke database, bukan langsung dari file Excel arsip.</p>
             <p>Untuk kategori `{categoryName}`, grouping saat ini memakai judul utama entry seperti `operationType` atau `equipment`.</p>
             <p>Saat semantic search ditambahkan, rekap bisa diperluas menjadi grouping berbasis konteks, bukan hanya teks mentah.</p>
@@ -123,17 +127,17 @@ export default function RekapLogbook() {
         </GlassCard>
 
         <GlassCard className="p-6">
-          <h2 className="text-xl font-semibold text-white mb-4">Distribusi Periode</h2>
+          <h2 className="mb-4 text-xl font-semibold theme-page-title">Distribusi Periode</h2>
           <div className="space-y-6 pt-8">
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-gray-300 flex items-center gap-2">
+                <span className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
                   <Calendar className="w-5 h-5 text-cyan-400" />
                   Entry Periode Ini
                 </span>
-                <span className="text-white font-semibold">{totalLogbook}</span>
+                <span className="font-semibold theme-page-title">{totalLogbook}</span>
               </div>
-              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
+              <div className="theme-progress-track h-3 w-full overflow-hidden rounded-full">
                 <div
                   className="h-full bg-cyan-500 rounded-full transition-all duration-500"
                   style={{ width: `${entries.length > 0 ? (totalLogbook / entries.length) * 100 : 0}%` }}
@@ -143,13 +147,13 @@ export default function RekapLogbook() {
 
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-gray-300 flex items-center gap-2">
+                <span className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
                   <Clock className="w-5 h-5 text-yellow-400" />
                   Di Luar Periode
                 </span>
-                <span className="text-white font-semibold">{Math.max(entries.length - totalLogbook, 0)}</span>
+                <span className="font-semibold theme-page-title">{Math.max(entries.length - totalLogbook, 0)}</span>
               </div>
-              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
+              <div className="theme-progress-track h-3 w-full overflow-hidden rounded-full">
                 <div
                   className="h-full bg-yellow-500 rounded-full transition-all duration-500"
                   style={{ width: `${entries.length > 0 ? ((entries.length - totalLogbook) / entries.length) * 100 : 0}%` }}

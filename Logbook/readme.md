@@ -10,33 +10,29 @@ Service ini dipakai untuk mengimpor arsip logbook ke database, lalu menelusuri h
 ## Ringkasan Fitur
 
 - login terpusat melalui Auth Portal / SSO
-- validasi bearer token di backend via issuer, audience, dan JWKS
+- frontend memakai Authorization Code + PKCE
+- backend memvalidasi bearer token via issuer, audience, dan JWKS
 - import Excel untuk kategori:
   - `Teknik`
   - `APP`
   - `Tower`
 - list logbook dengan:
   - server-side pagination
-  - search statis berbasis keyword
+  - search keyword
   - filter tahun
   - filter bulan
-  - pengurutan tanggal terbaru / terlama
-- purge seluruh data logbook dari database untuk kebutuhan reset data dev
+  - urutan terbaru / terlama
+- purge seluruh data logbook dari database
 
 ## Struktur Penting
 
 - `frontend/src/components/layout`
-  - layout utama, sidebar, dan topbar
 - `frontend/src/pages`
-  - halaman dashboard, logbook harian, dan rekap logbook
+- `frontend/src/lib`
 - `backend/src/auth`
-  - guard dan utilitas autentikasi SSO
 - `backend/src/database`
-  - Prisma service
 - `backend/src/logbook`
-  - controller, service, DTO, dan domain logbook
 - `backend/src/logbook/imports`
-  - parser dan utility import Excel per kategori
 
 ## Menjalankan Frontend
 
@@ -78,24 +74,43 @@ npm run build
 - `POST /api/v1/logbook/import/tower`
 - `DELETE /api/v1/logbook/purge`
 
+## Catatan Deploy Penting
+
+- Deploy aktif memakai:
+  - frontend `https://logbook.ryvidia.my.id`
+  - API `https://apilogbook.ryvidia.my.id`
+- Build frontend production tidak boleh mengandalkan `Logbook/frontend/.env` dev lokal.
+- Build deploy harus memakai env production untuk:
+  - `VITE_LOGBOOK_API_BASE_URL`
+  - `VITE_AUTH_PORTAL_URL`
+  - `VITE_SSO_AUTH_BASE_URL`
+  - `VITE_SSO_AUTHORIZE_URL`
+  - `VITE_SSO_TOKEN_URL`
+  - `VITE_SSO_LOGOUT_URL`
+  - `VITE_SSO_CLIENT_ID`
+  - `VITE_SSO_CLIENT_SECRET`
+  - `VITE_SSO_REDIRECT_URI`
+- Secret frontend Logbook harus sama dengan record `oauth_clients.logbook-web` di auth backend. Jika mismatch, callback/login bisa terlihat benar tetapi API tetap `401 Unauthorized`.
+
 ## Catatan Import Excel
 
 - Parser import dipisah per kategori di `backend/src/logbook/imports`.
-- Tanggal Excel dibaca dari serial mentah workbook, bukan `cellDates: true`, untuk menghindari pergeseran tanggal.
+- Tanggal Excel dibaca dari serial mentah workbook untuk menghindari pergeseran tanggal.
 - Parser `APP` dan `Tower` masih memakai heuristik carry-forward dan penggabungan row lanjutan.
-- Parser `Teknik` memakai carry-forward tanggal dan jam, serta auto-numbering berdasarkan urutan data historis.
+- Parser `Teknik` memakai carry-forward tanggal/jam dan auto-numbering.
 
-## Catatan Integrasi SSO
+## Catatan Schema Database
 
-Untuk mode SSO, pastikan env backend dan frontend mengarah ke konfigurasi IdP pusat yang benar, terutama:
-
-- `SSO_ISSUER`
-- `SSO_AUDIENCE`
-- `SSO_JWKS_URL`
-- `SSO_CLIENT_ID`
+- Query backend dan bootstrap Prisma sekarang mengasumsikan kolom snake_case:
+  - `entry_date`
+  - `entry_time`
+  - `entry_no`
+  - `call_sign`
+  - dst.
+- `prisma/schema.prisma` harus tetap sinkron dengan raw SQL di `src/database/prisma.service.ts`.
 
 ## Catatan Pengembangan
 
-- Gunakan `backend/src/logbook/imports` untuk semua logic parser baru, jangan menumpuk heuristic di `logbook.service.ts`.
+- Gunakan `backend/src/logbook/imports` untuk semua logic parser baru.
 - Untuk dataset besar, pertahankan server-side pagination dan search di backend.
 - Tombol purge menghapus data logbook di database, jadi perlakukan sebagai operasi destruktif.

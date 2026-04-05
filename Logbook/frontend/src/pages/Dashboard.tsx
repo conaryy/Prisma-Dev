@@ -15,8 +15,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Dashboard</h1>
-        <p className="text-gray-400">Ringkasan data logbook yang sudah diimpor ke database</p>
+        <h1 className="theme-page-title mb-2 text-3xl font-bold">Dashboard</h1>
+        <p className="theme-page-subtitle">Ringkasan data logbook yang sudah diimpor ke database</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
@@ -39,15 +39,15 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <GlassCard className="lg:col-span-2 p-6">
           <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-xl font-semibold text-white">Entry Terbaru</h2>
-            <Link to="/tower/logbook-harian" className="text-sm text-violet-300 hover:text-violet-200 transition-colors">
+            <h2 className="text-xl font-semibold theme-page-title">Entry Terbaru</h2>
+            <Link to="/tower/logbook-harian" className="theme-link text-sm transition-colors">
               Buka logbook
             </Link>
           </div>
           {error ? (
             <p className="text-sm text-red-300">{error}</p>
           ) : recentEntries.length === 0 ? (
-            <p className="text-sm text-gray-400">
+            <p className="theme-page-subtitle text-sm">
               {isLoading ? 'Memuat ringkasan logbook...' : 'Belum ada data logbook di database.'}
             </p>
           ) : (
@@ -55,20 +55,20 @@ export default function Dashboard() {
               {recentEntries.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between gap-4 p-4 rounded-lg bg-white/5 border border-violet-300/22 hover:bg-white/10 hover:border-violet-300/35 transition-all duration-300"
+                  className="theme-soft-panel flex items-center justify-between gap-4 rounded-lg p-4 transition-all duration-300"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3 mb-1 flex-wrap">
-                      <span className="px-2.5 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-300 text-xs font-medium">
+                      <span className="theme-badge rounded-full px-2.5 py-1 text-xs font-medium">
                         {getCategoryLabel(item.category)}
                       </span>
-                      <h3 className="truncate text-white font-medium">{item.title}</h3>
+                      <h3 className="truncate font-medium theme-page-title">{item.title}</h3>
                     </div>
-                    <p className="text-gray-400 text-sm truncate">{item.description || item.subtitle}</p>
+                    <p className="theme-page-subtitle truncate text-sm">{item.description || item.subtitle}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-sm text-white">{item.entryTime}</p>
-                    <p className="text-xs text-gray-400">{item.dateLabel}</p>
+                    <p className="text-sm theme-page-title">{item.entryTime}</p>
+                    <p className="theme-page-subtitle text-xs">{item.dateLabel}</p>
                   </div>
                 </div>
               ))}
@@ -77,16 +77,16 @@ export default function Dashboard() {
         </GlassCard>
 
         <GlassCard className="p-6">
-          <h2 className="text-xl font-semibold text-white mb-4">Distribusi Kategori</h2>
+          <h2 className="mb-4 text-xl font-semibold theme-page-title">Distribusi Kategori</h2>
           {overview?.summaries.length ? (
             <div className="space-y-4">
               {overview.summaries.map((category) => (
                 <div key={category.category}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-gray-300">{category.label}</span>
-                    <span className="text-white font-semibold">{category.total}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{category.label}</span>
+                    <span className="font-semibold theme-page-title">{category.total}</span>
                   </div>
-                  <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                  <div className="theme-progress-track h-2 w-full overflow-hidden rounded-full">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-violet-500 to-emerald-500 transition-all duration-500"
                       style={{ width: `${totalEntries > 0 ? (category.total / totalEntries) * 100 : 0}%` }}
@@ -96,7 +96,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400">{isLoading ? 'Memuat distribusi kategori...' : 'Belum ada data kategori.'}</p>
+            <p className="theme-page-subtitle text-sm">{isLoading ? 'Memuat distribusi kategori...' : 'Belum ada data kategori.'}</p>
           )}
         </GlassCard>
       </div>

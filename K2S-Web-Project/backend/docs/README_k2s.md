@@ -1,43 +1,53 @@
-# Backend (Laravel + Sanctum)
+# Backend K2S (Laravel + SSO)
 
-Catatan:
-- Folder backend sudah berisi project Laravel.
-- Langkah di bawah hanya untuk instalasi Sanctum dan konfigurasi DB.
+Backend K2S sekarang bukan lagi panduan Sanctum awal semata, tetapi aplikasi Laravel yang sudah terhubung ke SSO pusat dan queue/background services.
 
-Langkah awal (ringkas):
-1) Install Sanctum:
-   composer require laravel/sanctum
-   php artisan vendor:publish --provider="Laravel\\Sanctum\\SanctumServiceProvider"
-   php artisan migrate
-2) Update .env (DB):
-   DB_DATABASE=k2s_p1
-   DB_USERNAME=l12
-   DB_PASSWORD=laravel12
-3) Aktifkan Sanctum API:
-   - Tambahkan EnsureFrontendRequestsAreStateful jika pakai cookie auth (opsional).
-   - Untuk token API, cukup gunakan sanctum middleware pada route API.
-4) Jalankan:
-   php artisan serve
+## Langkah Lokal
 
-Catatan migration:
-- Jika sebelumnya migrate dengan skema lama, gunakan DB baru atau `php artisan migrate:fresh`.
+```bash
+cd K2S-Web-Project/backend
+cp .env.example .env
+composer install
+php artisan key:generate
+php artisan migrate --force
+php artisan serve
+```
 
-Catatan upload evidence:
-- Jalankan `php artisan storage:link` agar URL public storage bisa diakses.
+Worker:
 
-Catatan seeder:
-- Jalankan `php artisan db:seed` untuk data awal (K2SSeeder).
-- Admin default (sementara): user `admin`, password `admin` (segera ganti setelah login).
+```bash
+php artisan queue:work
+```
 
-Catatan profile:
-- Endpoint profil: PATCH /api/profile
-- Endpoint ganti password: POST /api/profile/password
+## Konfigurasi Auth
 
-Catatan token:
-- Atur masa berlaku token di .env: SANCTUM_EXPIRATION=1440 (menit).
+Perhatikan env berikut:
 
-Referensi kontrak API:
-- backend/docs/openapi.yaml
+- `AUTH_MODE`
+- `SSO_ISSUER`
+- `SSO_AUDIENCE`
+- `SSO_JWKS_URL`
+- `SSO_AUTHORIZE_URL`
+- `SSO_TOKEN_URL`
+- `SSO_END_SESSION_URL`
+- `SSO_CLIENT_ID`
 
-Panduan migrasi auth ke SSO:
-- backend/docs/AUTH_SSO_MIGRATION.md
+Jika deploy production terpusat, domain aktif saat ini:
+
+- `https://k2s.ryvidia.my.id`
+- `https://apik2s.ryvidia.my.id`
+
+## Upload dan Storage
+
+- `php artisan storage:link` dibutuhkan untuk skenario non-Docker lokal tertentu.
+- File sensitif dan download terproteksi sebaiknya tetap lewat endpoint signed/auth.
+
+## Seeder dan Akun
+
+- Seeder hanya untuk development/internal setup.
+- Jangan andalkan akun admin default lama untuk production.
+
+## Referensi
+
+- `backend/docs/openapi.yaml`
+- `backend/docs/AUTH_SSO_MIGRATION.md`

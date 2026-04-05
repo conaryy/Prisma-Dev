@@ -5,8 +5,8 @@
   "description": "Backend NestJS untuk dashboard keamanan Prisma Dev",
   "scripts": {
     "build": "nest build",
-    "start": "PORT=${PORT:-6000} node dist/main.js",
-    "start:dev": "PORT=${PORT:-6001} nest start --watch",
+    "start": "PORT=${PORT:-3107} node dist/main.js",
+    "start:dev": "PORT=${PORT:-3107} nest start --watch",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",

@@ -1,28 +1,26 @@
-# Auth Backend (Stage 1-2)
+# Auth Backend
 
-Backend ini adalah fondasi untuk memindahkan auth dari K2S ke service Auth terpisah (calon SSO).
+Backend ini adalah auth service Express/OIDC pusat untuk stack Prisma Dev.
 
-## Scope Stage 1-2
+## Scope
 
-- Kontrak Auth inti:
+- OIDC / metadata:
   - `/.well-known/openid-configuration`
   - `/.well-known/jwks.json`
   - `/oauth/authorize`
   - `/oauth/token`
   - `/oauth/userinfo`
   - `/oauth/revoke`
-- Local login session untuk development:
-  - `GET /auth/login`
-  - `POST /auth/login`
+- Local login session:
+  - `POST /auth/ui/login`
   - `POST /auth/logout`
-- Admin user management (via session login Auth):
+- Admin user management:
   - `GET /api/auth/me`
   - `GET /api/admin/users`
   - `POST /api/admin/users`
   - `PATCH /api/admin/users/:id`
   - `DELETE /api/admin/users/:id`
   - `POST /api/admin/users/:id/reset-password`
-- Penyimpanan runtime sekarang PostgreSQL penuh.
 
 ## Menjalankan
 
@@ -33,59 +31,44 @@ npm install
 npm run dev
 ```
 
-Default:
-- Base URL: `http://localhost:4000`
-- Database: PostgreSQL (`AUTH_DATABASE_URL` atau kombinasi `AUTH_PG_*`)
+Default dev:
+- Base URL: `http://localhost:3104`
+- Database: PostgreSQL
 - Dev admin:
   - username: `admin`
   - password: `Admin123!`
 
-## Migrasi User K2S -> Auth
+## OIDC Client Defaults
 
-Dry-run:
+Auth backend mengelola minimal client:
+- `k2s-web`
+- `logbook-web`
+- `k3-web`
 
-```bash
-npm run migrate:dry-run
-```
+Saat startup, service sekarang akan:
+- insert client jika belum ada
+- update `client_secret`, `redirect_uris_json`, dan `post_logout_redirect_uris_json` jika nilai env berubah
 
-Dry-run akun tertentu:
+Ini penting untuk deploy production agar perubahan secret/redirect URI tidak membuat frontend `invalid_client`.
 
-```bash
-node scripts/dry-run-k2s-users.mjs --only-user admin
-```
+## Verifikasi
 
-Apply (dengan backup otomatis file SQLite):
-
-```bash
-npm run migrate:apply
-```
-
-Apply + ikut sinkron password hash dari K2S:
+Endpoint utama:
 
 ```bash
-node scripts/dry-run-k2s-users.mjs --apply --sync-password
+curl -I http://localhost:3104/.well-known/openid-configuration
+curl -I http://localhost:3104/.well-known/jwks.json
 ```
 
-Reset / generate password user Auth:
+Verifikasi isi `oauth_clients`:
 
 ```bash
-npm run user:password -- --user admin --password Admin123!
-npm run user:password -- --user user1 --generate
+psql -U sso_auth -d sso_auth -c "select id, client_secret, redirect_uris_json, post_logout_redirect_uris_json from oauth_clients;"
 ```
-
-## Catatan Migrasi Ke PostgreSQL
-
-- Runtime auth backend sudah dibersihkan menjadi PostgreSQL-only.
-- Schema utama tetap ada di:
-  - `sql/postgres-auth-schema.sql`
-- Script operasional yang masih relevan:
-  - `npm run migrate:dry-run`
-  - `npm run migrate:apply`
-  - `npm run user:password -- --user admin --password Admin123!`
-- Artefak dan script SQLite lama sebaiknya dianggap legacy/cadangan migrasi, bukan jalur runtime utama.
 
 ## Catatan
 
-- PKCE `S256` wajib pada endpoint `/oauth/authorize`.
-- Token ditandatangani `RS256` dan public key dipublish via JWKS.
-- File private JWK disimpan di `backend/data/jwks-private.json` (jangan di-commit ke production repo).
+- PKCE `S256` wajib pada `/oauth/authorize`
+- Token ditandatangani `RS256` dan dipublish via JWKS
+- Private JWK disimpan di `backend/data/jwks-private.json`
+- Jangan commit key production

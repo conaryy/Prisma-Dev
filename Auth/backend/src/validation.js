@@ -80,3 +80,44 @@ export function validateResetPasswordPayload(input) {
     },
   };
 }
+
+export function validateSelfProfilePayload(input) {
+  const payload = normalizeObject(input);
+
+  return {
+    ok: true,
+    data: {
+      name: normalizeString(payload.name),
+      username: normalizeString(payload.username),
+      email: payload.email,
+    },
+  };
+}
+
+export function validateSelfPasswordPayload(input) {
+  const payload = normalizeObject(input);
+  const currentPassword = String(payload.current_password ?? '');
+  const nextPassword = String(payload.password ?? '');
+  const confirmPassword = String(payload.password_confirmation ?? '');
+
+  if (!currentPassword) {
+    return { ok: false, status: 422, error: 'Password lama wajib diisi.' };
+  }
+
+  if (!nextPassword) {
+    return { ok: false, status: 422, error: 'Password baru wajib diisi.' };
+  }
+
+  if (nextPassword !== confirmPassword) {
+    return { ok: false, status: 422, error: 'Konfirmasi password tidak cocok.' };
+  }
+
+  return {
+    ok: true,
+    data: {
+      current_password: currentPassword,
+      password: nextPassword,
+      password_confirmation: confirmPassword,
+    },
+  };
+}

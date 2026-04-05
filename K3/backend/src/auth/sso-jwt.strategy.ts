@@ -30,7 +30,7 @@ function normalizeIssuer(value: string) {
 @Injectable()
 export class SsoJwtStrategy extends PassportStrategy(Strategy) {
   constructor() {
-    const issuer = normalizeIssuer(process.env.SSO_ISSUER || 'http://localhost:4000');
+    const issuer = normalizeIssuer(process.env.SSO_ISSUER || 'https://authapi.ryvidia.my.id');
     const audience = process.env.SSO_AUDIENCE || 'k2s-platform';
     const jwksUri =
       process.env.SSO_JWKS_URL || `${issuer}/.well-known/jwks.json`;

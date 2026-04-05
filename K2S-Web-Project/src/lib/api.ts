@@ -1,11 +1,15 @@
+import { refreshAccessToken } from '@/lib/sso';
+
 const API_BASE_URL =
   (import.meta as { env?: Record<string, string> }).env?.VITE_API_BASE_URL ??
-  'http://localhost:8000';
+  'http://localhost:3103';
 const ABSOLUTE_URL_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
 
 const TOKEN_KEY = 'k2s.authToken';
+const REFRESH_TOKEN_KEY = 'k2s.authRefreshToken';
 const PORTAL_TOKEN_KEY = 'auth.portal.token';
 const USER_KEY = 'k2s.authUser';
+let activeRefreshRequest: Promise<string | null> | null = null;
 
 function normalizeToken(value: string | null) {
   if (!value) {
@@ -122,6 +126,31 @@ export function setAuthToken(token: string) {
   window.localStorage.setItem(PORTAL_TOKEN_KEY, normalized);
 }
 
+export function setRefreshToken(token: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const normalized = normalizeToken(token);
+  if (!normalized) {
+    return;
+  }
+  window.localStorage.setItem(REFRESH_TOKEN_KEY, normalized);
+}
+
+export function getRefreshToken() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  return normalizeToken(window.localStorage.getItem(REFRESH_TOKEN_KEY));
+}
+
+export function setSessionTokens(params: { accessToken: string; refreshToken?: string }) {
+  setAuthToken(params.accessToken);
+  if (params.refreshToken) {
+    setRefreshToken(params.refreshToken);
+  }
+}
+
 export function getAuthUser<T = Record<string, unknown>>() {
   if (typeof window === 'undefined') {
     return null;
@@ -165,6 +194,8 @@ export function clearAuthToken() {
     return;
   }
   window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+  window.localStorage.removeItem(PORTAL_TOKEN_KEY);
 }
 
 type ApiFetchOptions = RequestInit & { skipAuth?: boolean };
@@ -181,6 +212,45 @@ export class ApiError extends Error {
   }
 }
 
+async function refreshSessionToken() {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    clearAuthToken();
+    clearAuthUser();
+    return null;
+  }
+
+  if (!activeRefreshRequest) {
+    activeRefreshRequest = refreshAccessToken(refreshToken)
+      .then((result) => {
+        if (!result.access_token) {
+          throw new Error('Access token tidak ditemukan.');
+        }
+
+        setSessionTokens({
+          accessToken: result.access_token,
+          refreshToken: result.refresh_token,
+        });
+
+        if (result.user && typeof result.user === 'object') {
+          setAuthUser(result.user);
+        }
+
+        return result.access_token;
+      })
+      .catch(() => {
+        clearAuthToken();
+        clearAuthUser();
+        return null;
+      })
+      .finally(() => {
+        activeRefreshRequest = null;
+      });
+  }
+
+  return activeRefreshRequest;
+}
+
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}) {
   const token = getAuthToken();
   const { skipAuth, ...fetchOptions } = options;
@@ -194,25 +264,42 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  return fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     ...fetchOptions,
     headers,
-  }).then(async (response) => {
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const firstValidationError =
-        data?.errors && typeof data.errors === 'object'
-          ? Object.values(data.errors).flat()[0]
-          : null;
-      const message =
-        (typeof data?.error === 'string' && data.error) ||
-        (typeof data?.message === 'string' && data.message) ||
-        (typeof firstValidationError === 'string' && firstValidationError) ||
-        'Request failed.';
-      throw new ApiError(message, response.status, data);
-    }
-    return data as T;
   });
+
+  let resolvedResponse = response;
+  if (response.status === 401 && !skipAuth) {
+    const refreshedToken = await refreshSessionToken();
+    if (refreshedToken) {
+      const retryHeaders = new Headers(fetchOptions.headers);
+      if (!retryHeaders.has('Accept')) {
+        retryHeaders.set('Accept', 'application/json');
+      }
+      retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
+
+      resolvedResponse = await fetch(`${API_BASE_URL}${path}`, {
+        ...fetchOptions,
+        headers: retryHeaders,
+      });
+    }
+  }
+
+  const data = await resolvedResponse.json().catch(() => ({}));
+  if (!resolvedResponse.ok) {
+    const firstValidationError =
+      data?.errors && typeof data.errors === 'object'
+        ? Object.values(data.errors).flat()[0]
+        : null;
+    const message =
+      (typeof data?.error === 'string' && data.error) ||
+      (typeof data?.message === 'string' && data.message) ||
+      (typeof firstValidationError === 'string' && firstValidationError) ||
+      'Request failed.';
+    throw new ApiError(message, resolvedResponse.status, data);
+  }
+  return data as T;
 }
 
 export function resolveApiUrl(input: string) {

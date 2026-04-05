@@ -4,6 +4,7 @@ import { getJwksPayload } from '../crypto.js';
 import {
   authenticateLocalUser,
   createUserSession,
+  getUserPermissions,
   performLogout,
   resolvePostLogoutRedirect,
   sanitizeRedirectTarget,
@@ -18,6 +19,7 @@ export function createPublicRouter(deps = {}) {
   const services = {
     authenticateLocalUser,
     createUserSession,
+    getUserPermissions,
     performLogout,
     resolvePostLogoutRedirect,
     sanitizeRedirectTarget,
@@ -26,6 +28,43 @@ export function createPublicRouter(deps = {}) {
     validateLoginPayload,
     loginRateLimiter: createLoginRateLimiter(),
     ...deps,
+  };
+
+  const resolvePortalLanding = (user) => {
+    const permissions = services.getUserPermissions(user);
+    const loginUiOrigin = (() => {
+      try {
+        return new URL(config.loginUiUrl).origin;
+      } catch {
+        return config.baseUrl;
+      }
+    })();
+    return permissions.can_access_admin_portal
+      ? `${loginUiOrigin}/portal-admin`
+      : `${loginUiOrigin}/portal-user`;
+  };
+
+  const resolveLoginReturnTo = (rawReturnTo, user) => {
+    const portalLanding = resolvePortalLanding(user);
+    const sanitized = services.sanitizeRedirectTarget(rawReturnTo, portalLanding, {
+      allowRelative: true,
+    });
+    const permissions = services.getUserPermissions(user);
+
+    if (permissions.can_access_admin_portal) {
+      return sanitized;
+    }
+
+    try {
+      const requestedUrl = new URL(sanitized);
+      if (requestedUrl.pathname === '/portal-admin' || requestedUrl.pathname.startsWith('/portal-admin/')) {
+        return portalLanding;
+      }
+    } catch {
+      return portalLanding;
+    }
+
+    return sanitized;
   };
 
   router.get('/health', (_req, res) => {
@@ -44,7 +83,7 @@ export function createPublicRouter(deps = {}) {
       grant_types_supported: ['authorization_code', 'refresh_token'],
       subject_types_supported: ['public'],
       id_token_signing_alg_values_supported: ['RS256'],
-      token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic'],
+      token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
       scopes_supported: ['openid', 'profile', 'email'],
       claims_supported: ['sub', 'email', 'preferred_username', 'name', 'role', 'permissions'],
       code_challenge_methods_supported: ['S256'],
@@ -102,9 +141,6 @@ export function createPublicRouter(deps = {}) {
         return;
       }
 
-      const returnTo = services.sanitizeRedirectTarget(validation.data.return_to, `${config.baseUrl}/`, {
-        allowRelative: true,
-      });
       const authResult = await services.authenticateLocalUser(
         validation.data.email,
         validation.data.password
@@ -113,6 +149,7 @@ export function createPublicRouter(deps = {}) {
         res.status(authResult.status).json({ error: authResult.error });
         return;
       }
+      const returnTo = resolveLoginReturnTo(validation.data.return_to, authResult.user);
 
       const sessionId = await services.createUserSession(authResult.user.id);
       services.setSessionCookie(res, sessionId);
@@ -130,9 +167,6 @@ export function createPublicRouter(deps = {}) {
         return;
       }
 
-      const returnTo = services.sanitizeRedirectTarget(validation.data.return_to, `${config.baseUrl}/`, {
-        allowRelative: true,
-      });
       const authResult = await services.authenticateLocalUser(
         validation.data.email,
         validation.data.password
@@ -141,6 +175,7 @@ export function createPublicRouter(deps = {}) {
         res.status(authResult.status).json({ error: authResult.error });
         return;
       }
+      const returnTo = resolveLoginReturnTo(validation.data.return_to, authResult.user);
 
       const sessionId = await services.createUserSession(authResult.user.id);
       services.setSessionCookie(res, sessionId);

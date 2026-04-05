@@ -59,6 +59,27 @@ type DnpFillOption = {
   datatable_url?: string;
 };
 
+type DnpImportJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+type DnpImportJobResponse = {
+  data: {
+    jobId: string;
+    status: DnpImportJobStatus;
+    message?: string | null;
+    error?: string | null;
+    summary?: {
+      created?: number;
+      errors?: Array<{ row: number; message: string }>;
+      fill?: { code1?: string; code2?: string; area?: string | null };
+    } | null;
+  };
+};
+
+type ActiveDnpImportMeta = {
+  area: string;
+  year: string;
+};
+
 const SCOPE_OPTIONS = [
   { value: 'audit', label: 'Audit' },
   { value: 'inspeksi', label: 'Inspeksi' },
@@ -100,7 +121,10 @@ export function SelfAssessmentQuestions() {
   const [dnpYear, setDnpYear] = useState(DNP_YEAR_OPTIONS[0]);
   const [dnpFills, setDnpFills] = useState<DnpFillOption[]>([]);
   const [selectedDnpFillKey, setSelectedDnpFillKey] = useState('');
+  const [activeDnpImportJobId, setActiveDnpImportJobId] = useState('');
+  const [activeDnpImportMeta, setActiveDnpImportMeta] = useState<ActiveDnpImportMeta | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const dnpImportPollRef = useRef<number | null>(null);
   const [questionCategoryForm, setQuestionCategoryForm] = useState({
     name: '',
     prefix: '',
@@ -170,6 +194,85 @@ export function SelfAssessmentQuestions() {
     });
     setEditingId(null);
   };
+
+  const stopDnpImportPolling = useCallback(() => {
+    if (dnpImportPollRef.current !== null) {
+      window.clearTimeout(dnpImportPollRef.current);
+      dnpImportPollRef.current = null;
+    }
+  }, []);
+
+  const pollDnpImportJob = useCallback(
+    async (jobId: string) => {
+      try {
+        const response = await apiFetch<DnpImportJobResponse>(
+          `/api/admin/self-assessment/questions/import-dnp/jobs/${jobId}`
+        );
+
+        const status = response.data.status;
+        const message = response.data.message ?? null;
+        const summary = response.data.summary ?? null;
+
+        if (status === 'queued' || status === 'running') {
+          const areaLabel =
+            summary?.fill?.area ||
+            activeDnpImportMeta?.area ||
+            'area terpilih';
+          const yearLabel = activeDnpImportMeta?.year ? ` tahun ${activeDnpImportMeta.year}` : '';
+          setDnpMessage(
+            message ||
+              `Import pertanyaan DNP untuk ${areaLabel}${yearLabel} masih berjalan.`
+          );
+          dnpImportPollRef.current = window.setTimeout(() => {
+            void pollDnpImportJob(jobId);
+          }, 3000);
+          return;
+        }
+
+        stopDnpImportPolling();
+        setIsImportingDnp(false);
+        setActiveDnpImportJobId('');
+        const finishedMeta = activeDnpImportMeta;
+        setActiveDnpImportMeta(null);
+
+        if (status === 'failed') {
+          setErrorMessage(response.data.error || message || 'Import pertanyaan DNP gagal.');
+          return;
+        }
+
+        const created = summary?.created ?? 0;
+        const errors = summary?.errors ?? [];
+        if (errors.length > 0) {
+          setErrorMessage(
+            `Sebagian data gagal diimport (${errors.length} baris). Contoh: Baris ${errors[0].row} - ${errors[0].message}`
+          );
+        }
+        const areaLabel =
+          summary?.fill?.area ||
+          finishedMeta?.area ||
+          'area terpilih';
+        if (created > 0) {
+          setImportMessage(`Berhasil import ${created} pertanyaan dari DNP.`);
+        } else {
+          setImportMessage(`Import DNP selesai. Tidak ada pertanyaan baru yang ditambahkan dari ${areaLabel}.`);
+        }
+        setDnpMessage(message || `Import pertanyaan DNP untuk ${areaLabel} selesai.`);
+        loadQuestionCategories();
+        loadQuestions();
+      } catch (error) {
+        stopDnpImportPolling();
+        setIsImportingDnp(false);
+        setActiveDnpImportJobId('');
+        setActiveDnpImportMeta(null);
+        setErrorMessage(
+          error instanceof Error ? error.message : 'Gagal memantau status import DNP.'
+        );
+      }
+    },
+    [activeDnpImportMeta, loadQuestionCategories, loadQuestions, stopDnpImportPolling]
+  );
+
+  useEffect(() => () => stopDnpImportPolling(), [stopDnpImportPolling]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -558,10 +661,9 @@ export function SelfAssessmentQuestions() {
     }
 
     setIsImportingDnp(true);
+    stopDnpImportPolling();
     try {
-      const response = await apiFetch<{
-        data: { created: number; errors: Array<{ row: number; message: string }> };
-      }>('/api/admin/self-assessment/questions/import-dnp/scrape', {
+      const response = await apiFetch<DnpImportJobResponse>('/api/admin/self-assessment/questions/import-dnp/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -578,22 +680,26 @@ export function SelfAssessmentQuestions() {
         }),
       });
 
-      const created = response.data.created ?? 0;
-      const errors = response.data.errors ?? [];
-      if (errors.length > 0) {
-        setErrorMessage(
-          `Sebagian data gagal diimport (${errors.length} baris). Contoh: Baris ${errors[0].row} - ${errors[0].message}`
-        );
+      const jobId = response.data.jobId;
+      if (!jobId) {
+        throw new Error('Job import DNP tidak tersedia.');
       }
-      setImportMessage(`Berhasil import ${created} pertanyaan dari DNP.`);
-      loadQuestionCategories();
-      loadQuestions();
+
+      setActiveDnpImportJobId(jobId);
+      setActiveDnpImportMeta({
+        area: selectedDnpFill.area || '(Tanpa nama area)',
+        year: dnpYear,
+      });
+      setDnpMessage(response.data.message || 'Import pertanyaan DNP sedang diproses di background.');
+      await pollDnpImportJob(jobId);
     } catch (error) {
+      stopDnpImportPolling();
+      setActiveDnpImportJobId('');
+      setActiveDnpImportMeta(null);
+      setIsImportingDnp(false);
       setErrorMessage(
         error instanceof Error ? error.message : 'Gagal import pertanyaan dari DNP.'
       );
-    } finally {
-      setIsImportingDnp(false);
     }
   };
 
@@ -787,7 +893,7 @@ export function SelfAssessmentQuestions() {
               type="button"
               variant="outline"
               onClick={() => void handleInitDnp()}
-              disabled={!canManageQuestions || isInitializingDnp}
+              disabled={!canManageQuestions || isInitializingDnp || isImportingDnp}
             >
               {isInitializingDnp ? 'Memuat...' : 'Ambil Captcha'}
             </Button>
@@ -808,7 +914,7 @@ export function SelfAssessmentQuestions() {
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="submit"
-            disabled={!canManageQuestions || isLoadingDnpFills || !dnpSessionId}
+            disabled={!canManageQuestions || isLoadingDnpFills || !dnpSessionId || isImportingDnp}
           >
             {isLoadingDnpFills ? 'Mencari Fill...' : 'Cari Area Fill'}
           </Button>
@@ -823,7 +929,11 @@ export function SelfAssessmentQuestions() {
             }
             onClick={() => void handleImportDnp()}
           >
-            {isImportingDnp ? 'Mengimpor...' : 'Import Dari Area Terpilih'}
+            {isImportingDnp
+              ? activeDnpImportJobId
+                ? `Memantau Job ${activeDnpImportJobId.slice(0, 8)}...`
+                : 'Mengimpor...'
+              : 'Import Dari Area Terpilih'}
           </Button>
         </div>
         {dnpFills.length > 0 && (
@@ -851,6 +961,14 @@ export function SelfAssessmentQuestions() {
         {dnpMessage && (
           <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
             {dnpMessage}
+          </div>
+        )}
+        {activeDnpImportJobId && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+            Job aktif: <span className="font-semibold">{activeDnpImportJobId}</span>
+            {activeDnpImportMeta
+              ? ` · ${activeDnpImportMeta.area} · ${activeDnpImportMeta.year}`
+              : ''}
           </div>
         )}
       </form>

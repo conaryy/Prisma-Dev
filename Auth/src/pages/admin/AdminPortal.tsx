@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { clearAuthToken, clearAuthUser, getAuthToken } from '@/lib/api';
+import { apiFetch, clearAuthToken, clearAuthUser, getAuthToken, getAuthUser, setAuthUser } from '@/lib/api';
 import { getStoredTheme, persistTheme } from '@/lib/theme';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,7 +31,7 @@ type PortalMenu = {
   title: string;
   description: string;
   path: string;
-  targetApp: 'k2s' | 'logbook' | 'k3';
+  targetApp: 'k2s' | 'logbook' | 'k3' | 'keamanan';
   icon: LucideIcon;
   eyebrow: string;
   meta: string;
@@ -94,13 +94,31 @@ function getK3BaseUrl() {
   return 'http://localhost:5176';
 }
 
+function getKeamananBaseUrl() {
+  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+  const configured = env.VITE_KEAMANAN_BASE_URL?.trim();
+  if (configured) {
+    return normalizeBaseUrl(configured);
+  }
+
+  return 'http://localhost:5177';
+}
+
 function getAuthServiceBaseUrl() {
   const env = (import.meta as { env?: Record<string, string> }).env ?? {};
   const configured = env.VITE_SSO_AUTH_BASE_URL?.trim();
   if (configured) {
     return normalizeBaseUrl(configured);
   }
-  return 'http://localhost:4000';
+
+  if (typeof window !== 'undefined') {
+    const { hostname } = window.location;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:3104';
+    }
+  }
+
+  return 'https://authapi.ryvidia.my.id';
 }
 
 function buildPortalUrl(path: string, targetApp: PortalMenu['targetApp']) {
@@ -109,6 +127,8 @@ function buildPortalUrl(path: string, targetApp: PortalMenu['targetApp']) {
       ? getLogbookBaseUrl()
       : targetApp === 'k3'
         ? getK3BaseUrl()
+        : targetApp === 'keamanan'
+          ? getKeamananBaseUrl()
         : getK2sBaseUrl();
   if (!baseUrl) {
     return path;
@@ -162,7 +182,7 @@ const portalMenus: PortalMenu[] = [
     title: 'Keamanan',
     description: 'Akses cepat ke data keamanan dan pemantauan umum dengan struktur yang tetap familiar.',
     path: '/dashboard',
-    targetApp: 'k2s',
+    targetApp: 'keamanan',
     icon: ShieldCheck,
     eyebrow: 'Monitoring',
     meta: 'Pemantauan umum dan data operasional',
@@ -219,6 +239,18 @@ const portalMenus: PortalMenu[] = [
 export function AdminPortal() {
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(() => getStoredTheme() === 'dark');
+  const [authUser, setPortalUser] = useState(getAuthUser<{
+    role?: string;
+    permissions?: { can_manage_users?: boolean; can_access_admin_portal?: boolean };
+  }>());
+  const canAccessAdminPortal = Boolean(
+    authUser?.permissions?.can_access_admin_portal ||
+      String(authUser?.role || '').toLowerCase() === 'admin'
+  );
+  const canManageUsers = Boolean(
+    authUser?.permissions?.can_manage_users ||
+      String(authUser?.role || '').toLowerCase() === 'admin'
+  );
 
   useEffect(() => {
     const html = document.documentElement;
@@ -228,6 +260,25 @@ export function AdminPortal() {
     observer.observe(html, { attributes: true, attributeFilter: ['class'] });
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    apiFetch<{ data: { role?: string; permissions?: { can_manage_users?: boolean; can_access_admin_portal?: boolean } } }>('/api/auth/me')
+      .then((response) => {
+        setPortalUser(response.data);
+        setAuthUser(response.data as Record<string, unknown>);
+        if (
+          !response.data?.permissions?.can_access_admin_portal &&
+          String(response.data?.role || '').toLowerCase() !== 'admin'
+        ) {
+          navigate('/portal-user', { replace: true });
+        }
+      })
+      .catch(() => {
+        clearAuthToken();
+        clearAuthUser();
+        navigate('/login', { replace: true });
+      });
+  }, [navigate]);
 
   const handleLogout = () => {
     clearAuthToken();
@@ -303,7 +354,7 @@ export function AdminPortal() {
                   className="text-[11px] font-semibold uppercase tracking-[0.28em]"
                   style={{ color: isDark ? '#64748b' : '#94a3b8' }}
                 >
-                  Admin Access
+                  Portal Admin
                 </p>
                 <div
                   className="truncate text-sm font-semibold sm:text-base"
@@ -348,12 +399,12 @@ export function AdminPortal() {
                   <DropdownMenuItem
                     onSelect={(event: Event) => {
                       event.preventDefault();
-                      navigate('/portal-admin/users');
+                      navigate(canManageUsers ? '/portal-admin/users' : '/profile');
                     }}
                     className="cursor-pointer gap-2"
                   >
                     <UserCircle className="h-4 w-4" />
-                    Kelola User
+                    {canManageUsers ? 'Kelola User' : 'Profil Saya'}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={(event: Event) => {

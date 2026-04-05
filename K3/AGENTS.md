@@ -1,16 +1,18 @@
 # AGENTS.md
 
 ## Project Overview
-- Folder ini berisi aplikasi K3 yang terdiri dari:
+- Folder ini berisi aplikasi K3:
   - backend NestJS di `K3/backend/src`
   - frontend React + TypeScript + Vite di `K3/frontend`
-- Fokus utama aplikasi:
+- Fokus utama:
   - dashboard K3
-  - upload dan penyimpanan dokumen audit ke PostgreSQL
   - checklist audit
-  - pemilihan dokumen audit tersimpan di halaman checklist
-  - upload/delete evidence per pertanyaan
-- Backend juga dapat menyajikan `frontend/dist` jika frontend sudah dibuild.
+  - upload dan penyimpanan dokumen audit
+  - integrasi Google Drive
+- Status terkini:
+  - K3 sekarang ikut `docker-compose.central.yml`
+  - frontend K3 sekarang memakai flow SSO pusat via `authapi.ryvidia.my.id`
+  - backend juga menyajikan `frontend/dist` pada build production
 
 ## Build And Test Commands
 - Backend dev:
@@ -29,23 +31,28 @@
 
 ## Code Style Guidelines
 - Backend memakai NestJS dengan TypeScript `strict`.
-- Endpoint ada langsung di `AppController`; service parsing utama ada di `checklist-audit.service.ts`.
-- Pertahankan pola DTO/body sederhana dan validasi/exception dekat boundary endpoint.
-- Frontend masih relatif ringan; ikuti pola React + TypeScript yang sudah ada tanpa menambah kompleksitas state management baru bila belum perlu.
+- Frontend relatif ringan; ikuti pola React + TypeScript tanpa state management besar.
+- Untuk deploy production:
+  - jangan mengandalkan `K3/frontend/.env` untuk secret/redirect URI
+  - build deploy harus menerima `VITE_SSO_*` dari compose dan menimpa env dev lokal
+- `K3/backend/Dockerfile` sekarang juga mem-build frontend; perubahan env frontend production harus dilacak sampai Dockerfile/build args, bukan hanya file `.env`.
+- Untuk Google Drive OAuth, jaga `GOOGLE_REDIRECT_URI` sinkron dengan environment deploy.
 
 ## Testing Instructions
-- Tidak terlihat suite test formal.
 - Minimum check:
   - `cd K3/backend && npm run build`
-  - jalankan backend dan frontend dev
-  - uji upload dokumen `.docx` atau `.doc` dari menu `Upload Dokumen`
-  - uji pemilihan dokumen di menu `Checklist Audit`
+  - uji login SSO sampai `auth/callback`
+  - uji upload dokumen `.docx` atau `.doc`
+  - uji pemilihan dokumen di menu checklist
   - uji tambah/hapus evidence
-  - uji refresh/restart backend untuk memastikan data dokumen tetap terbaca dari PostgreSQL
+  - uji integrasi Google Drive
+- Untuk verifikasi deploy:
+  - bundle frontend jangan memuat `dev-secret-k3` atau `localhost`
+  - `oauth_clients.k3-web` di auth backend harus cocok dengan `AUTH_K3_CLIENT_SECRET` dan `AUTH_K3_REDIRECT_URI`
+  - `GOOGLE_REDIRECT_URI` harus persis sama dengan `Authorized redirect URIs` di Google Cloud Console
 
 ## Security Considerations
-- Tidak ada auth/login saat ini. Jangan expose service ini ke internet publik tanpa lapisan auth/proxy/rate limiting tambahan.
-- Upload utama dibatasi 15 MB, evidence 20 MB; pertahankan atau perketat limit ini.
-- Dokumen Word dan evidence disimpan di folder lokal `uploads/`; pastikan permission dan akses file publik tetap aman.
-- Karena backend menyajikan file statis dari `uploads`, validasi nama/path file penting untuk mencegah akses file yang tidak diinginkan.
-- Hasil analisis kini persisten di PostgreSQL, tapi service masih tanpa auth. Jangan anggap aman untuk environment publik.
+- Service ini sekarang tidak lagi dianggap tanpa auth; frontend production sudah ikut SSO pusat.
+- Upload utama dan evidence tetap perlu validasi ukuran dan tipe file.
+- Google OAuth sangat sensitif terhadap `redirect_uri_mismatch`; perubahan domain API harus diikuti update di Google Cloud Console.
+- Secret frontend dev di `K3/frontend/.env` tidak boleh bocor ke bundle production.

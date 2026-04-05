@@ -839,6 +839,6 @@ def webhook_root():
 
 if __name__ == "__main__":
     host = os.getenv("WHATSAPP_BOT_HOST", "0.0.0.0")
-    port = int(os.getenv("WHATSAPP_BOT_PORT", "5100"))
+    port = int(os.getenv("WHATSAPP_BOT_PORT", "5002"))
     debug = os.getenv("WHATSAPP_BOT_DEBUG", "false").strip().lower() in {"1", "true", "yes", "on"}
     app.run(host=host, port=port, debug=debug)

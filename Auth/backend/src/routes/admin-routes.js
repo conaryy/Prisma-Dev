@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { queryAll } from '../db.js';
 import {
+  changeOwnPassword,
   createManagedUser,
   deleteManagedUser,
   resetManagedUserPassword,
   toUserResponse,
+  updateOwnProfile,
   updateManagedUser,
 } from '../auth-service.js';
 import { asyncHandler, requireManageUsers, requireSessionUser } from '../middleware.js';
@@ -12,6 +14,8 @@ import { createResetPasswordRateLimiter } from '../rate-limit.js';
 import {
   validateCreateUserPayload,
   validateResetPasswordPayload,
+  validateSelfPasswordPayload,
+  validateSelfProfilePayload,
   validateUpdateUserPayload,
 } from '../validation.js';
 
@@ -22,6 +26,55 @@ export function createAdminRouter() {
   router.get('/api/auth/me', requireSessionUser, (req, res) => {
     res.json({ data: toUserResponse(req.authUser) });
   });
+
+  router.patch(
+    '/api/profile',
+    requireSessionUser,
+    asyncHandler(async (req, res) => {
+      const validation = validateSelfProfilePayload(req.body);
+      if (!validation.ok) {
+        res.status(validation.status).json({ error: validation.error });
+        return;
+      }
+
+      const result = await updateOwnProfile(req.authUser.id, validation.data);
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error });
+        return;
+      }
+
+      res.json({ data: toUserResponse(result.user) });
+    })
+  );
+
+  router.post(
+    '/api/profile/password',
+    requireSessionUser,
+    asyncHandler(async (req, res) => {
+      const validation = validateSelfPasswordPayload(req.body);
+      if (!validation.ok) {
+        res.status(validation.status).json({ error: validation.error });
+        return;
+      }
+
+      const result = await changeOwnPassword(
+        req.authUser.id,
+        validation.data.current_password,
+        validation.data.password
+      );
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error });
+        return;
+      }
+
+      res.json({
+        data: {
+          success: true,
+          user: toUserResponse(result.user),
+        },
+      });
+    })
+  );
 
   router.get(
     '/api/admin/users',

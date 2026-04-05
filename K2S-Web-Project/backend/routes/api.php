@@ -211,6 +211,8 @@ Route::middleware('auth.api')->group(function () {
         Route::post('questions/import-dnp/init', [SelfAssessmentQuestionController::class, 'importDnpInit']);
         Route::post('questions/import-dnp/fills', [SelfAssessmentQuestionController::class, 'importDnpFillOptions']);
         Route::post('questions/import-dnp/scrape', [SelfAssessmentQuestionController::class, 'importDnpScrape']);
+        Route::post('questions/import-dnp/run', [SelfAssessmentQuestionController::class, 'importDnpScrapeRun']);
+        Route::get('questions/import-dnp/jobs/{job}', [SelfAssessmentQuestionController::class, 'importDnpScrapeStatus']);
         Route::delete('questions', [SelfAssessmentQuestionController::class, 'adminDestroyAll']);
         Route::patch('questions/{question}', [SelfAssessmentQuestionController::class, 'update']);
         Route::delete('questions/{question}', [SelfAssessmentQuestionController::class, 'destroy']);

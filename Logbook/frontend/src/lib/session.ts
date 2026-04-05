@@ -1,5 +1,6 @@
 const AUTH_PORTAL_TOKEN_KEY = 'auth.portal.token';
 const K2S_TOKEN_KEY = 'k2s.authToken';
+const LOGBOOK_REFRESH_TOKEN_KEY = 'logbook.auth.refreshToken';
 const LOCALHOST_NAMES = new Set(['localhost', '127.0.0.1']);
 
 function normalizeToken(value: string | null) {
@@ -33,11 +34,31 @@ export function setSessionToken(token: string) {
   window.localStorage.setItem(AUTH_PORTAL_TOKEN_KEY, normalized);
 }
 
+export function setRefreshToken(token: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const normalized = normalizeToken(token);
+  if (!normalized) {
+    return;
+  }
+  window.localStorage.setItem(LOGBOOK_REFRESH_TOKEN_KEY, normalized);
+}
+
+export function setSessionTokens(params: { accessToken: string; refreshToken?: string }) {
+  setSessionToken(params.accessToken);
+  if (params.refreshToken) {
+    setRefreshToken(params.refreshToken);
+  }
+}
+
 export function clearSessionToken() {
   if (typeof window === 'undefined') {
     return;
   }
   window.localStorage.removeItem(AUTH_PORTAL_TOKEN_KEY);
+  window.localStorage.removeItem(K2S_TOKEN_KEY);
+  window.localStorage.removeItem(LOGBOOK_REFRESH_TOKEN_KEY);
 }
 
 export function getSessionToken() {
@@ -76,4 +97,12 @@ export function requireSessionToken() {
     return null;
   }
   return token;
+}
+
+export function getRefreshToken() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  return normalizeToken(window.localStorage.getItem(LOGBOOK_REFRESH_TOKEN_KEY));
 }

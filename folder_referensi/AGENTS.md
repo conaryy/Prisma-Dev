@@ -2,8 +2,8 @@
 
 ## Project Overview
 - Folder ini berisi bahan referensi, bukan service production utama.
-- Saat ini terlihat ada referensi project lain di `folder_referensi/project-bolt-sb1-socre5kj`.
-- Logbook README menyebut folder ini sebagai sumber referensi desain frontend.
+- Logbook dan frontend lain kadang memakai folder ini sebagai acuan visual atau pola implementasi.
+- Isi folder ini bukan source of truth untuk domain, env, SSO, atau deploy runtime saat ini.
 
 ## Build And Test Commands
 - Tidak ada command wajib dari root untuk folder ini.

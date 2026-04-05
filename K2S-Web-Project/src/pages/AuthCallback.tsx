@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { clearAuthToken, clearAuthUser, setAuthToken, setAuthUser } from '@/lib/api';
+import { clearAuthToken, clearAuthUser, setAuthUser, setSessionTokens } from '@/lib/api';
 import { canAccessAdminPortal } from '@/lib/permissions';
 import { clearSsoFlowLock, consumeSsoFlowState, exchangeAuthorizationCode } from '@/lib/sso';
 
@@ -35,7 +35,10 @@ export function AuthCallback() {
           throw new Error('Access token tidak tersedia.');
         }
 
-        setAuthToken(response.access_token);
+        setSessionTokens({
+          accessToken: response.access_token,
+          refreshToken: response.refresh_token,
+        });
         if (response.user && typeof response.user === 'object') {
           setAuthUser(response.user);
         }

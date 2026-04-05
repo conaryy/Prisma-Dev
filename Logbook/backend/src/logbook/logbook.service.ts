@@ -37,6 +37,22 @@ function buildWhereClause(conditions: Prisma.Sql[]) {
 export class LogbookService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private readImportWorkbook(
+    buffer: Buffer,
+    targetSheetName: string,
+    categoryLabel: string
+  ) {
+    try {
+      return readWorkbookSheetRows(buffer, targetSheetName);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : `File ${categoryLabel} tidak dapat dibaca.`;
+      throw new BadRequestException(message);
+    }
+  }
+
   private async getDateFilterOptions(
     category: FindEntriesParams['category'],
     selectedYear?: number
@@ -350,7 +366,11 @@ export class LogbookService {
   }
 
   async importTeknikEntries(params: ImportLogbookParams) {
-    const { sheetName, rows, date1904 } = readWorkbookSheetRows(params.buffer, TEKNIK_SHEET_NAME);
+    const { sheetName, rows, date1904 } = this.readImportWorkbook(
+      params.buffer,
+      TEKNIK_SHEET_NAME,
+      'Teknik'
+    );
 
     if (rows.length < TEKNIK_HEADER_ROW_INDEX) {
       throw new BadRequestException('Format file Teknik tidak sesuai. Header tabel tidak ditemukan.');
@@ -435,7 +455,11 @@ export class LogbookService {
   }
 
   async importAppEntries(params: ImportLogbookParams) {
-    const { sheetName, rows, date1904 } = readWorkbookSheetRows(params.buffer, APP_SHEET_NAME);
+    const { sheetName, rows, date1904 } = this.readImportWorkbook(
+      params.buffer,
+      APP_SHEET_NAME,
+      'APP'
+    );
 
     if (rows.length < APP_HEADER_ROW_INDEX) {
       throw new BadRequestException('Format file APP tidak sesuai. Header tabel tidak ditemukan.');
@@ -521,7 +545,11 @@ export class LogbookService {
   }
 
   async importTowerEntries(params: ImportLogbookParams) {
-    const { sheetName, rows, date1904 } = readWorkbookSheetRows(params.buffer, TOWER_SHEET_NAME);
+    const { sheetName, rows, date1904 } = this.readImportWorkbook(
+      params.buffer,
+      TOWER_SHEET_NAME,
+      'TWR'
+    );
 
     if (rows.length < TOWER_HEADER_ROW_INDEX) {
       throw new BadRequestException('Format file TWR tidak sesuai. Header tabel tidak ditemukan.');

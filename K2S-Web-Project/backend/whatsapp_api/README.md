@@ -1,14 +1,18 @@
 # WhatsApp API Bridge
 
-Service ini menerima webhook dari WAHA, mem-parsing command WhatsApp, lalu mengambil data `external DNP` dari backend Laravel melalui endpoint internal.
+Service ini menjadi bridge antara Laravel K2S dan WAHA.
 
-Command yang didukung saat ini:
+## Tanggung Jawab
 
-- `/temuan all`
-- `/temuan audit all`
-- `/temuan audit 2025`
-- `/temuan inspeksi all`
-- `/temuan surveillance 2026`
+- menerima webhook dari WAHA
+- mem-parsing command WhatsApp
+- mengambil data tertentu dari backend Laravel melalui endpoint internal
+- membantu flow admin session WAHA:
+  - status sesi
+  - QR
+  - logout
+  - create session
+- meneruskan pengiriman pesan dari flow admin Laravel
 
 ## Menjalankan Lokal
 
@@ -23,13 +27,26 @@ Command yang didukung saat ini:
 
 - `GET /health`
 - `POST /command`
-  - body: `{ "text": "/temuan audit 2025" }`
 - `POST /webhook/waha`
+- endpoint internal admin/session sesuai implementasi `app.py`
 
 ## Catatan Integrasi
 
-- Service ini mengirim balasan ke WAHA menggunakan `POST /api/sendText`.
-- Service ini mengambil data ke Laravel memakai:
-  - `GET /api/internal/whatsapp/external-dnp/temuan`
-- Header internal yang wajib:
-  - `X-Internal-Token: <WHATSAPP_BOT_INTERNAL_TOKEN>`
+- Service ini berbicara ke WAHA menggunakan:
+  - `WAHA_API_BASE_URL`
+  - `WAHA_API_KEY`
+  - `WAHA_SESSION_NAME`
+- Service ini berbicara ke Laravel memakai:
+  - `WHATSAPP_BOT_BACKEND_URL`
+  - header `X-Internal-Token: <WHATSAPP_BOT_INTERNAL_TOKEN>`
+- Pada deploy pusat saat ini:
+  - Laravel memanggil bridge lewat `WHATSAPP_API_SERVICE_URL=http://whatsapp-api:5002`
+  - bridge memanggil Laravel internal lewat `http://backend-nginx`
+
+## Catatan Operasional
+
+- Hindari menambah dependency cycle di compose antara:
+  - `backend`
+  - `backend-nginx`
+  - `whatsapp-api`
+- Queue Laravel memproses batch send secara asynchronous; Python bridge tidak seharusnya memaksa flow admin menjadi sinkron.

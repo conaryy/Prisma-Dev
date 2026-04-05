@@ -1,59 +1,88 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# K2S Backend
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Backend ini adalah aplikasi Laravel 12 untuk K2S.
 
-## About Laravel
+## Komponen Runtime
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- API Laravel utama
+- queue worker untuk job/background processing
+- `backend-init` untuk migrasi awal di Docker
+- `backend-nginx` sebagai reverse proxy internal PHP-FPM
+- integrasi ke:
+  - SSO/Auth pusat
+  - wrapper DNP
+  - `whatsapp_api`
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Menjalankan Lokal
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+```bash
+cd K2S-Web-Project/backend
+cp .env.example .env
+composer install
+php artisan key:generate
+php artisan migrate --force
+php artisan serve
+```
 
-## Learning Laravel
+Queue worker:
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+```bash
+php artisan queue:work
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Test:
 
-## Laravel Sponsors
+```bash
+composer test
+```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Area Sensitif
 
-### Premium Partners
+- auth / SSO
+- signed file routes
+- queue jobs
+- integrasi `external DNP`
+- integrasi `whatsapp_api`
+- admin `Kelola User`
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## Catatan Deploy
 
-## Contributing
+- Deploy terpusat sekarang memakai `docker-compose.central.yml` dari root repo.
+- K2S frontend production berjalan di:
+  - `https://k2s.ryvidia.my.id`
+- API K2S production berjalan di:
+  - `https://apik2s.ryvidia.my.id`
+- Jika backend/frontend upstream direcreate, restart `central-gateway` agar Nginx tidak memegang IP container lama.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Konfigurasi Penting
 
-## Code of Conduct
+- SSO:
+  - `AUTH_MODE`
+  - `SSO_ISSUER`
+  - `SSO_AUDIENCE`
+  - `SSO_JWKS_URL`
+  - `SSO_AUTHORIZE_URL`
+  - `SSO_TOKEN_URL`
+  - `SSO_END_SESSION_URL`
+  - `SSO_CLIENT_ID`
+- Session/CORS:
+  - `SESSION_SECURE_COOKIE`
+  - `SESSION_SAME_SITE`
+  - `CORS_ALLOW_ORIGINS`
+  - `SANCTUM_STATEFUL_DOMAINS`
+- WhatsApp bridge:
+  - `WHATSAPP_API_SERVICE_URL`
+  - `WHATSAPP_BOT_INTERNAL_TOKEN`
+- External DNP:
+  - `EXTERNAL_DNP_WRAPPER_URL`
+  - `EXTERNAL_DNP_WRAPPER_INTERNAL_TOKEN`
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## File Access
 
-## Security Vulnerabilities
+- Untuk non-Docker lokal, jalankan `php artisan storage:link` bila perlu.
+- Di deploy Docker, file sensitif sebaiknya tetap diakses lewat endpoint auth/signed Laravel, bukan path storage mentah.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Referensi
 
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+- `backend/docs/openapi.yaml`
+- `backend/docs/AUTH_SSO_MIGRATION.md`

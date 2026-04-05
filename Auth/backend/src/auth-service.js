@@ -25,8 +25,10 @@ export {
 } from './session-service.js';
 
 export {
+  changeOwnPassword,
   createManagedUser,
   deleteManagedUser,
   resetManagedUserPassword,
+  updateOwnProfile,
   updateManagedUser,
 } from './admin-user-service.js';

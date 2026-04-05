@@ -107,28 +107,35 @@ async function sha256Base64Url(input: string) {
 
 function getAuthorizeUrl() {
   const cfg = env();
-  const base = (cfg.VITE_SSO_AUTH_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+  const base = (cfg.VITE_SSO_AUTH_BASE_URL || getDefaultAuthBaseUrl()).replace(/\/+$/, '');
   return cfg.VITE_SSO_AUTHORIZE_URL || `${base}/oauth/authorize`;
 }
 
 function getTokenUrl() {
   const cfg = env();
-  const base = (cfg.VITE_SSO_AUTH_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+  const base = (cfg.VITE_SSO_AUTH_BASE_URL || getDefaultAuthBaseUrl()).replace(/\/+$/, '');
   return cfg.VITE_SSO_TOKEN_URL || `${base}/oauth/token`;
 }
 
 function getLogoutUrl() {
   const cfg = env();
-  const base = (cfg.VITE_SSO_AUTH_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+  const base = (cfg.VITE_SSO_AUTH_BASE_URL || getDefaultAuthBaseUrl()).replace(/\/+$/, '');
   return cfg.VITE_SSO_LOGOUT_URL || `${base}/auth/logout`;
+}
+
+function getDefaultAuthBaseUrl() {
+  if (typeof window !== 'undefined') {
+    const { hostname } = window.location;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:3104';
+    }
+  }
+
+  return 'https://authapi.ryvidia.my.id';
 }
 
 function getClientId() {
   return env().VITE_SSO_CLIENT_ID || 'k2s-web';
-}
-
-function getClientSecret() {
-  return env().VITE_SSO_CLIENT_SECRET || 'dev-secret-k2s';
 }
 
 function getScope() {
@@ -199,7 +206,6 @@ export async function exchangeAuthorizationCode({
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     client_id: getClientId(),
-    client_secret: getClientSecret(),
     code,
     redirect_uri: getRedirectUri(),
     code_verifier: codeVerifier,
@@ -221,6 +227,40 @@ export async function exchangeAuthorizationCode({
       (typeof data?.message === 'string' && data.message) ||
       (typeof data?.error === 'string' && data.error) ||
       'SSO token exchange failed';
+    throw new Error(message);
+  }
+
+  return data as {
+    access_token: string;
+    refresh_token?: string;
+    expires_in?: number;
+    user?: Record<string, unknown>;
+  };
+}
+
+export async function refreshAccessToken(refreshToken: string) {
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: getClientId(),
+    refresh_token: refreshToken,
+  });
+
+  const response = await fetch(getTokenUrl(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: body.toString(),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      (typeof data?.error_description === 'string' && data.error_description) ||
+      (typeof data?.message === 'string' && data.message) ||
+      (typeof data?.error === 'string' && data.error) ||
+      'SSO token refresh failed';
     throw new Error(message);
   }
 

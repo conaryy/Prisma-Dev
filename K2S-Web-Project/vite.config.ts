@@ -13,6 +13,7 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   server: {
+    port: 5173,
     watch: {
       ignored: [
         '**/backend/vendor/**',

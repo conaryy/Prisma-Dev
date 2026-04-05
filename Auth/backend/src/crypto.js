@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import {
   exportJWK,
@@ -25,17 +26,61 @@ export function hashToken(token) {
   return hashSha256(token);
 }
 
-export async function initKeys() {
-  let privateJwk;
-  if (fs.existsSync(config.jwkPath)) {
-    privateJwk = JSON.parse(fs.readFileSync(config.jwkPath, 'utf8'));
-  } else {
-    const { privateKey } = await generateKeyPair('RS256');
-    privateJwk = await exportJWK(privateKey);
-    privateJwk.kid = 'auth-main-key';
-    privateJwk.alg = 'RS256';
-    privateJwk.use = 'sig';
+function loadPrivateJwkFromEnv() {
+  if (!config.jwkJson) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(config.jwkJson);
+  } catch (error) {
+    throw new Error(`AUTH_JWK_JSON tidak valid: ${(error && error.message) || 'parse failed'}`);
+  }
+}
+
+function loadPrivateJwkFromPath() {
+  if (!config.jwkPath || !fs.existsSync(config.jwkPath)) {
+    return null;
+  }
+
+  return JSON.parse(fs.readFileSync(config.jwkPath, 'utf8'));
+}
+
+async function generatePrivateJwk() {
+  const { privateKey } = await generateKeyPair('RS256');
+  const privateJwk = await exportJWK(privateKey);
+  privateJwk.kid = 'auth-main-key';
+  privateJwk.alg = 'RS256';
+  privateJwk.use = 'sig';
+  return privateJwk;
+}
+
+function persistPrivateJwk(privateJwk) {
+  if (!config.jwkPath) {
+    return;
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(config.jwkPath), { recursive: true });
     fs.writeFileSync(config.jwkPath, JSON.stringify(privateJwk, null, 2), 'utf8');
+  } catch (error) {
+    console.warn(`[auth-backend] failed to persist generated JWK to ${config.jwkPath}`);
+    console.warn(error);
+  }
+}
+
+export async function initKeys() {
+  let privateJwk = loadPrivateJwkFromEnv() ?? loadPrivateJwkFromPath();
+
+  if (!privateJwk) {
+    if (!config.allowEphemeralJwk) {
+      throw new Error(
+        'JWK private key tidak tersedia. Set AUTH_JWK_JSON atau AUTH_JWK_PATH untuk production.'
+      );
+    }
+
+    privateJwk = await generatePrivateJwk();
+    persistPrivateJwk(privateJwk);
   }
 
   signingKey = await importJWK(privateJwk, 'RS256');

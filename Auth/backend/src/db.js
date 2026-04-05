@@ -87,7 +87,47 @@ export async function seedDefaults() {
     ]);
   }
 
-  const existingClient = await queryOne('SELECT id FROM oauth_clients WHERE id = ? LIMIT 1', [config.defaultClient.clientId]);
+  await ensureOauthClient({
+    now,
+    clientId: config.defaultClient.clientId,
+    clientSecret: config.defaultClient.clientSecret,
+    name: 'K2S Web (dev)',
+    redirectUri: config.defaultClient.redirectUri,
+    postLogoutRedirectUri: config.defaultClient.postLogoutRedirectUri,
+  });
+
+  await ensureOauthClient({
+    now,
+    clientId: config.defaultLogbookClient.clientId,
+    clientSecret: config.defaultLogbookClient.clientSecret,
+    name: 'Logbook Web (dev)',
+    redirectUri: config.defaultLogbookClient.redirectUri,
+    postLogoutRedirectUri: config.defaultLogbookClient.postLogoutRedirectUri,
+  });
+
+  await ensureOauthClient({
+    now,
+    clientId: config.defaultK3Client.clientId,
+    clientSecret: config.defaultK3Client.clientSecret,
+    name: 'K3 Web (dev)',
+    redirectUri: config.defaultK3Client.redirectUri,
+    postLogoutRedirectUri: config.defaultK3Client.postLogoutRedirectUri,
+  });
+}
+
+async function ensureOauthClient({
+  now,
+  clientId,
+  clientSecret,
+  name,
+  redirectUri,
+  postLogoutRedirectUri,
+}) {
+  const existingClient = await queryOne('SELECT id FROM oauth_clients WHERE id = ? LIMIT 1', [clientId]);
+  const redirectUrisJson = JSON.stringify([redirectUri]);
+  const postLogoutRedirectUrisJson = JSON.stringify([postLogoutRedirectUri]);
+  const grantTypesJson = JSON.stringify(['authorization_code', 'refresh_token']);
+
   if (!existingClient) {
     await execQuery(`
       INSERT INTO oauth_clients (
@@ -96,59 +136,40 @@ export async function seedDefaults() {
         ?, ?, ?, ?, ?, ?, ?, ?, ?
       )
     `, [
-      config.defaultClient.clientId,
-      config.defaultClient.clientSecret,
-      'K2S Web (dev)',
-      JSON.stringify([config.defaultClient.redirectUri]),
-      JSON.stringify([config.defaultClient.postLogoutRedirectUri]),
-      JSON.stringify(['authorization_code', 'refresh_token']),
+      clientId,
+      clientSecret,
+      name,
+      redirectUrisJson,
+      postLogoutRedirectUrisJson,
+      grantTypesJson,
       'openid profile email',
       now,
       now,
     ]);
+    return;
   }
 
-  const existingLogbookClient = await queryOne('SELECT id FROM oauth_clients WHERE id = ? LIMIT 1', [config.defaultLogbookClient.clientId]);
-  if (!existingLogbookClient) {
-    await execQuery(`
-      INSERT INTO oauth_clients (
-        id, client_secret, name, redirect_uris_json, post_logout_redirect_uris_json, grant_types_json, scope, created_at, updated_at
-      ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?
-      )
-    `, [
-      config.defaultLogbookClient.clientId,
-      config.defaultLogbookClient.clientSecret,
-      'Logbook Web (dev)',
-      JSON.stringify([config.defaultLogbookClient.redirectUri]),
-      JSON.stringify([config.defaultLogbookClient.postLogoutRedirectUri]),
-      JSON.stringify(['authorization_code', 'refresh_token']),
-      'openid profile email',
-      now,
-      now,
-    ]);
-  }
-
-  const existingK3Client = await queryOne('SELECT id FROM oauth_clients WHERE id = ? LIMIT 1', [config.defaultK3Client.clientId]);
-  if (!existingK3Client) {
-    await execQuery(`
-      INSERT INTO oauth_clients (
-        id, client_secret, name, redirect_uris_json, post_logout_redirect_uris_json, grant_types_json, scope, created_at, updated_at
-      ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?
-      )
-    `, [
-      config.defaultK3Client.clientId,
-      config.defaultK3Client.clientSecret,
-      'K3 Web (dev)',
-      JSON.stringify([config.defaultK3Client.redirectUri]),
-      JSON.stringify([config.defaultK3Client.postLogoutRedirectUri]),
-      JSON.stringify(['authorization_code', 'refresh_token']),
-      'openid profile email',
-      now,
-      now,
-    ]);
-  }
+  await execQuery(`
+    UPDATE oauth_clients
+    SET
+      client_secret = ?,
+      name = ?,
+      redirect_uris_json = ?,
+      post_logout_redirect_uris_json = ?,
+      grant_types_json = ?,
+      scope = ?,
+      updated_at = ?
+    WHERE id = ?
+  `, [
+    clientSecret,
+    name,
+    redirectUrisJson,
+    postLogoutRedirectUrisJson,
+    grantTypesJson,
+    'openid profile email',
+    now,
+    clientId,
+  ]);
 }
 
 export function parseJson(value, fallback) {

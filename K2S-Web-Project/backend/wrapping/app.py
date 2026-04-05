@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import io
 import uuid
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin
 import os
 import hmac
@@ -279,6 +280,27 @@ def _extract_fill_targets_from_html(soup):
     return targets
 
 
+def _clone_session(base_session):
+    cloned = requests.Session()
+    cloned.cookies.update(base_session.cookies)
+    return cloned
+
+
+def _fetch_plan_pq_detail(base_session, url, ajax_headers, pair_key):
+    worker_session = _clone_session(base_session)
+    try:
+        response = worker_session.get(
+            url,
+            headers=ajax_headers,
+            params={'plan_id': pair_key[0], 'pq_id': pair_key[1]},
+            timeout=45,
+        )
+        response.raise_for_status()
+        return pair_key, response.json()
+    except Exception as exc:
+        return pair_key, {'error': f'Gagal mengambil get_plan_pq: {str(exc)}'}
+
+
 def _extract_prefix_letter(pq_no, pq_desc):
     pq_no_text = ' '.join(str(pq_no or '').split())
     pq_desc_text = ' '.join(str(pq_desc or '').split())
@@ -456,6 +478,7 @@ def _scrape_selfassessment_fill(s, scope, year, code1, code2, area, debug_log):
         }
 
     plan_pq_results = []
+    plan_pq_requests = []
     seen_pairs = set()
     for item in pq_items:
         if not isinstance(item, dict):
@@ -475,21 +498,7 @@ def _scrape_selfassessment_fill(s, scope, year, code1, code2, area, debug_log):
         kategori_header = header_by_pq_id.get(pq_induk) if pq_induk else None
         get_plan_pq_url = f"{WEB2_URL}/{main_path_segment}/get_plan_pq"
         debug_log.append(f"GET: {get_plan_pq_url}?plan_id={pair_key[0]}&pq_id={pair_key[1]}")
-
-        plan_pq_content = None
-        try:
-            plan_pq_res = s.get(
-                get_plan_pq_url,
-                headers=ajax_headers,
-                params={'plan_id': pair_key[0], 'pq_id': pair_key[1]},
-                timeout=120,
-            )
-            plan_pq_res.raise_for_status()
-            plan_pq_content = plan_pq_res.json()
-        except Exception as e_plan_pq:
-            plan_pq_content = {'error': f'Gagal mengambil get_plan_pq: {str(e_plan_pq)}'}
-
-        plan_pq_results.append({
+        plan_pq_requests.append({
             'plan_id': pair_key[0],
             'pq_id': pair_key[1],
             'pq_desc': item.get('pq_desc'),
@@ -498,8 +507,35 @@ def _scrape_selfassessment_fill(s, scope, year, code1, code2, area, debug_log):
             'datatable_kategori_desc': (kategori_header or {}).get('pq_desc') or item.get('pq_desc'),
             'datatable_kategori_no': (kategori_header or {}).get('pq_no') or item.get('pq_no'),
             'url': f"{get_plan_pq_url}?plan_id={pair_key[0]}&pq_id={pair_key[1]}",
-            'content': plan_pq_content,
+            'pair_key': pair_key,
         })
+
+    if plan_pq_requests:
+        max_workers = min(8, len(plan_pq_requests))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {
+                executor.submit(
+                    _fetch_plan_pq_detail,
+                    s,
+                    f"{WEB2_URL}/{main_path_segment}/get_plan_pq",
+                    ajax_headers,
+                    request_item['pair_key'],
+                ): request_item
+                for request_item in plan_pq_requests
+            }
+
+            detail_by_pair = {}
+            for future in as_completed(future_map):
+                pair_key, content = future.result()
+                detail_by_pair[pair_key] = content
+
+        for request_item in plan_pq_requests:
+            request_item.pop('pair_key', None)
+            request_item['content'] = detail_by_pair.get(
+                (request_item['plan_id'], request_item['pq_id']),
+                {'error': 'Detail get_plan_pq tidak ditemukan.'},
+            )
+            plan_pq_results.append(request_item)
 
     rows = []
     seen_rows = set()
@@ -512,16 +548,20 @@ def _scrape_selfassessment_fill(s, scope, year, code1, code2, area, debug_log):
         )
         pertanyaan_value = detail.get('pq_desc') or kategori_value
         question_no = str(detail.get('datatable_pq_no') or '').strip()
-        if '.' not in question_no:
-            continue
-
         prefix_value = _extract_prefix_letter(question_no, pertanyaan_value)
+        if not prefix_value:
+            prefix_value = _extract_prefix_letter(
+                detail.get('datatable_kategori_no'),
+                detail.get('datatable_kategori_desc') or kategori_value,
+            )
         deskripsi_parts = _collect_deskripsi_fragments(detail.get('content'))
         deskripsi_value = ' | '.join(deskripsi_parts)
 
         kategori = ' '.join(str(kategori_value or '').split())
         prefix = ' '.join(str(prefix_value or '').split())
         pertanyaan = _extract_pertanyaan_text(pertanyaan_value)
+        if not kategori or not prefix or not pertanyaan:
+            continue
 
         if pertanyaan.strip().lower() == kategori.strip().lower():
             continue
@@ -929,7 +969,7 @@ def start_dynamic_automation():
     return jsonify({'error': 'Endpoint disabled. Gunakan /automation-run.'}), 410
 
 if __name__ == '__main__':
-    port = int(os.getenv('WRAPPER_PORT', '5000'))
+    port = int(os.getenv('WRAPPER_PORT', '5001'))
     host = os.getenv('WRAPPER_HOST', '0.0.0.0')
     debug = os.getenv('WRAPPER_DEBUG', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
     app.run(host=host, port=port, debug=debug)

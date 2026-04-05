@@ -54,6 +54,9 @@ function defaultPermissions(role: 'Admin' | 'Viewer'): PermissionState {
 
 export function UserManagement() {
   const navigate = useNavigate();
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
+  );
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +110,20 @@ export function UserManagement() {
   useEffect(() => {
     loadUsers();
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setIsDark(root.classList.contains('dark'));
+    });
+
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
   }, []);
 
   const onRoleChange = (role: 'Admin' | 'Viewer') => {
@@ -182,24 +199,60 @@ export function UserManagement() {
   };
 
   return (
-    <div className="min-h-screen bg-[#000a2e] px-4 py-6 text-slate-100 sm:px-6">
+    <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 transition-colors duration-300 dark:bg-[#000a2e] dark:text-slate-100 sm:px-6">
       <div className="mx-auto w-full max-w-[1400px] space-y-5">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#3158bb66] bg-[#0a1538]/85 p-4 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#3158bb66] bg-[#112457]">
-              <Users className="h-5 w-5 text-blue-200" />
-            </span>
-            <div>
-              <h1 className="text-lg font-semibold">Kelola User (Auth 5174)</h1>
-              <p className="text-sm text-slate-300">Source of truth user/permission terpusat di Auth.</p>
+        <header
+          className="flex items-center justify-between gap-4 rounded-[28px] border px-4 py-3 sm:px-5"
+          style={isDark ? {
+            borderColor: '#1e3a6e',
+            backgroundColor: 'rgba(8,16,42,0.88)',
+            backdropFilter: 'blur(14px)',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
+          } : {
+            borderColor: '#e2e8f0',
+            backgroundColor: '#ffffff',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          }}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-2xl border"
+              style={isDark ? {
+                borderColor: '#1e3a6e',
+                backgroundColor: 'rgba(12,22,52,0.95)',
+              } : {
+                borderColor: '#e2e8f0',
+                backgroundColor: '#ffffff',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+              }}
+            >
+              <img
+                src="/airnavpp.png"
+                alt="Airnav Indonesia"
+                className="h-9 w-9 object-contain"
+              />
+            </div>
+            <div className="min-w-0">
+              <p
+                className="text-[11px] font-semibold uppercase tracking-[0.28em]"
+                style={{ color: isDark ? '#64748b' : '#94a3b8' }}
+              >
+                Portal Admin
+              </p>
+              <div
+                className="truncate text-sm font-semibold sm:text-base"
+                style={{ color: isDark ? '#e2e8f0' : '#1e293b' }}
+              >
+                Kelola User 
+              </div>
             </div>
           </div>
           <Button type="button" variant="outline" onClick={() => navigate('/portal-admin')}>
-            Kembali Portal
+            Kembali ke Portal Admin
           </Button>
         </header>
 
-        <form onSubmit={onCreate} className="space-y-4 rounded-2xl border border-[#3158bb66] bg-[#0a1538]/85 p-4">
+        <form onSubmit={onCreate} className="space-y-4 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm transition-colors duration-300 dark:border-[#3158bb66] dark:bg-[#0a1538]/85 dark:shadow-none">
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
             <Input placeholder="Nama lengkap" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
             <Input placeholder="Username" value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} />
@@ -209,9 +262,9 @@ export function UserManagement() {
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-2 text-sm">
-              <span className="text-slate-300">Role</span>
+              <span className="text-slate-600 dark:text-slate-300">Role</span>
               <select
-                className="h-10 w-full rounded-lg border border-[#3158bb66] bg-[#0f1e49] px-3"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-900 shadow-sm transition-colors duration-300 dark:border-[#3158bb66] dark:bg-[#0f1e49] dark:text-slate-100"
                 value={form.role}
                 onChange={(e) => onRoleChange(e.target.value as 'Admin' | 'Viewer')}
               >
@@ -220,9 +273,9 @@ export function UserManagement() {
               </select>
             </label>
             <label className="space-y-2 text-sm">
-              <span className="text-slate-300">Status</span>
+              <span className="text-slate-600 dark:text-slate-300">Status</span>
               <select
-                className="h-10 w-full rounded-lg border border-[#3158bb66] bg-[#0f1e49] px-3"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-900 shadow-sm transition-colors duration-300 dark:border-[#3158bb66] dark:bg-[#0f1e49] dark:text-slate-100"
                 value={form.status}
                 onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as 'Active' | 'Disabled' }))}
               >
@@ -234,7 +287,7 @@ export function UserManagement() {
 
           <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
             {PERMISSION_LABELS.map((item) => (
-              <label key={item.key} className="flex items-center gap-2 rounded-lg border border-[#3158bb66] px-3 py-2 text-sm">
+              <label key={item.key} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-sm text-slate-700 transition-colors duration-300 dark:border-[#3158bb66] dark:bg-transparent dark:text-slate-100">
                 <Checkbox
                   checked={Boolean(form.permissions[item.key])}
                   onCheckedChange={(checked) =>
@@ -259,12 +312,12 @@ export function UserManagement() {
         </form>
 
         {error ? (
-          <div className="rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
+          <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/50 dark:bg-red-500/10 dark:text-red-200">{error}</div>
         ) : null}
 
-        <section className="overflow-x-auto rounded-2xl border border-[#3158bb66] bg-[#0a1538]/85">
+        <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white/90 shadow-sm transition-colors duration-300 dark:border-[#3158bb66] dark:bg-[#0a1538]/85 dark:shadow-none">
           <table className="min-w-full text-sm">
-            <thead className="bg-[#132a67] text-left text-slate-200">
+            <thead className="bg-slate-100 text-left text-slate-600 transition-colors duration-300 dark:bg-[#132a67] dark:text-slate-200">
               <tr>
                 <th className="px-3 py-2">Username</th>
                 <th className="px-3 py-2">Email</th>
@@ -276,12 +329,12 @@ export function UserManagement() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="px-3 py-4 text-slate-300" colSpan={6}>Memuat data...</td></tr>
+                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={6}>Memuat data...</td></tr>
               ) : users.length === 0 ? (
-                <tr><td className="px-3 py-4 text-slate-300" colSpan={6}>Belum ada user.</td></tr>
+                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={6}>Belum ada user.</td></tr>
               ) : (
                 users.map((user) => (
-                  <tr key={user.id} className="border-t border-[#3158bb55]">
+                  <tr key={user.id} className="border-t border-slate-200 transition-colors duration-300 dark:border-[#3158bb55]">
                     <td className="px-3 py-2">{user.username}</td>
                     <td className="px-3 py-2">{user.email || '-'}</td>
                     <td className="px-3 py-2">{user.role}</td>
@@ -318,8 +371,8 @@ export function UserManagement() {
         </section>
 
         {resetTarget ? (
-          <div className="rounded-2xl border border-[#3158bb66] bg-[#0a1538]/95 p-4">
-            <h2 className="mb-3 text-sm font-semibold">Reset password: {resetTarget.username}</h2>
+          <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm transition-colors duration-300 dark:border-[#3158bb66] dark:bg-[#0a1538]/95 dark:shadow-none">
+            <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">Reset password: {resetTarget.username}</h2>
             <div className="flex flex-wrap items-center gap-2">
               <Input
                 className="max-w-sm"
@@ -341,4 +394,3 @@ export function UserManagement() {
     </div>
   );
 }
-

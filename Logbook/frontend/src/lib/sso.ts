@@ -28,7 +28,7 @@ async function sha256Base64Url(input: string) {
 }
 
 function getAuthBaseUrl() {
-  return (env().VITE_SSO_AUTH_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+  return (env().VITE_SSO_AUTH_BASE_URL || 'http://localhost:3104').replace(/\/+$/, '');
 }
 
 function getAuthorizeUrl() {
@@ -45,10 +45,6 @@ function getLogoutUrl() {
 
 function getClientId() {
   return env().VITE_SSO_CLIENT_ID || 'logbook-web';
-}
-
-function getClientSecret() {
-  return env().VITE_SSO_CLIENT_SECRET || 'dev-secret-logbook';
 }
 
 function getScope() {
@@ -103,7 +99,6 @@ export async function exchangeAuthorizationCode(code: string, verifier: string) 
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     client_id: getClientId(),
-    client_secret: getClientSecret(),
     code,
     redirect_uri: getRedirectUri(),
     code_verifier: verifier,
@@ -125,6 +120,39 @@ export async function exchangeAuthorizationCode(code: string, verifier: string) 
       (typeof data?.message === 'string' && data.message) ||
       (typeof data?.error === 'string' && data.error) ||
       'SSO token exchange failed.';
+    throw new Error(message);
+  }
+
+  return data as {
+    access_token: string;
+    refresh_token?: string;
+    user?: Record<string, unknown>;
+  };
+}
+
+export async function refreshAccessToken(refreshToken: string) {
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: getClientId(),
+    refresh_token: refreshToken,
+  });
+
+  const response = await fetch(getTokenUrl(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: body.toString(),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      (typeof data?.error_description === 'string' && data.error_description) ||
+      (typeof data?.message === 'string' && data.message) ||
+      (typeof data?.error === 'string' && data.error) ||
+      'SSO token refresh failed.';
     throw new Error(message);
   }
 

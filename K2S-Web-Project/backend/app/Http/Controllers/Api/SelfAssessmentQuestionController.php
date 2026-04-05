@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Jobs\RunSelfAssessmentQuestionImport;
 use App\Models\SelfAssessmentQuestion;
 use App\Models\SelfAssessmentQuestionCategory;
+use App\Models\SelfAssessmentQuestionImportJob;
 use App\Models\SelfAssessmentSessionArea;
 use App\Models\SelfAssessmentSessionQuestionCategoryUser;
 use Illuminate\Http\Request;
@@ -476,6 +478,84 @@ class SelfAssessmentQuestionController extends ApiController
     }
 
     public function importDnpScrape(Request $request)
+    {
+        $validated = $request->validate([
+            'scope' => ['required', 'in:audit,inspeksi,surveillance'],
+            'category' => ['required', 'string'],
+            'year' => ['required', 'integer', 'min:2000', 'max:2100'],
+            'sessionId' => ['required', 'string'],
+            'fillCode1' => ['required', 'string'],
+            'fillCode2' => ['required', 'string'],
+            'fillArea' => ['nullable', 'string'],
+            'captcha' => ['nullable', 'string'],
+            'username' => ['nullable', 'string'],
+            'password' => ['nullable', 'string'],
+        ]);
+
+        $userId = (string) optional($request->user())->id;
+        if ($userId === '') {
+            return response()->json(['error' => 'User tidak valid.'], 401);
+        }
+
+        $runningJob = SelfAssessmentQuestionImportJob::query()
+            ->where('user_id', $userId)
+            ->whereIn('status', ['queued', 'running'])
+            ->latest('created_at')
+            ->first();
+
+        if ($runningJob) {
+            return $this->respondData([
+                'jobId' => $runningJob->id,
+                'status' => $runningJob->status,
+                'message' => 'Import DNP sebelumnya masih berjalan.',
+            ], 202);
+        }
+
+        $importJob = SelfAssessmentQuestionImportJob::query()->create([
+            'user_id' => $userId,
+            'scope' => $validated['scope'],
+            'category' => $validated['category'],
+            'year' => (int) $validated['year'],
+            'fill_code1' => $validated['fillCode1'],
+            'fill_code2' => $validated['fillCode2'],
+            'fill_area' => (string) ($validated['fillArea'] ?? ''),
+            'status' => 'queued',
+            'message' => 'Import pertanyaan DNP dimasukkan ke antrean.',
+        ]);
+
+        RunSelfAssessmentQuestionImport::dispatch(
+            importJobId: (string) $importJob->id,
+            userId: $userId,
+            payload: $validated
+        );
+
+        return $this->respondData([
+            'jobId' => $importJob->id,
+            'status' => $importJob->status,
+            'message' => $importJob->message,
+        ], 202);
+    }
+
+    public function importDnpScrapeStatus(Request $request, SelfAssessmentQuestionImportJob $job)
+    {
+        $userId = (string) optional($request->user())->id;
+        if ($userId === '' || (string) $job->user_id !== $userId) {
+            return response()->json(['error' => 'Job tidak ditemukan.'], 404);
+        }
+
+        return $this->respondData([
+            'jobId' => $job->id,
+            'status' => $job->status,
+            'message' => $job->message,
+            'error' => $job->error_message,
+            'summary' => $job->summary,
+            'startedAt' => optional($job->started_at)->toDateTimeString(),
+            'finishedAt' => optional($job->finished_at)->toDateTimeString(),
+            'createdAt' => optional($job->created_at)->toDateTimeString(),
+        ]);
+    }
+
+    public function importDnpScrapeRun(Request $request)
     {
         $validated = $request->validate([
             'scope' => ['required', 'in:audit,inspeksi,surveillance'],
