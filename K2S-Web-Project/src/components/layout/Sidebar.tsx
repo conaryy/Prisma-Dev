@@ -397,7 +397,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'zoom-performance fixed left-0 top-0 z-40 h-screen w-72 overflow-hidden rounded-r-[24px] border-r border-white/60 bg-white/80 text-slate-900 transition-[transform,width] duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100',
+        'zoom-performance fixed left-0 top-0 z-40 h-screen w-72 overflow-hidden rounded-r-[24px] border-r border-white/70 bg-[rgba(255,255,255,0.98)] text-slate-900 shadow-[0_22px_60px_rgba(15,23,42,0.18)] transition-[transform,width] duration-300 ease-in-out lg:border-white/60 lg:bg-[rgba(255,255,255,0.82)] lg:shadow-[0_18px_44px_rgba(15,23,42,0.12)] dark:border-[#25448f] dark:bg-[#08143f] dark:text-slate-100 dark:shadow-[0_22px_60px_rgba(2,8,28,0.58)] lg:dark:border-slate-800 lg:dark:bg-[rgba(15,23,42,0.92)] lg:dark:shadow-[0_18px_44px_rgba(2,8,28,0.45)]',
         isOpen ? 'translate-x-0' : '-translate-x-full',
         isCollapsed ? 'lg:w-20' : 'lg:w-72',
         'lg:translate-x-0'
@@ -405,7 +405,7 @@ export function Sidebar({
     >
       <div className="flex h-full min-h-0 flex-col">
         <div
-          className="relative border-b border-white/70 bg-gradient-to-b from-white via-white to-blue-50/80 px-6 py-6 dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800"
+          className="relative border-b border-white/80 bg-gradient-to-b from-white via-white to-blue-50 px-6 py-6 lg:border-white/70 lg:to-blue-50/80 dark:border-[#25448f] dark:from-[#08143f] dark:via-[#08143f] dark:to-[#12357f] lg:dark:border-slate-800 lg:dark:from-slate-900 lg:dark:via-slate-900 lg:dark:to-slate-800"
         >
           <div
             className="flex items-center gap-3"

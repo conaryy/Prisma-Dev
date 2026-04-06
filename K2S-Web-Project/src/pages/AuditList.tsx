@@ -215,7 +215,7 @@ export function AuditList() {
                 </option>
               ))}
             </select>
-            <div className="relative min-w-[220px] flex-1">
+            <div className="relative min-w-0 flex-1 sm:min-w-[220px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-blue-200/70" />
               <Input
                 value={searchText}

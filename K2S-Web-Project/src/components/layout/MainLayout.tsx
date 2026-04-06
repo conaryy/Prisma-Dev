@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 
 export function MainLayout() {
+  const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -14,6 +15,10 @@ export function MainLayout() {
       root.classList.remove('scrollbar-gutter-stable');
     };
   }, []);
+
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname, location.search]);
 
   return (
     <div className="relative min-h-screen bg-transparent">

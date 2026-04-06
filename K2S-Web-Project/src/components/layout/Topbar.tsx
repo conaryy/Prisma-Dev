@@ -307,8 +307,8 @@ export function Topbar({
 
   return (
     <header className="sticky top-4 z-30 sm:top-6">
-      <div className="zoom-performance flex w-full flex-col gap-3 rounded-2xl border border-white/70 bg-white/80 px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.1)] sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 dark:border-[#2b4fa7]/85 dark:bg-[#0b1f58]/85 dark:shadow-[0_14px_36px_rgba(3,8,30,0.58)]">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="zoom-performance flex w-full flex-col gap-3 rounded-2xl border border-white/70 bg-white/80 px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.1)] lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:gap-4 dark:border-[#2b4fa7]/85 dark:bg-[#0b1f58]/85 dark:shadow-[0_14px_36px_rgba(3,8,30,0.58)]">
+        <div className="flex min-w-0 w-full items-start gap-3 lg:w-auto lg:flex-1 lg:items-center">
           {onMenuClick && (
             <Button
               variant="ghost"
@@ -339,7 +339,7 @@ export function Topbar({
               />
             </Button>
           )}
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-sm shadow-slate-500/20 ring-1 ring-slate-200 dark:bg-[#102a72] dark:ring-white/55 dark:shadow-[0_10px_22px_rgba(2,8,30,0.45)]">
               <img
                 src="/airnavpp.png"
@@ -347,11 +347,11 @@ export function Topbar({
                 className="h-8 w-8 rounded-full object-contain bg-white p-[2px] dark:bg-white dark:brightness-95 dark:contrast-125"
               />
             </div>
-            <div className="min-w-0 leading-tight">
+            <div className="min-w-0 flex-1 leading-tight">
               <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                 Penyelenggara
               </div>
-              <div className="break-words text-sm font-semibold text-slate-800 dark:text-blue-50">
+              <div className="break-words text-sm font-semibold leading-snug text-slate-800 dark:text-blue-50">
                 {profileName}
               </div>
             </div>
@@ -397,13 +397,13 @@ export function Topbar({
           </div>
         </div>
 
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end sm:gap-3">
-          <div className="order-last flex w-full items-center gap-2 sm:order-none sm:w-auto">
+        <div className="flex w-full items-center justify-between gap-3 lg:w-auto lg:flex-none lg:justify-end">
+          <div className="flex min-w-0 flex-1 items-center gap-2 lg:flex-none">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="gap-2 border-white/80 bg-white/70 text-slate-700 shadow-sm transition hover:bg-white hover:text-slate-700 dark:border-[#4268c4]/80 dark:bg-[#1b3f9b]/70 dark:text-blue-100 dark:hover:bg-[#2553be]/75 dark:hover:text-white"
+              className="h-10 shrink-0 rounded-full border-blue-200/80 bg-white/82 px-3 text-slate-700 shadow-sm transition hover:bg-white hover:text-slate-700 dark:border-[#4268c4]/80 dark:bg-[#1b3f9b]/72 dark:text-blue-100 dark:hover:bg-[#2553be]/78 dark:hover:text-white"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               aria-label="Ganti tema"
             >
@@ -417,7 +417,11 @@ export function Topbar({
 
             <DropdownMenu open={isPortalOpen} onOpenChange={setIsPortalOpen}>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-10 min-w-0 flex-1 justify-between rounded-full border-blue-200/80 bg-white/82 px-3 text-slate-700 shadow-sm transition hover:bg-white hover:text-slate-700 dark:border-[#4268c4]/80 dark:bg-[#1b3f9b]/72 dark:text-blue-100 dark:hover:bg-[#2553be]/78 dark:hover:text-white lg:flex-none lg:justify-center"
+                >
                   Portal
                   <ChevronDown
                     className={cn(
@@ -498,56 +502,58 @@ export function Topbar({
             </DropdownMenu>
           </div>
 
-          <DropdownMenu open={isNotifOpen} onOpenChange={setIsNotifOpen}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="relative rounded-full text-slate-500 transition hover:scale-105 hover:bg-slate-100 hover:text-slate-900 dark:text-blue-100/80 dark:hover:bg-[#1d429f] dark:hover:text-blue-50"
+          <div className="flex shrink-0 items-center gap-2">
+            <DropdownMenu open={isNotifOpen} onOpenChange={setIsNotifOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-10 w-10 rounded-full border border-blue-200/80 bg-white/72 text-slate-500 shadow-sm transition hover:scale-105 hover:bg-white hover:text-slate-900 dark:border-[#4268c4]/80 dark:bg-[#1b3f9b]/70 dark:text-blue-100/80 dark:hover:bg-[#2553be] dark:hover:text-blue-50"
+                >
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[11px] font-semibold text-white shadow-sm">
+                      {unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                sideOffset={12}
+                className="w-[calc(100vw-2rem)] max-w-[380px] p-0 dark:border-[#2f56ab] dark:bg-[#11307c]"
               >
-                <Bell className="h-5 w-5" />
-                {unreadCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[11px] font-semibold text-white shadow-sm">
-                    {unreadCount}
-                  </span>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              sideOffset={12}
-              className="w-[calc(100vw-2rem)] max-w-[380px] p-0 dark:border-[#2f56ab] dark:bg-[#11307c]"
-            >
-              <NotificationCenter
-                onClose={() => setIsNotifOpen(false)}
-                onUnreadChange={setUnreadCount}
-              />
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <NotificationCenter
+                  onClose={() => setIsNotifOpen(false)}
+                  onUnreadChange={setUnreadCount}
+                />
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full text-slate-500 transition hover:scale-105 hover:bg-slate-100 hover:text-slate-900 dark:text-blue-100/80 dark:hover:bg-[#1d429f] dark:hover:text-blue-50"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 rounded-full border border-blue-200/80 bg-white/72 text-slate-500 shadow-sm transition hover:scale-105 hover:bg-white hover:text-slate-900 dark:border-[#4268c4]/80 dark:bg-[#1b3f9b]/70 dark:text-blue-100/80 dark:hover:bg-[#2553be] dark:hover:text-blue-50"
+                >
+                  <UserCircle className="h-6 w-6" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                sideOffset={8}
+                className="dark:border-[#2f56ab] dark:bg-[#11307c]"
               >
-                <UserCircle className="h-6 w-6" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              sideOffset={8}
-              className="dark:border-[#2f56ab] dark:bg-[#11307c]"
-            >
-              <DropdownMenuItem asChild>
-                <Link to="/profile?tab=profile">Setting</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleLogout}>
-                Log out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <DropdownMenuItem asChild>
+                  <Link to="/profile?tab=profile">Setting</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleLogout}>
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
     </header>
