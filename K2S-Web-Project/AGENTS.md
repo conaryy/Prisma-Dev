@@ -80,3 +80,4 @@
 - `whatsapp_api` memakai `WHATSAPP_BOT_INTERNAL_TOKEN` dan endpoint WAHA; sinkronkan dengan `.env.central`.
 - Compose sempat membentuk cycle `backend -> whatsapp-api -> backend-nginx -> backend`; hindari menambah `depends_on` yang memutar lagi.
 - Untuk deploy, jangan gunakan `docker compose down -v` kecuali memang ingin menghapus volume DB.
+- Setelah recreate `backend`, `queue-worker`, atau `backend-nginx`, restart `gateway` agar upstream Nginx pusat tidak menahan resolusi container lama.

@@ -10,7 +10,7 @@ import {
   Sun,
   UserCircle,
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import { clearAuthToken, clearAuthUser } from '@/lib/api';
 import { getStoredTheme, persistTheme } from '@/lib/theme';
@@ -46,12 +46,21 @@ type PortalMenu = {
   accentBorder: string;
 };
 
+function normalizeBaseUrl(value: string) {
+  return value.replace(/\/+$/, '');
+}
+
+function getEnvUrl(key: string, fallback: string) {
+  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+  return normalizeBaseUrl(env[key] || fallback);
+}
+
 const portalMenus: PortalMenu[] = [
   {
     key: 'dashboard',
     title: 'Dashboard',
     description: 'Ringkasan operasional admin untuk memantau review, antrian, dan prioritas tindak lanjut.',
-    href: '/admin',
+    href: `${getEnvUrl('VITE_AUTH_PORTAL_URL', 'https://auth.ryvidia.my.id')}/portal-admin`,
     icon: LayoutDashboard,
     eyebrow: 'Kontrol Utama',
     meta: 'Insight admin dan prioritas harian',
@@ -69,7 +78,7 @@ const portalMenus: PortalMenu[] = [
     key: 'keamanan',
     title: 'Keamanan',
     description: 'Akses cepat ke data keamanan dan pemantauan umum dengan struktur yang tetap familiar.',
-    href: '/dashboard',
+    href: getEnvUrl('VITE_KEAMANAN_BASE_URL', 'https://keamanan.ryvidia.my.id'),
     icon: ShieldCheck,
     eyebrow: 'Monitoring',
     meta: 'Pemantauan umum dan data operasional',
@@ -87,7 +96,7 @@ const portalMenus: PortalMenu[] = [
     key: 'k3',
     title: 'K3',
     description: 'Area kerja review safety, CAP, dan monitoring K3 dengan jalur masuk yang lebih jelas.',
-    href: '/admin/self-assessment-reviews',
+    href: getEnvUrl('VITE_K3_BASE_URL', 'https://k3.ryvidia.my.id'),
     icon: ClipboardCheck,
     eyebrow: 'Review Safety',
     meta: 'Safety review, CAP, dan tindak lanjut',
@@ -105,7 +114,7 @@ const portalMenus: PortalMenu[] = [
     key: 'logbook',
     title: 'Logbook',
     description: 'Portal pencatatan dan hasil review aktivitas logbook dengan alur yang lebih rapi.',
-    href: '/monitoring/protocol-question/hasil-review-dgca',
+    href: getEnvUrl('VITE_LOGBOOK_BASE_URL', 'https://logbook.ryvidia.my.id'),
     icon: BookOpen,
     eyebrow: 'Riwayat Aktivitas',
     meta: 'Pencatatan dan review agenda monitoring',
@@ -274,9 +283,9 @@ export function AdminPortal() {
               const Icon = item.icon;
 
               return (
-                <Link
+                <a
                   key={item.key}
-                  to={item.href}
+                  href={item.href}
                   className="group relative overflow-hidden rounded-[22px] border p-4 transition duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
                   style={isDark ? {
                     borderColor: item.accentBorder,
@@ -389,7 +398,7 @@ export function AdminPortal() {
                       </span>
                     </div>
                   </div>
-                </Link>
+                </a>
               );
             })}
           </section>

@@ -42,15 +42,26 @@ function normalizeBaseUrl(value: string) {
   return value.replace(/\/+$/, '');
 }
 
-function getAuthPortalUrl() {
+function getEnvUrl(key: string, fallback: string) {
   const env = (import.meta as { env?: Record<string, string> }).env ?? {};
-  const base = normalizeBaseUrl(env.VITE_AUTH_PORTAL_URL || 'http://localhost:5174');
+  return normalizeBaseUrl(env[key] || fallback);
+}
+
+function getAuthPortalUrl() {
+  const base = getEnvUrl('VITE_AUTH_PORTAL_URL', 'https://auth.ryvidia.my.id');
   return `${base}/portal-admin`;
 }
 
+function getKeamananPortalUrl() {
+  return getEnvUrl('VITE_KEAMANAN_BASE_URL', 'https://keamanan.ryvidia.my.id');
+}
+
+function getK3PortalUrl() {
+  return getEnvUrl('VITE_K3_BASE_URL', 'https://k3.ryvidia.my.id');
+}
+
 function getLogbookPortalUrl() {
-  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
-  return normalizeBaseUrl(env.VITE_LOGBOOK_BASE_URL || 'http://localhost:5175');
+  return getEnvUrl('VITE_LOGBOOK_BASE_URL', 'https://logbook.ryvidia.my.id');
 }
 
 const MENU_LOTTIE_FALLBACK_END = Math.max(
@@ -456,8 +467,8 @@ export function Topbar({
                       aria-label="Keamanan"
                       title="Keamanan"
                       onClick={() => {
-                        navigate('/dashboard');
                         setIsPortalOpen(false);
+                        window.location.assign(getKeamananPortalUrl());
                       }}
                     >
                       <ShieldCheck className="h-5 w-5" />
@@ -471,8 +482,8 @@ export function Topbar({
                       aria-label="K3"
                       title="K3"
                       onClick={() => {
-                        navigate('/admin/self-assessment-reviews');
                         setIsPortalOpen(false);
+                        window.location.assign(getK3PortalUrl());
                       }}
                     >
                       <ClipboardCheck className="h-5 w-5" />

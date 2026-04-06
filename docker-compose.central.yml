@@ -157,7 +157,7 @@ services:
         "queue:work",
         "--sleep=3",
         "--tries=3",
-        "--timeout=120",
+        "--timeout=3600",
       ]
 
   wrapper:
