@@ -14,6 +14,11 @@ async function bootstrap() {
 
   const server = app.getHttpAdapter().getInstance();
   const frontendDist = join(__dirname, '..', '..', 'frontend', 'dist');
+  const uploadsDir = join(__dirname, '..', 'uploads');
+
+  if (existsSync(uploadsDir)) {
+    server.use('/uploads', express.static(uploadsDir));
+  }
 
   if (existsSync(frontendDist)) {
     server.use(express.static(frontendDist));

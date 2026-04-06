@@ -58,8 +58,57 @@ model TrainingHistory {
   personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
 }
 
+model SupervisionActivity {
+  id             String                @id @default(cuid())
+  slug           String                @unique
+  title          String
+  category       SupervisionCategory
+  location       String?
+  inspectorNames String[]
+  scheduleLabel  String
+  scheduleYear   Int
+  scheduleMonth  Int?
+  scheduleWeek   Int?
+  sourceDocument String?
+  status         SupervisionStatus     @default(BELUM_TERLAKSANA)
+  completedAt    DateTime?
+  completionNote String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  evidences      SupervisionEvidence[]
+
+  @@index([category, scheduleYear, scheduleMonth, scheduleWeek])
+}
+
+model SupervisionEvidence {
+  id           String              @id @default(cuid())
+  activityId   String
+  fileName     String
+  storageName  String              @unique
+  mimeType     String?
+  sizeBytes    Int
+  uploadedAt   DateTime            @default(now())
+
+  activity     SupervisionActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([activityId, uploadedAt])
+}
+
 enum PersonnelStatus {
   VALID
   PERPANJANGAN
   PELATIHAN
+}
+
+enum SupervisionCategory {
+  AUDIT
+  INSPEKSI
+  TEST
+}
+
+enum SupervisionStatus {
+  BELUM_TERLAKSANA
+  TERLAKSANA
+  PERLU_TINDAK_LANJUT
 }

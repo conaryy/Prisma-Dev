@@ -2,6 +2,71 @@ const { PrismaClient, PersonnelStatus } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
+async function ensureSupervisionStorage(prismaClient) {
+  await prismaClient.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'SupervisionCategory') THEN
+        CREATE TYPE "SupervisionCategory" AS ENUM ('AUDIT', 'INSPEKSI', 'TEST');
+      END IF;
+    END
+    $$;
+  `);
+
+  await prismaClient.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'SupervisionStatus') THEN
+        CREATE TYPE "SupervisionStatus" AS ENUM ('BELUM_TERLAKSANA', 'TERLAKSANA', 'PERLU_TINDAK_LANJUT');
+      END IF;
+    END
+    $$;
+  `);
+
+  await prismaClient.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "SupervisionActivity" (
+      "id" TEXT PRIMARY KEY,
+      "slug" TEXT NOT NULL UNIQUE,
+      "title" TEXT NOT NULL,
+      "category" "SupervisionCategory" NOT NULL,
+      "location" TEXT,
+      "inspectorNames" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      "scheduleLabel" TEXT NOT NULL,
+      "scheduleYear" INTEGER NOT NULL,
+      "scheduleMonth" INTEGER,
+      "scheduleWeek" INTEGER,
+      "sourceDocument" TEXT,
+      "status" "SupervisionStatus" NOT NULL DEFAULT 'BELUM_TERLAKSANA',
+      "completedAt" TIMESTAMPTZ,
+      "completionNote" TEXT,
+      "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await prismaClient.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "SupervisionEvidence" (
+      "id" TEXT PRIMARY KEY,
+      "activityId" TEXT NOT NULL REFERENCES "SupervisionActivity"("id") ON DELETE CASCADE,
+      "fileName" TEXT NOT NULL,
+      "storageName" TEXT NOT NULL UNIQUE,
+      "mimeType" TEXT,
+      "sizeBytes" INTEGER NOT NULL,
+      "uploadedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await prismaClient.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "SupervisionActivity_schedule_idx"
+    ON "SupervisionActivity" ("category", "scheduleYear", "scheduleMonth", "scheduleWeek");
+  `);
+
+  await prismaClient.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "SupervisionEvidence_activity_uploaded_idx"
+    ON "SupervisionEvidence" ("activityId", "uploadedAt");
+  `);
+}
+
 const personnelSeed = [
   {
     slug: 'ibni-ramadan-sumenep-2024',
@@ -508,6 +573,67 @@ const personnelSeed = [
   },
 ];
 
+const inspectorNames = ['Arif Hartono', 'Adhe Rafika Yulianti'];
+const supervisionSourceDocument = 'Jadwal Kegiatan Pengawasan Keamanan - Tahun 2026.pdf';
+const testScheduleMonths = [
+  { month: 2, label: 'Minggu II Februari 2026' },
+  { month: 4, label: 'Minggu II April 2026' },
+  { month: 6, label: 'Minggu II Juni 2026' },
+  { month: 8, label: 'Minggu II Agustus 2026' },
+  { month: 10, label: 'Minggu II Oktober 2026' },
+  { month: 12, label: 'Minggu II Desember 2026' },
+];
+
+const supervisionActivitySeed = [
+  {
+    id: 'audit-internal-keamanan-2026',
+    slug: 'audit-internal-keamanan-2026',
+    title: 'Audit Internal Keamanan',
+    category: 'AUDIT',
+    location: 'Perum LPPNPI Cabang Surabaya',
+    inspectorNames,
+    scheduleLabel: '1 kali dalam 2 tahun (internal)',
+    scheduleYear: 2026,
+    scheduleMonth: null,
+    scheduleWeek: null,
+    sourceDocument: supervisionSourceDocument,
+  },
+  ...[
+    'Cabang Surabaya',
+    'KCP Banyuwangi',
+    'KCP Malang',
+    'KCP Sumenep',
+    'Penyedia Personel AVSEC',
+  ].map((location) => ({
+    id: `inspeksi-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-2026`,
+    slug: `inspeksi-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-2026`,
+    title: 'Inspeksi Keamanan',
+    category: 'INSPEKSI',
+    location,
+    inspectorNames,
+    scheduleLabel: '1 kali dalam tahun 2026 (lokasi pelaksanaan menyesuaikan program pengawasan)',
+    scheduleYear: 2026,
+    scheduleMonth: null,
+    scheduleWeek: null,
+    sourceDocument: supervisionSourceDocument,
+  })),
+  ...['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'].flatMap((location) =>
+    testScheduleMonths.map(({ month, label }) => ({
+      id: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
+      slug: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
+      title: 'Pengujian (Test) Keamanan',
+      category: 'TEST',
+      location,
+      inspectorNames,
+      scheduleLabel: label,
+      scheduleYear: 2026,
+      scheduleMonth: month,
+      scheduleWeek: 2,
+      sourceDocument: supervisionSourceDocument,
+    }))
+  ),
+];
+
 function toPersonnelStatus(status) {
   if (status === 'Perpanjangan') return PersonnelStatus.PERPANJANGAN;
   if (status === 'Pelatihan') return PersonnelStatus.PELATIHAN;
@@ -562,7 +688,52 @@ async function main() {
     });
   }
 
-  console.log(`Seed personil keamanan selesai: ${personnelSeed.length} data.`);
+  await ensureSupervisionStorage(prisma);
+
+  for (const item of supervisionActivitySeed) {
+    await prisma.$executeRaw`
+      INSERT INTO "SupervisionActivity" (
+        "id",
+        "slug",
+        "title",
+        "category",
+        "location",
+        "inspectorNames",
+        "scheduleLabel",
+        "scheduleYear",
+        "scheduleMonth",
+        "scheduleWeek",
+        "sourceDocument"
+      )
+      VALUES (
+        ${item.id},
+        ${item.slug},
+        ${item.title},
+        ${item.category}::"SupervisionCategory",
+        ${item.location},
+        ${item.inspectorNames},
+        ${item.scheduleLabel},
+        ${item.scheduleYear},
+        ${item.scheduleMonth},
+        ${item.scheduleWeek},
+        ${item.sourceDocument}
+      )
+      ON CONFLICT ("slug") DO UPDATE SET
+        "title" = EXCLUDED."title",
+        "category" = EXCLUDED."category",
+        "location" = EXCLUDED."location",
+        "inspectorNames" = EXCLUDED."inspectorNames",
+        "scheduleLabel" = EXCLUDED."scheduleLabel",
+        "scheduleYear" = EXCLUDED."scheduleYear",
+        "scheduleMonth" = EXCLUDED."scheduleMonth",
+        "scheduleWeek" = EXCLUDED."scheduleWeek",
+        "sourceDocument" = EXCLUDED."sourceDocument"
+    `;
+  }
+
+  console.log(
+    `Seed keamanan selesai: ${personnelSeed.length} personel, ${supervisionActivitySeed.length} agenda pengawasan.`
+  );
 }
 
 main()

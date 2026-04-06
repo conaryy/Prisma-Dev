@@ -132,3 +132,48 @@ export function ChevronDownIcon({ className }: IconProps) {
     </Svg>
   );
 }
+
+export function PortalDashboardIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <rect x="4" y="4" width="6" height="6" rx="1.6" />
+      <rect x="14" y="4" width="6" height="6" rx="1.6" />
+      <rect x="4" y="14" width="6" height="6" rx="1.6" />
+      <rect x="14" y="14" width="6" height="6" rx="1.6" />
+    </Svg>
+  );
+}
+
+export function PortalChecklistIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M8 4h8l3 3v13H8z" />
+      <path d="M14 4v4h5" />
+      <path d="m11 12 1.4 1.4 2.6-2.8" />
+      <path d="M11 17h4" />
+    </Svg>
+  );
+}
+
+export function PortalNotebookIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <rect x="7" y="4" width="11" height="16" rx="2" />
+      <path d="M7 8H5" />
+      <path d="M7 12H5" />
+      <path d="M7 16H5" />
+      <path d="M11 9h4" />
+      <path d="M11 13h4" />
+    </Svg>
+  );
+}
+
+export function LogoutIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+      <path d="M10 16 14 12 10 8" />
+      <path d="M14 12H4" />
+    </Svg>
+  );
+}
