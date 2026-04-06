@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDownIcon, SidebarIcon, ShieldIcon } from '@/components/icons';
+import { ChevronDownIcon, CloseIcon, SidebarIcon } from '@/components/icons';
 import type { NavigationItem, OrganizationProfile } from '@/types/dashboard';
 
 type HighlightStyle = {
@@ -12,14 +12,18 @@ type SidebarProps = {
   activeId: string;
   navigation: NavigationItem[];
   organization: OrganizationProfile;
+  isMobileOpen?: boolean;
   onSelect: (id: string) => void;
+  onRequestClose?: () => void;
 };
 
 export function Sidebar({
   activeId,
   navigation,
   organization,
+  isMobileOpen = false,
   onSelect,
+  onRequestClose,
 }: SidebarProps) {
   const [expandedIds, setExpandedIds] = useState<string[]>(['personil-keamanan']);
   const [selectedRootId, setSelectedRootId] = useState<string | null>(() => {
@@ -132,10 +136,22 @@ export function Sidebar({
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isMobileOpen ? 'is-mobile-open' : ''}`}>
+      <div className="sidebar-mobile-head">
+        <span className="sidebar-mobile-title">Menu Keamanan</span>
+        <button
+          type="button"
+          className="sidebar-mobile-close"
+          aria-label="Tutup menu"
+          onClick={() => onRequestClose?.()}
+        >
+          <CloseIcon className="mini-icon" />
+        </button>
+      </div>
+
       <div className="brand-card">
         <div className="brand-mark">
-          <ShieldIcon className="brand-mark-icon" />
+          <img src="/airnavpp.png" alt="AirNav Indonesia" className="brand-mark-image" />
         </div>
         <div>
           <p className="eyebrow">Dashboard Keamanan</p>
@@ -163,6 +179,7 @@ export function Sidebar({
                       setSelectedRootId(item.id);
                       onSelect(item.id);
                       toggleExpanded(item.id);
+                      onRequestClose?.();
                     }}
                   >
                     <span className="sidebar-link-main">
@@ -200,6 +217,7 @@ export function Sidebar({
                             event.preventDefault();
                             setSelectedRootId(item.id);
                             onSelect(child.id);
+                            onRequestClose?.();
                           }}
                         >
                           <span className="sidebar-sublink-branch" aria-hidden="true" />
@@ -225,6 +243,7 @@ export function Sidebar({
                   event.preventDefault();
                   setSelectedRootId(item.id);
                   onSelect(item.id);
+                  onRequestClose?.();
                 }}
               >
                 <span className="sidebar-link-icon">

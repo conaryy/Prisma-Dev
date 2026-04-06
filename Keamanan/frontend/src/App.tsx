@@ -5,6 +5,7 @@ import {
   BellIcon,
   ChevronDownIcon,
   LogoutIcon,
+  MenuIcon,
   PortalChecklistIcon,
   PortalDashboardIcon,
   PortalNotebookIcon,
@@ -93,6 +94,10 @@ type TimelineStatus = 'pending' | 'done' | 'upcoming';
 type TimelineMarker = {
   monthIndex: number;
   slotIndex: number;
+  status: TimelineStatus;
+};
+type TimelineMonthStatus = {
+  month: string;
   status: TimelineStatus;
 };
 type TimelineGridRow = {
@@ -672,6 +677,7 @@ export default function App() {
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
   const [isPortalMenuOpen, setIsPortalMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const certificateRef = useRef(personCertificates);
   const portalMenuRef = useRef<HTMLDivElement | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -714,6 +720,7 @@ export default function App() {
       if (event.key === 'Escape') {
         setIsPortalMenuOpen(false);
         setIsProfileMenuOpen(false);
+        setIsMobileSidebarOpen(false);
       }
     }
 
@@ -725,6 +732,10 @@ export default function App() {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [activeId, routeState.personSlug]);
 
   function handleLogout() {
     clearKnownSessionTokens();
@@ -1039,20 +1050,39 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <div
+        className={`sidebar-overlay ${isMobileSidebarOpen ? 'is-visible' : ''}`}
+        aria-hidden={isMobileSidebarOpen ? 'false' : 'true'}
+        onClick={() => setIsMobileSidebarOpen(false)}
+      />
       <Sidebar
         activeId={activeId}
         navigation={dashboard.navigation}
         organization={dashboard.organization}
+        isMobileOpen={isMobileSidebarOpen}
         onSelect={handleSelect}
+        onRequestClose={() => setIsMobileSidebarOpen(false)}
       />
 
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-profile">
-            <div className="topbar-backdrop">
+            <div className="topbar-mobile-shell">
+              <button
+                type="button"
+                className="mobile-nav-toggle"
+                aria-label={isMobileSidebarOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi'}
+                aria-expanded={isMobileSidebarOpen}
+                onClick={() => setIsMobileSidebarOpen((currentValue) => !currentValue)}
+              >
+                <MenuIcon className="mini-icon mobile-nav-toggle-icon" />
+              </button>
+
+              <div className="topbar-backdrop">
               <span className="topbar-chip">Workspace</span>
               <strong>{topbarTitle}</strong>
               <small className="topbar-caption">{topbarCaption}</small>
+              </div>
             </div>
           </div>
 
@@ -1322,24 +1352,29 @@ function DashboardPage({
           </div>
 
           <div className="dashboard-toolbar-group dashboard-toolbar-group--end">
-            <span className="dashboard-toggle-label">Statistik</span>
-            <button
-              type="button"
-              className={`dashboard-toggle ${showStatistics ? 'is-on' : ''}`}
-              onClick={() => setShowStatistics((current) => !current)}
-              aria-pressed={showStatistics}
-            >
-              <span className="dashboard-toggle-thumb" />
-            </button>
-            {quickActions.map((action) => (
+            <div className="dashboard-toolbar-toggle-row">
+              <span className="dashboard-toggle-label">Statistik</span>
               <button
-                key={action.label}
                 type="button"
-                className={`dashboard-toolbar-button ${action.variant === 'primary' ? 'is-primary' : ''}`}
+                className={`dashboard-toggle ${showStatistics ? 'is-on' : ''}`}
+                onClick={() => setShowStatistics((current) => !current)}
+                aria-pressed={showStatistics}
               >
-                {action.label}
+                <span className="dashboard-toggle-thumb" />
               </button>
-            ))}
+            </div>
+
+            <div className="dashboard-toolbar-actions">
+              {quickActions.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  className={`dashboard-toolbar-button ${action.variant === 'primary' ? 'is-primary' : ''}`}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -1368,7 +1403,7 @@ function DashboardPage({
           </div>
         </div>
 
-        <div className="table-shell">
+        <div className="table-shell dashboard-table-desktop">
           {visibleRows.length ? (
             <table className="data-table dashboard-summary-table">
               <thead>
@@ -1403,6 +1438,40 @@ function DashboardPage({
                 ))}
               </tbody>
             </table>
+          ) : (
+            <EmptyRows copy="Tidak ada ringkasan operasional yang cocok dengan pencarian." />
+          )}
+        </div>
+
+        <div className="dashboard-summary-mobile-list">
+          {visibleRows.length ? (
+            visibleRows.map((row) => (
+              <article key={row.id} className="dashboard-summary-mobile-card">
+                <div className="dashboard-summary-mobile-top">
+                  <span className={`summary-category is-${row.category.toLowerCase()}`}>
+                    <span className="summary-category-dot" />
+                    {row.category}
+                  </span>
+                  <StatusBadge status={row.status} />
+                </div>
+
+                <div className="dashboard-summary-mobile-copy">
+                  <strong>{row.label}</strong>
+                  <p>{row.detail}</p>
+                </div>
+
+                <dl className="dashboard-summary-mobile-meta">
+                  <div>
+                    <dt>Area / PIC</dt>
+                    <dd>{row.context}</dd>
+                  </div>
+                  <div>
+                    <dt>Pembaruan</dt>
+                    <dd>{row.updatedAt}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))
           ) : (
             <EmptyRows copy="Tidak ada ringkasan operasional yang cocok dengan pencarian." />
           )}
@@ -1560,7 +1629,7 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
           </div>
         </div>
 
-        <div className="table-shell">
+        <div className="table-shell records-table-desktop">
           {facilities.length ? (
             <table className="data-table">
               <thead>
@@ -1586,6 +1655,35 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
                 ))}
               </tbody>
             </table>
+          ) : (
+            <EmptyRows copy="Tidak ada data fasilitas yang cocok dengan pencarian." />
+          )}
+        </div>
+
+        <div className="records-mobile-list">
+          {facilities.length ? (
+            facilities.map((item) => (
+              <article key={item.name} className="records-mobile-card">
+                <div className="records-mobile-top">
+                  <div className="records-mobile-copy">
+                    <strong>{item.name}</strong>
+                    <p>{item.zone}</p>
+                  </div>
+                  <StatusBadge status={item.status} />
+                </div>
+
+                <dl className="records-mobile-meta">
+                  <div>
+                    <dt>Coverage</dt>
+                    <dd>{item.coverage}</dd>
+                  </div>
+                  <div>
+                    <dt>Pembaruan</dt>
+                    <dd>{item.updatedAt}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))
           ) : (
             <EmptyRows copy="Tidak ada data fasilitas yang cocok dengan pencarian." />
           )}
@@ -2276,19 +2374,63 @@ function getTimelineCellStyles(status: TimelineStatus) {
   return 'border border-slate-200 bg-white';
 }
 
+function getMonthlyTimelineStatuses(statuses: TimelineStatus[]): TimelineMonthStatus[] {
+  return YEAR_TIMELINE_MONTHS.map((month, monthIndex) => {
+    const startIndex = monthIndex * TIMELINE_SLOTS_PER_MONTH;
+    const currentMonthStatuses = statuses.slice(startIndex, startIndex + TIMELINE_SLOTS_PER_MONTH);
+
+    if (currentMonthStatuses.includes('done')) {
+      return { month, status: 'done' };
+    }
+
+    if (currentMonthStatuses.includes('upcoming')) {
+      return { month, status: 'upcoming' };
+    }
+
+    return { month, status: 'pending' };
+  });
+}
+
+function getTimelineMonthCardStyles(status: TimelineStatus) {
+  if (status === 'done') {
+    return {
+      card: 'border-emerald-200 bg-emerald-50',
+      dot: 'bg-emerald-500',
+      label: 'text-emerald-700',
+      copy: 'Done',
+    };
+  }
+
+  if (status === 'upcoming') {
+    return {
+      card: 'border-slate-300 bg-slate-100',
+      dot: 'bg-slate-700',
+      label: 'text-slate-700',
+      copy: 'Upcoming',
+    };
+  }
+
+  return {
+    card: 'border-slate-200 bg-white',
+    dot: 'bg-slate-300',
+    label: 'text-slate-500',
+    copy: 'Belum',
+  };
+}
+
 function TestsSection() {
   return (
-    <section className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-      <div className="rounded-[32px] border border-slate-200/80 bg-white/95 px-6 py-7 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur md:px-8 md:py-8">
+    <section className="mx-auto flex min-w-0 w-full max-w-6xl flex-col gap-4 sm:gap-5 md:gap-6">
+      <div className="rounded-[26px] border border-slate-200/80 bg-white/95 px-4 py-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:rounded-[30px] sm:px-6 sm:py-6 md:px-8 md:py-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-3xl">
+          <div className="min-w-0 max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-400">
               Program Pengawasan Keamanan
             </p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-slate-900 md:text-[2.35rem]">
+            <h2 className="mt-3 break-words text-[1.9rem] font-semibold tracking-[-0.04em] text-slate-900 sm:text-3xl md:text-[2.35rem]">
               Dashboard Jadwal Pengawasan Internal
             </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500 md:text-base">
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500 sm:text-[15px] md:text-base">
               Monitoring pelaksanaan Audit, Inspeksi, dan Pengujian secara terpusat untuk
               membantu tim internal melihat status utama dengan cepat.
             </p>
@@ -2300,24 +2442,24 @@ function TestsSection() {
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
         {SUPERVISION_SUMMARY_CARDS.map((card) => {
           const accent = getSupervisionCardAccent(card.kind);
 
           return (
             <article
               key={card.id}
-              className="relative overflow-hidden rounded-[28px] border border-slate-200/80 bg-white p-6 shadow-[0_18px_44px_rgba(15,23,42,0.08)]"
+              className="relative min-w-0 overflow-hidden rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:rounded-[28px] sm:p-6"
             >
               <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent}`} />
 
-              <div className="relative flex h-full flex-col gap-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
+              <div className="relative flex h-full flex-col gap-5 sm:gap-6">
+                <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
+                  <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
                       {card.frequency}
                     </p>
-                    <h3 className="mt-3 text-[1.6rem] font-semibold tracking-[-0.03em] text-slate-900">
+                    <h3 className="mt-3 break-words text-[1.45rem] font-semibold tracking-[-0.03em] text-slate-900 sm:text-[1.6rem]">
                       {card.title}
                     </h3>
                   </div>
@@ -2337,11 +2479,11 @@ function TestsSection() {
 
                 {card.kind === 'audit' ? (
                   <>
-                    <div className="rounded-3xl bg-slate-50 px-5 py-4">
+                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
                       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                         Status Utama
                       </p>
-                      <div className="mt-3 flex items-center gap-3">
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
                         <span className={`h-3 w-3 rounded-full ${getSupervisionStatusStyles(card.status).dot}`} />
                         <strong className="text-3xl font-semibold tracking-[-0.04em] text-slate-900">
                           {card.status}
@@ -2349,7 +2491,7 @@ function TestsSection() {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
                       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                         Next Schedule
                       </p>
@@ -2363,7 +2505,7 @@ function TestsSection() {
 
                 {card.kind === 'inspection' ? (
                   <>
-                    <div className="rounded-3xl bg-slate-50 px-5 py-4">
+                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
                       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                         Status Global
                       </p>
@@ -2373,13 +2515,13 @@ function TestsSection() {
                       <p className="mt-2 text-sm leading-6 text-slate-500">{card.description}</p>
                     </div>
 
-                    <div className="space-y-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+                    <div className="space-y-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
                       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                         Preview Lokasi
                       </p>
 
                       {card.locations.map((location) => (
-                        <div key={location.name} className="flex items-center justify-between gap-3">
+                        <div key={location.name} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                           <div className="flex items-center gap-3">
                             <span
                               className={`h-2.5 w-2.5 rounded-full ${getSupervisionStatusStyles(location.status).dot}`}
@@ -2399,11 +2541,11 @@ function TestsSection() {
 
                 {card.kind === 'testing' ? (
                   <>
-                    <div className="rounded-3xl bg-slate-50 px-5 py-4">
+                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
                       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                         Progress
                       </p>
-                      <div className="mt-3 flex items-end justify-between gap-4">
+                      <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
                         <strong className="text-3xl font-semibold tracking-[-0.04em] text-slate-900">
                           {card.done} / {card.total}
                         </strong>
@@ -2418,7 +2560,7 @@ function TestsSection() {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
                       <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                         Pelaksanaan Rutin
                       </p>
@@ -2435,14 +2577,14 @@ function TestsSection() {
         })}
       </div>
 
-      <article className="overflow-hidden rounded-[32px] border border-slate-200/80 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-        <div className="border-b border-slate-200/80 px-6 py-6 md:px-8">
+      <article className="overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:rounded-[32px]">
+        <div className="border-b border-slate-200/80 px-4 py-5 sm:px-6 sm:py-6 md:px-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
                 Timeline / Calendar View
               </p>
-              <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-slate-900 md:text-[2rem]">
+              <h3 className="mt-3 text-[1.7rem] font-semibold tracking-[-0.04em] text-slate-900 sm:text-2xl md:text-[2rem]">
                 Monitoring timeline pelaksanaan per kategori
               </h3>
               <p className="mt-3 text-sm leading-7 text-slate-500 md:text-base">
@@ -2468,11 +2610,11 @@ function TestsSection() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-5 px-6 py-6 md:px-8">
+        <div className="flex flex-col gap-4 px-4 py-5 sm:gap-5 sm:px-6 sm:py-6 md:px-8">
           {SUPERVISION_TIMELINE_SECTIONS.map((section) => (
             <div
               key={section.id}
-              className="rounded-[28px] border border-slate-200 bg-slate-50/80 px-4 py-4 md:px-5 md:py-5"
+              className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-3.5 py-4 sm:rounded-[28px] sm:px-5 sm:py-5"
             >
               <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -2488,12 +2630,63 @@ function TestsSection() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <div className="min-w-[1360px]">
+              <div className="space-y-3 md:hidden">
+                {section.rows.map((row) => {
+                  const monthlyStatuses = getMonthlyTimelineStatuses(row.statuses);
+                  const hasTimelineActivity = monthlyStatuses.some((item) => item.status !== 'pending');
+
+                  return (
+                    <article
+                      key={`${section.id}-${row.label}-mobile`}
+                      className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">{row.label}</p>
+                        <p className="mt-1 text-xs leading-6 text-slate-500">{row.detail}</p>
+                      </div>
+
+                      {hasTimelineActivity ? (
+                        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                          {monthlyStatuses.map((item) => {
+                            const tone = getTimelineMonthCardStyles(item.status);
+
+                            return (
+                              <div
+                                key={`${row.label}-${item.month}-mobile`}
+                                className={`rounded-[16px] border px-3 py-2 ${tone.card}`}
+                              >
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                  {item.month}
+                                </span>
+                                <div className="mt-2 flex items-center gap-2">
+                                  <span className={`h-2.5 w-2.5 rounded-full ${tone.dot}`} />
+                                  <span className={`text-xs font-semibold ${tone.label}`}>{tone.copy}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-[18px] bg-slate-900 px-4 py-3 text-white shadow-[0_12px_28px_rgba(15,23,42,0.14)]">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">
+                            Catatan 2026
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-slate-100">
+                            Tidak ada slot pelaksanaan pada tahun ini karena agenda mengikuti siklus dua tahunan.
+                          </p>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="hidden overflow-x-auto pb-1 md:block">
+                <div className="min-w-[880px] sm:min-w-[1040px] xl:min-w-[1360px]">
                   <div
                     className="grid items-center gap-x-1.5 gap-y-3 border-b border-slate-200 pb-3"
                     style={{
-                      gridTemplateColumns: `200px repeat(${TIMELINE_TOTAL_COLUMNS}, 18px)`,
+                      gridTemplateColumns: `minmax(140px, 180px) repeat(${TIMELINE_TOTAL_COLUMNS}, minmax(14px, 18px))`,
                     }}
                   >
                     <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
@@ -2516,7 +2709,7 @@ function TestsSection() {
                         key={`${section.id}-${row.label}`}
                         className="grid items-center gap-x-1.5 gap-y-3"
                         style={{
-                          gridTemplateColumns: `200px repeat(${TIMELINE_TOTAL_COLUMNS}, 18px)`,
+                          gridTemplateColumns: `minmax(140px, 180px) repeat(${TIMELINE_TOTAL_COLUMNS}, minmax(14px, 18px))`,
                         }}
                       >
                         <div className="pr-3">
@@ -2556,7 +2749,7 @@ function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
           </div>
         </div>
 
-        <div className="table-shell">
+        <div className="table-shell records-table-desktop">
           {documents.length ? (
             <table className="data-table">
               <thead>
@@ -2582,6 +2775,35 @@ function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
                 ))}
               </tbody>
             </table>
+          ) : (
+            <EmptyRows copy="Tidak ada dokumen yang cocok dengan pencarian." />
+          )}
+        </div>
+
+        <div className="records-mobile-list">
+          {documents.length ? (
+            documents.map((item) => (
+              <article key={item.title} className="records-mobile-card">
+                <div className="records-mobile-top">
+                  <div className="records-mobile-copy">
+                    <strong>{item.title}</strong>
+                    <p>{item.owner}</p>
+                  </div>
+                  <StatusBadge status={item.status} />
+                </div>
+
+                <dl className="records-mobile-meta">
+                  <div>
+                    <dt>Versi</dt>
+                    <dd>{item.version}</dd>
+                  </div>
+                  <div>
+                    <dt>Pembaruan</dt>
+                    <dd>{item.updatedAt}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))
           ) : (
             <EmptyRows copy="Tidak ada dokumen yang cocok dengan pencarian." />
           )}
