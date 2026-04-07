@@ -30,6 +30,38 @@ export type AppShellOutletContext = {
 
 type AuthState = 'checking' | 'redirecting' | 'ready' | 'error';
 
+type MenuLottieIconProps = {
+  isOpen: boolean;
+};
+
+function MenuLottieIcon({ isOpen }: MenuLottieIconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="mobile-sidebar-toggle-lottie"
+      aria-hidden="true"
+    >
+      {isOpen ? (
+        <>
+          <path d="M6 6L18 18" />
+          <path d="M6 18L18 6" />
+        </>
+      ) : (
+        <>
+          <path d="M4 7H20" />
+          <path d="M4 12H20" />
+          <path d="M4 17H20" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function AppShell() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -72,6 +104,7 @@ export function AppShell() {
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -241,6 +274,51 @@ export function AppShell() {
     };
   }, [isAccountMenuOpen]);
 
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!isMobileSidebarOpen) {
+      document.body.classList.remove('mobile-sidebar-open');
+      return;
+    }
+
+    document.body.classList.add('mobile-sidebar-open');
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMobileSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.classList.remove('mobile-sidebar-open');
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobileSidebarOpen]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 861px)');
+    const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      if (event.matches) {
+        setIsMobileSidebarOpen(false);
+      }
+    };
+
+    handleChange(mediaQuery);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
+
   const activeDocumentId =
     requestedDocumentId && documents.some((document) => document.id === requestedDocumentId)
       ? requestedDocumentId
@@ -320,54 +398,79 @@ export function AppShell() {
       ? 'Google belum tersambung'
       : 'Google Drive belum dikonfigurasi';
 
-  return (
-    <div className="app-layout">
-      <aside className="app-sidebar">
-        <div className="sidebar-glass-shell">
-          <div className="sidebar-brand-panel">
-            <div className="sidebar-brand">
-              <div className="sidebar-brand-mark">
-                <img src="/airnavpp.png" alt="Logo AirNav Indonesia" />
-              </div>
-              <div className="sidebar-brand-copy">
-                <p className="sidebar-brand-eyebrow">AirNav Indonesia</p>
-                <h1 className="sidebar-brand-title">SMK3</h1>
-              </div>
-            </div>
+  const sidebar = (
+    <div className="sidebar-glass-shell">
+      <div className="sidebar-brand-panel">
+        <div className="sidebar-brand">
+          <div className="sidebar-brand-mark">
+            <img src="/airnavpp.png" alt="Logo AirNav Indonesia" />
           </div>
-
-          <div className="sidebar-section">
-            <p className="sidebar-section-label">Menu</p>
-            <nav className="sidebar-nav" aria-label="Navigasi utama">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) => `sidebar-link${isActive ? ' is-active' : ''}`}
-                >
-                  <span className="sidebar-link-index">{item.code}</span>
-                  <span className="sidebar-link-body">
-                    <span className="sidebar-link-title">{item.label}</span>
-                  </span>
-                  <span className="sidebar-link-arrow" aria-hidden="true" />
-                </NavLink>
-              ))}
-            </nav>
+          <div className="sidebar-brand-copy">
+            <p className="sidebar-brand-eyebrow">AirNav Indonesia</p>
+            <h1 className="sidebar-brand-title">SMK3</h1>
           </div>
         </div>
+      </div>
+
+      <div className="sidebar-section">
+        <p className="sidebar-section-label">Menu</p>
+        <nav id="app-sidebar-nav" className="sidebar-nav" aria-label="Navigasi utama">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/'}
+              className={({ isActive }) => `sidebar-link${isActive ? ' is-active' : ''}`}
+              onClick={() => setIsMobileSidebarOpen(false)}
+            >
+              <span className="sidebar-link-index">{item.code}</span>
+              <span className="sidebar-link-body">
+                <span className="sidebar-link-title">{item.label}</span>
+              </span>
+              <span className="sidebar-link-arrow" aria-hidden="true" />
+            </NavLink>
+          ))}
+        </nav>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`app-layout${isMobileSidebarOpen ? ' has-mobile-sidebar-open' : ''}`}>
+      <button
+        type="button"
+        className={`mobile-sidebar-backdrop${isMobileSidebarOpen ? ' is-visible' : ''}`}
+        aria-label="Tutup menu navigasi"
+        onClick={() => setIsMobileSidebarOpen(false)}
+      />
+
+      <aside className={`app-sidebar${isMobileSidebarOpen ? ' is-mobile-open' : ''}`}>
+        {sidebar}
       </aside>
 
       <div className={`app-main${isChecklistPage ? ' is-checklist-page' : ''}`}>
         <header
           className={`app-topbar${showsDocumentSwitcher ? ' has-centered-document-switcher' : ''}${isChecklistPage ? ' is-checklist-page' : ''}`}
         >
-          <div className="app-topbar-identity">
-            <span className="app-topbar-kicker">Workspace SMK3</span>
-            <div className="app-topbar-route">
-              <span className="app-topbar-route-dot" aria-hidden="true" />
-              <strong>{currentSection}</strong>
-              <span className="app-topbar-route-copy">Audit internal AirNav Indonesia</span>
+          <div className="app-topbar-primary">
+            <button
+              type="button"
+              className={`mobile-sidebar-toggle${isMobileSidebarOpen ? ' is-active' : ''}`}
+              aria-label={isMobileSidebarOpen ? 'Tutup menu' : 'Buka menu'}
+              aria-controls="app-sidebar-nav"
+              aria-expanded={isMobileSidebarOpen}
+              onClick={() => setIsMobileSidebarOpen((previous) => !previous)}
+            >
+              <MenuLottieIcon isOpen={isMobileSidebarOpen} />
+            </button>
+
+            <div className="app-topbar-identity">
+              <span className="app-topbar-kicker">Workspace SMK3</span>
+              <div className="app-topbar-route">
+                <span className="app-topbar-route-dot" aria-hidden="true" />
+                <strong>{currentSection}</strong>
+                <span className="app-topbar-route-copy">Audit internal AirNav Indonesia</span>
+              </div>
             </div>
           </div>
 

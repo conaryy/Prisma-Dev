@@ -14,6 +14,7 @@ use App\Models\SelfAssessmentEvidence;
 use App\Models\SelfAssessmentReview;
 use App\Models\SystemNotification;
 use App\Models\User;
+use App\Services\Whatsapp\SelfAssessmentWhatsappNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -431,8 +432,8 @@ class SelfAssessmentSessionController extends ApiController
 
         if ($session->is_published) {
             $users = $userIds->isNotEmpty()
-                ? User::query()->whereIn('id', $userIds)->get(['id'])
-                : User::query()->where('role', '!=', 'admin')->get(['id']);
+                ? User::query()->whereIn('id', $userIds)->get(['id', 'phone'])
+                : User::query()->where('role', '!=', 'admin')->get(['id', 'phone']);
             $now = now();
             $notifications = $users->map(function ($user) use ($session, $now) {
                 return [
@@ -453,6 +454,9 @@ class SelfAssessmentSessionController extends ApiController
             if (!empty($notifications)) {
                 SystemNotification::query()->insert($notifications);
             }
+
+            app(SelfAssessmentWhatsappNotificationService::class)
+                ->notifyUserSessionOpened($session);
         }
 
         $admins = User::query()

@@ -8,12 +8,14 @@ import {
   nowMs,
   safePermissionsInput,
   sanitizeEmail,
+  sanitizePhone,
   sanitizeText,
 } from './auth-utils.js';
 
 export async function createManagedUser(payload) {
   const username = sanitizeText(payload.username);
   const email = sanitizeEmail(payload.email);
+  const phone = sanitizePhone(payload.phone);
   const password = String(payload.password || '');
   const role = ensureRole(sanitizeText(payload.role || 'Viewer') || 'Viewer');
   const status = ensureStatus(sanitizeText(payload.status || 'Active') || 'Active');
@@ -52,10 +54,10 @@ export async function createManagedUser(payload) {
   const permissions = buildEffectivePermissions(role, safePermissionsInput(payload.permissions));
   await execQuery(
     `
-      INSERT INTO users (id, username, email, password_hash, role, permissions_json, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (id, username, email, phone, password_hash, role, permissions_json, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-    [userId, username, email, bcrypt.hashSync(password, 10), role, JSON.stringify(permissions), status, now, now]
+    [userId, username, email, phone, bcrypt.hashSync(password, 10), role, JSON.stringify(permissions), status, now, now]
   );
 
   const created = await queryOne('SELECT * FROM users WHERE id = ? LIMIT 1', [userId]);
@@ -71,6 +73,7 @@ export async function updateManagedUser(userId, payload) {
   const nextName = sanitizeText(payload.name || current.username);
   const nextUsername = sanitizeText(payload.username || current.username);
   const nextEmail = payload.email === undefined ? current.email : sanitizeEmail(payload.email);
+  const nextPhone = payload.phone === undefined ? current.phone : sanitizePhone(payload.phone);
   const nextRole = payload.role ? ensureRole(sanitizeText(payload.role)) : current.role;
   const nextStatus = payload.status ? ensureStatus(sanitizeText(payload.status)) : current.status;
   const rawPermissions =
@@ -110,6 +113,7 @@ export async function updateManagedUser(userId, payload) {
     ? [
         nextUsername,
         nextEmail,
+        nextPhone,
         nextRole,
         JSON.stringify(nextPermissions),
         nextStatus,
@@ -120,6 +124,7 @@ export async function updateManagedUser(userId, payload) {
     : [
         nextUsername,
         nextEmail,
+        nextPhone,
         nextRole,
         JSON.stringify(nextPermissions),
         nextStatus,
@@ -131,12 +136,12 @@ export async function updateManagedUser(userId, payload) {
     shouldUpdatePassword
       ? `
           UPDATE users
-          SET username = ?, email = ?, role = ?, permissions_json = ?, status = ?, updated_at = ?, password_hash = ?
+          SET username = ?, email = ?, phone = ?, role = ?, permissions_json = ?, status = ?, updated_at = ?, password_hash = ?
           WHERE id = ?
         `
       : `
           UPDATE users
-          SET username = ?, email = ?, role = ?, permissions_json = ?, status = ?, updated_at = ?
+          SET username = ?, email = ?, phone = ?, role = ?, permissions_json = ?, status = ?, updated_at = ?
           WHERE id = ?
         `,
     params
@@ -204,6 +209,7 @@ export async function updateOwnProfile(userId, payload) {
 
   const nextUsername = sanitizeText(payload.username || payload.name || current.username);
   const nextEmail = payload.email === undefined ? current.email : sanitizeEmail(payload.email);
+  const nextPhone = payload.phone === undefined ? current.phone : sanitizePhone(payload.phone);
 
   if (!nextUsername || nextUsername.length < 3) {
     return { ok: false, status: 422, error: 'Nama / username minimal 3 karakter.' };
@@ -230,10 +236,10 @@ export async function updateOwnProfile(userId, payload) {
   await execQuery(
     `
       UPDATE users
-      SET username = ?, email = ?, updated_at = ?
+      SET username = ?, email = ?, phone = ?, updated_at = ?
       WHERE id = ?
     `,
-    [nextUsername, nextEmail, nowMs(), userId]
+    [nextUsername, nextEmail, nextPhone, nowMs(), userId]
   );
 
   const updated = await queryOne('SELECT * FROM users WHERE id = ? LIMIT 1', [userId]);

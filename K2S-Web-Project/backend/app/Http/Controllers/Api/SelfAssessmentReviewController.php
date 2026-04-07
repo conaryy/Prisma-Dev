@@ -13,6 +13,7 @@ use App\Models\SelfAssessmentSessionArea;
 use App\Models\SelfAssessmentSessionQuestionCategoryUser;
 use App\Models\SelfAssessmentQuestionCategory;
 use App\Models\SystemNotification;
+use App\Services\Whatsapp\SelfAssessmentWhatsappNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\URL;
@@ -284,7 +285,8 @@ class SelfAssessmentReviewController extends ApiController
         if ($action === 'send' && !empty($answerIds)) {
             $answers = SelfAssessmentAnswer::query()
                 ->whereIn('id', $answerIds)
-                ->get(['id', 'user_id']);
+                ->with(['sessionArea.session', 'user'])
+                ->get();
             $now = now();
             $notifications = $answers->map(function ($answer) use ($allowReply, $now) {
                 return [
@@ -306,6 +308,14 @@ class SelfAssessmentReviewController extends ApiController
 
             if (!empty($notifications)) {
                 SystemNotification::query()->insert($notifications);
+            }
+
+            $answers->load('review');
+            $whatsappService = app(SelfAssessmentWhatsappNotificationService::class);
+            foreach ($answers as $answer) {
+                if ($answer->review) {
+                    $whatsappService->notifyUserSelfAssessmentReviewed($answer->review);
+                }
             }
         }
 

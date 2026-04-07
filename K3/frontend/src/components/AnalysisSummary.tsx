@@ -381,7 +381,7 @@ export function AnalysisSummary({ analysis }: Props) {
           >
             {(visibleRows) => (
               <div className="table-wrapper">
-                <table>
+                <table className="summary-table summary-table--mobile-stack">
                   <thead>
                     <tr>
                       <th>Butir / Kelompok</th>
@@ -406,7 +406,7 @@ export function AnalysisSummary({ analysis }: Props) {
                               : undefined
                           }
                         >
-                          <td className="summary-entry-cell">
+                          <td className="summary-entry-cell" data-label="Butir / Kelompok">
                             <div className="summary-entry-link">
                               {renderEntryContent(
                                 entry,
@@ -418,8 +418,8 @@ export function AnalysisSummary({ analysis }: Props) {
                               )}
                             </div>
                           </td>
-                          <td>{entry.sectionLabel}</td>
-                          <td>
+                          <td data-label="Bab">{entry.sectionLabel}</td>
+                          <td data-label="Kebutuhan Evidence">
                             {renderEvidenceList(entry.evidence, 'Belum ada evidence bawaan yang berhasil dibaca.')}
                           </td>
                         </tr>
@@ -461,7 +461,7 @@ export function AnalysisSummary({ analysis }: Props) {
           >
             {(visibleRows) => (
               <div className="table-wrapper">
-                <table>
+                <table className="summary-table summary-table--mobile-stack">
                   <thead>
                     <tr>
                       <th>Butir / Kelompok</th>
@@ -486,7 +486,7 @@ export function AnalysisSummary({ analysis }: Props) {
                               : undefined
                           }
                         >
-                          <td className="summary-entry-cell">
+                          <td className="summary-entry-cell" data-label="Butir / Kelompok">
                             <div className="summary-entry-link">
                               {renderEntryContent(
                                 entry,
@@ -500,8 +500,8 @@ export function AnalysisSummary({ analysis }: Props) {
                               )}
                             </div>
                           </td>
-                          <td>{entry.sectionLabel}</td>
-                          <td>{renderPendingFiles(entry)}</td>
+                          <td data-label="Bab">{entry.sectionLabel}</td>
+                          <td data-label="File Menunggu Drive">{renderPendingFiles(entry)}</td>
                         </tr>
                       );
                     })}
@@ -525,8 +525,8 @@ export function AnalysisSummary({ analysis }: Props) {
           </div>
         </div>
 
-        <div className="table-wrapper">
-          <table>
+        <div className="table-wrapper table-wrapper--section-summary">
+          <table className="summary-table summary-table--section-summary">
             <thead>
               <tr>
                 <th>Bab</th>

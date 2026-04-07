@@ -67,7 +67,7 @@ export type GoogleDriveFolderListing = {
 export class GoogleDriveService {
   private readonly defaultScope = 'https://www.googleapis.com/auth/drive';
   private readonly folderMimeType = 'application/vnd.google-apps.folder';
-  private readonly defaultFrontendBaseUrl = 'https://k3.ryvidia.my.id';
+  private readonly defaultFrontendBaseUrl = 'http://localhost:5175';
 
   constructor(private readonly prisma: PrismaService) {}
 

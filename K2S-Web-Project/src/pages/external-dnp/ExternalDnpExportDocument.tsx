@@ -252,30 +252,30 @@ export function ExternalDnpExportDocument() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-slate-950">
+          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
             <Table>
-              <TableHeader className="bg-slate-800/80">
+              <TableHeader className="bg-slate-100/90 dark:bg-slate-800/80">
                 <TableRow>
-                  <TableHead className="w-14 border-slate-700 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">
+                  <TableHead className="w-14 border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:text-slate-300">
                     <Checkbox
                       checked={allSelected}
                       onCheckedChange={(checked) => toggleSelectAll(checked === true)}
                       aria-label="Pilih semua"
                     />
                   </TableHead>
-                  <TableHead className="w-16 border-slate-700 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">No</TableHead>
-                  <TableHead className="border-slate-700 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">Instansi</TableHead>
-                  <TableHead className="border-slate-700 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">Area</TableHead>
-                  <TableHead className="border-slate-700 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">Ketua Tim</TableHead>
-                  <TableHead className="border-slate-700 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">Anggota</TableHead>
-                  <TableHead className="border-slate-700 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">Audity</TableHead>
-                  <TableHead className="border-slate-700 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">Tanggal Pelaksanaan</TableHead>
+                  <TableHead className="w-16 border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:text-slate-300">No</TableHead>
+                  <TableHead className="border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:text-slate-300">Instansi</TableHead>
+                  <TableHead className="border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:text-slate-300">Area</TableHead>
+                  <TableHead className="border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:text-slate-300">Ketua Tim</TableHead>
+                  <TableHead className="border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:text-slate-300">Anggota</TableHead>
+                  <TableHead className="border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:text-slate-300">Audity</TableHead>
+                  <TableHead className="border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:text-slate-300">Tanggal Pelaksanaan</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-10 text-center text-slate-300">
+                    <TableCell colSpan={8} className="py-10 text-center text-slate-500 dark:text-slate-300">
                       <div className="flex items-center justify-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Memuat daftar pemenuhan CAP...
@@ -284,13 +284,16 @@ export function ExternalDnpExportDocument() {
                   </TableRow>
                 ) : items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-10 text-center text-slate-300">
+                    <TableCell colSpan={8} className="py-10 text-center text-slate-500 dark:text-slate-300">
                       Belum ada data pemenuhan CAP yang bisa dijadikan dokumen untuk scope ini.
                     </TableCell>
                   </TableRow>
                 ) : (
                   groupedItems.map((group, index) => (
-                    <TableRow key={group.id} className="border-slate-800 bg-slate-900/90 text-slate-100">
+                    <TableRow
+                      key={group.id}
+                      className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50/80 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-100 dark:hover:bg-slate-900"
+                    >
                       <TableCell className="align-top text-center">
                         <Checkbox
                           checked={selectedGroupIds.includes(group.id)}
@@ -298,15 +301,15 @@ export function ExternalDnpExportDocument() {
                           aria-label={`Pilih ${group.instansiName}`}
                         />
                       </TableCell>
-                      <TableCell className="align-top text-center text-slate-200">{index + 1}</TableCell>
-                      <TableCell className="align-top font-medium text-slate-100">{group.instansiName}</TableCell>
+                      <TableCell className="align-top text-center text-slate-600 dark:text-slate-200">{index + 1}</TableCell>
+                      <TableCell className="align-top font-medium text-slate-800 dark:text-slate-100">{group.instansiName}</TableCell>
                       <TableCell className="align-top">
-                        <div className="inline-flex rounded-full border border-blue-500/40 bg-blue-500/15 px-3 py-1 text-sm font-semibold text-blue-200">
+                        <div className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-200">
                           {group.area}
                         </div>
                       </TableCell>
-                      <TableCell className="align-top text-slate-200">{group.leader}</TableCell>
-                      <TableCell className="align-top text-slate-200">
+                      <TableCell className="align-top text-slate-700 dark:text-slate-200">{group.leader}</TableCell>
+                      <TableCell className="align-top text-slate-700 dark:text-slate-200">
                         {group.members.length > 0 ? (
                           <ol className="list-decimal space-y-1 pl-5">
                             {group.members.map((member) => (
@@ -317,7 +320,7 @@ export function ExternalDnpExportDocument() {
                           '-'
                         )}
                       </TableCell>
-                      <TableCell className="align-top text-slate-200">
+                      <TableCell className="align-top text-slate-700 dark:text-slate-200">
                         {group.audity.length > 0 ? (
                           <ol className="list-decimal space-y-1 pl-5">
                             {group.audity.map((member) => (
@@ -328,7 +331,7 @@ export function ExternalDnpExportDocument() {
                           '-'
                         )}
                       </TableCell>
-                      <TableCell className="align-top text-slate-200">{group.schedule}</TableCell>
+                      <TableCell className="align-top text-slate-700 dark:text-slate-200">{group.schedule}</TableCell>
                     </TableRow>
                   ))
                 )}

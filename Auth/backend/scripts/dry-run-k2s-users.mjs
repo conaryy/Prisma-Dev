@@ -95,6 +95,7 @@ SELECT JSON_OBJECT(
   'id', id,
   'username', COALESCE(username, ''),
   'email', COALESCE(email, ''),
+  'phone', COALESCE(phone, ''),
   'password_hash', COALESCE(password, ''),
   'role', COALESCE(role, 'Viewer'),
   'status', COALESCE(status, 'Active'),
@@ -190,6 +191,8 @@ async function processUsers(client) {
     const id = String(src.id || '').trim();
     const username = String(src.username || '').trim();
     const email = String(src.email || '').trim();
+    const sourcePhoneRaw = String(src.phone || '').replace(/[\s().-]+/g, '');
+    const sourcePhone = /^62\d{7,15}$/.test(sourcePhoneRaw) ? sourcePhoneRaw : null;
     const passwordHash = String(src.password_hash || '').trim();
     const role = normalizeRole(src.role || 'Viewer');
     const status = normalizeStatus(src.status || 'Active');
@@ -216,7 +219,7 @@ async function processUsers(client) {
 
     const byIdResult = await client.query(
       `
-        SELECT id, username, email, password_hash, role, status, permissions_json
+        SELECT id, username, email, phone, password_hash, role, status, permissions_json
         FROM users
         WHERE id = $1
         LIMIT 1
@@ -228,7 +231,7 @@ async function processUsers(client) {
     if (!tgt) {
       const byIdentityResult = await client.query(
         `
-          SELECT id, username, email, password_hash, role, status, permissions_json
+          SELECT id, username, email, phone, password_hash, role, status, permissions_json
           FROM users
           WHERE username = $1 OR email = $2
           LIMIT 1
@@ -244,10 +247,10 @@ async function processUsers(client) {
         const now = Date.now();
         await client.query(
           `
-            INSERT INTO users (id, username, email, password_hash, role, permissions_json, status, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+            INSERT INTO users (id, username, email, phone, password_hash, role, permissions_json, status, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10)
           `,
-          [id || nanoid(), username, email, passwordHash, role, JSON.stringify(parsedPermissions), status, now, now]
+          [id || nanoid(), username, email, sourcePhone, passwordHash, role, JSON.stringify(parsedPermissions), status, now, now]
         );
         appliedInserts += 1;
       }
@@ -263,6 +266,7 @@ async function processUsers(client) {
     const diffs = [];
     if (String(tgt.username || '') !== username) diffs.push('username');
     if (String(tgt.email || '') !== email) diffs.push('email');
+    if (String(tgt.phone || '') !== String(sourcePhone || '')) diffs.push('phone');
     if (syncPassword && String(tgt.password_hash || '') !== passwordHash) diffs.push('password_hash');
     if (String(tgt.role || '') !== role) diffs.push('role');
     if (String(tgt.status || '') !== status) diffs.push('status');
@@ -276,16 +280,18 @@ async function processUsers(client) {
             UPDATE users
             SET username = $1,
                 email = $2,
-                password_hash = $3,
-                role = $4,
-                permissions_json = $5::jsonb,
-                status = $6,
-                updated_at = $7
-            WHERE id = $8
+                phone = $3,
+                password_hash = $4,
+                role = $5,
+                permissions_json = $6::jsonb,
+                status = $7,
+                updated_at = $8
+            WHERE id = $9
           `,
           [
             username,
             email,
+            sourcePhone,
             syncPassword ? passwordHash : String(tgt.password_hash || ''),
             role,
             JSON.stringify(parsedPermissions),

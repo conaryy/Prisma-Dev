@@ -54,6 +54,7 @@ export async function initDb() {
   }
   const schemaSql = fs.readFileSync(pgSchemaPath, 'utf8');
   await pool.query(schemaSql);
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT');
 }
 
 export async function seedDefaults() {

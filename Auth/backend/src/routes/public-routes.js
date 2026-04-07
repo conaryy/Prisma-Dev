@@ -85,7 +85,7 @@ export function createPublicRouter(deps = {}) {
       id_token_signing_alg_values_supported: ['RS256'],
       token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
       scopes_supported: ['openid', 'profile', 'email'],
-      claims_supported: ['sub', 'email', 'preferred_username', 'name', 'role', 'permissions'],
+      claims_supported: ['sub', 'email', 'phone', 'preferred_username', 'name', 'role', 'permissions'],
       code_challenge_methods_supported: ['S256'],
     });
   });

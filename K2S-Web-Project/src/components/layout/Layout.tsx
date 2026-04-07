@@ -1,11 +1,12 @@
 import { Suspense, useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { LoadingState } from '@/components/states/LoadingState';
 import { cn } from '@/lib/utils';
 
 export function Layout() {
+  const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -37,6 +38,10 @@ export function Layout() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname, location.search]);
 
   return (
     <div className="relative min-h-screen bg-[#f3f6ff] text-slate-900 transition-colors duration-300 dark:bg-[#040714] dark:text-slate-100">

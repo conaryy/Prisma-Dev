@@ -38,6 +38,7 @@ class UserController extends ApiController
             'name' => ['required', 'min:2'],
             'username' => ['required', 'string', 'max:50', 'unique:users,username'],
             'email' => ['nullable', 'string', 'max:255', 'unique:users,email'],
+            'phone' => ['nullable', 'string', 'regex:/^628\d{7,15}$/'],
             'password' => ['required', 'min:8'],
             'role' => ['required', 'in:Admin,Viewer'],
             'status' => ['nullable', 'in:Active,Disabled'],
@@ -54,6 +55,7 @@ class UserController extends ApiController
         ]);
 
         $email = isset($validated['email']) ? trim((string) $validated['email']) : '';
+        $phone = isset($validated['phone']) ? trim((string) $validated['phone']) : '';
         $permissions = $this->applyRolePermissionRules(
             $this->normalizePermissions($validated['permissions'] ?? null),
             $validated['role']
@@ -66,6 +68,7 @@ class UserController extends ApiController
             'name' => $validated['name'],
             'username' => $validated['username'],
             'email' => $email !== '' ? $email : null,
+            'phone' => $phone !== '' ? $phone : null,
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'],
             'status' => $validated['status'] ?? 'Active',
@@ -73,7 +76,7 @@ class UserController extends ApiController
             'permissions' => $permissions,
         ]);
 
-        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'role', 'status', 'can_access_external_dnp', 'permissions']), 201);
+        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions']), 201);
     }
 
     /**
@@ -81,7 +84,7 @@ class UserController extends ApiController
      */
     public function show(User $user)
     {
-        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'role', 'status', 'can_access_external_dnp', 'permissions']));
+        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions']));
     }
 
     /**
@@ -93,6 +96,7 @@ class UserController extends ApiController
             'name' => ['sometimes', 'min:2'],
             'username' => ['sometimes', 'string', 'max:50', 'unique:users,username,' . $user->id],
             'email' => ['sometimes', 'nullable', 'string', 'max:255', 'unique:users,email,' . $user->id],
+            'phone' => ['sometimes', 'nullable', 'string', 'regex:/^628\d{7,15}$/'],
             'password' => ['sometimes', 'min:8'],
             'role' => ['sometimes', 'in:Admin,Viewer'],
             'status' => ['sometimes', 'in:Active,Disabled'],
@@ -114,6 +118,10 @@ class UserController extends ApiController
         if (array_key_exists('email', $validated)) {
             $email = trim((string) ($validated['email'] ?? ''));
             $validated['email'] = $email !== '' ? $email : null;
+        }
+        if (array_key_exists('phone', $validated)) {
+            $phone = trim((string) ($validated['phone'] ?? ''));
+            $validated['phone'] = $phone !== '' ? $phone : null;
         }
         if (array_key_exists('permissions', $validated)) {
             $validated['permissions'] = $this->normalizePermissions($validated['permissions']);
@@ -138,7 +146,7 @@ class UserController extends ApiController
         $user->fill($validated);
         $user->save();
 
-        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'role', 'status', 'can_access_external_dnp', 'permissions']));
+        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions']));
     }
 
     /**
@@ -168,7 +176,7 @@ class UserController extends ApiController
         }
 
         return $this->respondData([
-            'user' => $user->only(['id', 'name', 'username', 'email', 'role', 'status', 'can_access_external_dnp', 'permissions']),
+            'user' => $user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions']),
             'password_reset' => true,
             'logged_out_sessions' => (bool) ($validated['logout_sessions'] ?? true),
         ]);

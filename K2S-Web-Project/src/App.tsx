@@ -315,6 +315,11 @@ const AdminWhatsappApi = lazy(() =>
     default: module.WhatsappApi,
   }))
 );
+const AdminWhatsappSelfAssessment = lazy(() =>
+  import('@/pages/admin/WhatsappSelfAssessment').then((module) => ({
+    default: module.WhatsappSelfAssessment,
+  }))
+);
 
 function App() {
   return (
@@ -434,7 +439,23 @@ function App() {
             path="admin/whatsapp"
             element={
               <RequireAdmin>
+                <Navigate to="/admin/whatsapp/external-dnp" replace />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/whatsapp/external-dnp"
+            element={
+              <RequireAdmin>
                 <AdminWhatsappApi />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/whatsapp/self-assessment"
+            element={
+              <RequireAdmin>
+                <AdminWhatsappSelfAssessment />
               </RequireAdmin>
             }
           />

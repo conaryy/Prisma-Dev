@@ -86,11 +86,25 @@ export interface LicenseItem {
 }
 
 export interface TestItem {
+  id: string;
   title: string;
+  category: 'Audit' | 'Inspeksi' | 'Test';
   owner: string;
+  inspector: string;
   date: string;
   score: string;
-  status: 'Selesai' | 'Terjadwal' | 'Perlu Tindak Lanjut';
+  status: 'Belum Terlaksana' | 'Terlaksana' | 'Perlu Tindak Lanjut';
+  completedAt: string | null;
+  completionNote: string | null;
+  sourceDocument: string;
+  evidenceFiles: TestEvidenceItem[];
+}
+
+export interface TestEvidenceItem {
+  id: string;
+  name: string;
+  url: string;
+  uploadedAt: string;
 }
 
 export interface DocumentItem {

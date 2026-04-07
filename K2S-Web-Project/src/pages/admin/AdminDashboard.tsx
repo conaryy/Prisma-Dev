@@ -7,6 +7,7 @@ import {
 import { Link } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import { getAuthPortalUrl } from '@/lib/authPortal';
 import { toast } from '@/hooks/use-toast';
 
 type AdminPriorityRow = {
@@ -380,15 +381,15 @@ export function AdminDashboard() {
       </section>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Link
-          to="/admin/users"
+        <a
+          href={getAuthPortalUrl('/portal-admin/users')}
           className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
         >
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
             <Users className="h-5 w-5" />
           </span>
           Kelola User
-        </Link>
+        </a>
         <Link
           to="/admin/self-assessment-reviews"
           className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50"

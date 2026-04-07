@@ -6,6 +6,8 @@ import { EmptyState } from '@/components/EmptyState';
 import { deleteChecklistDocument, fetchChecklistDocuments, uploadChecklistDocument } from '@/lib/api';
 import type { ChecklistDocumentSummary } from '@/types';
 
+const MOBILE_UPLOAD_LAYOUT_BREAKPOINT = '(max-width: 860px)';
+
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString('id-ID', {
     dateStyle: 'medium',
@@ -25,6 +27,24 @@ export function UploadDocumentsPage() {
   const [feedback, setFeedback] = useState(defaultFeedback);
   const [feedbackTone, setFeedbackTone] = useState<'success' | 'error' | 'neutral'>('neutral');
   const [highlightedDocumentId, setHighlightedDocumentId] = useState<string | null>(null);
+  const [isMobileUploadLayout, setIsMobileUploadLayout] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(MOBILE_UPLOAD_LAYOUT_BREAKPOINT);
+    const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsMobileUploadLayout(event.matches);
+    };
+
+    handleChange(mediaQuery);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -128,37 +148,38 @@ export function UploadDocumentsPage() {
         );
   const shouldShowFeedback = feedbackTone !== 'neutral' || feedback !== defaultFeedback;
   const topbarContent = useMemo(
-    () => (
-      <div className="topbar-upload-tools">
-        <div className="topbar-search">
-          <input
-            id="document-search-library"
-            type="search"
-            className="criteria-search topbar-search-input"
-            placeholder="Cari nama file, cabang, no. dokumen, atau tanggal"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            aria-label="Cari dokumen audit"
-          />
-        </div>
+    () =>
+      isMobileUploadLayout ? null : (
+        <div className="topbar-upload-tools">
+          <div className="topbar-search">
+            <input
+              id="document-search-library"
+              type="search"
+              className="criteria-search topbar-search-input"
+              placeholder="Cari nama file, cabang, no. dokumen, atau tanggal"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              aria-label="Cari dokumen audit"
+            />
+          </div>
 
-        <label className="primary-upload topbar-upload-action" htmlFor="document-upload-library">
-          <input
-            id="document-upload-library"
-            type="file"
-            accept=".doc,.docx"
-            disabled={isUploading}
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              void handleUpload(file);
-              event.target.value = '';
-            }}
-          />
-          <span>{isUploading ? 'Memproses dokumen...' : 'Upload Dokumen'}</span>
-        </label>
-      </div>
-    ),
-    [isUploading, searchQuery]
+          <label className="primary-upload topbar-upload-action" htmlFor="document-upload-library">
+            <input
+              id="document-upload-library"
+              type="file"
+              accept=".doc,.docx"
+              disabled={isUploading}
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                void handleUpload(file);
+                event.target.value = '';
+              }}
+            />
+            <span>{isUploading ? 'Memproses dokumen...' : 'Upload Dokumen'}</span>
+          </label>
+        </div>
+      ),
+    [isMobileUploadLayout, isUploading, searchQuery]
   );
 
   useEffect(() => {
@@ -199,6 +220,48 @@ export function UploadDocumentsPage() {
           </p>
         )}
       </section>
+
+      {isMobileUploadLayout && (
+        <section className="upload-library-toolbar panel">
+          <div className="upload-library-toolbar-head">
+            <div>
+              <p className="panel-kicker">Manajemen dokumen</p>
+              <h3 className="panel-title">Cari dan upload dokumen audit</h3>
+              <p className="panel-description">
+                Gunakan pencarian untuk membuka dokumen yang sudah ada, atau upload file Word baru
+                tanpa memenuhi topbar mobile.
+              </p>
+            </div>
+          </div>
+
+          <div className="upload-library-toolbar-controls">
+            <input
+              id="document-search-library-mobile"
+              type="search"
+              className="criteria-search upload-library-search"
+              placeholder="Cari nama file, cabang, no. dokumen, atau tanggal"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              aria-label="Cari dokumen audit"
+            />
+
+            <label className="primary-upload upload-library-action" htmlFor="document-upload-library-mobile">
+              <input
+                id="document-upload-library-mobile"
+                type="file"
+                accept=".doc,.docx"
+                disabled={isUploading}
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  void handleUpload(file);
+                  event.target.value = '';
+                }}
+              />
+              <span>{isUploading ? 'Memproses dokumen...' : 'Upload Dokumen Word'}</span>
+            </label>
+          </div>
+        </section>
+      )}
 
       {isLoading ? (
         <EmptyState

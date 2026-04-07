@@ -20,6 +20,7 @@ use App\Models\SelfAssessmentSessionArea;
 use App\Models\SelfAssessmentSessionUser;
 use App\Models\SystemNotification;
 use App\Models\User;
+use App\Services\Whatsapp\SelfAssessmentWhatsappNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -429,6 +430,10 @@ class SelfAssessmentCapController extends ApiController
             if (!empty($notifications)) {
                 SystemNotification::query()->insert($notifications);
             }
+
+            $cap->loadMissing(['answer.sessionArea.session', 'answer.user']);
+            app(SelfAssessmentWhatsappNotificationService::class)
+                ->notifyCapDraftSubmitted($cap);
         }
 
         return $this->respondData([
@@ -561,6 +566,12 @@ class SelfAssessmentCapController extends ApiController
                 })->all();
                 SystemNotification::query()->insert($notifications);
             }
+        }
+
+        if ($isSend) {
+            $cap->loadMissing(['answer.sessionArea.session', 'answer.user']);
+            app(SelfAssessmentWhatsappNotificationService::class)
+                ->notifyCapFulfillmentSubmitted($cap, $fulfillment);
         }
 
         return $this->respondData([
@@ -1263,6 +1274,15 @@ class SelfAssessmentCapController extends ApiController
                 'updated_at' => now(),
             ];
             SystemNotification::query()->insert([$notification]);
+
+            $cap->loadMissing(['answer.sessionArea.session', 'answer.user']);
+            app(SelfAssessmentWhatsappNotificationService::class)
+                ->notifyUserCapReviewed(
+                    $cap,
+                    $validated['result'] ?? $resolvedStatus,
+                    $resolvedComment,
+                    $resolvedStatus
+                );
         }
 
         return $this->respondData([
@@ -1325,6 +1345,14 @@ class SelfAssessmentCapController extends ApiController
                 'updated_at' => now(),
             ];
             SystemNotification::query()->insert([$notification]);
+
+            $cap->loadMissing(['answer.sessionArea.session', 'answer.user']);
+            app(SelfAssessmentWhatsappNotificationService::class)
+                ->notifyUserCapFulfillmentReviewed(
+                    $cap,
+                    $resolvedComment,
+                    $resolvedStatus
+                );
         }
 
         return $this->respondData([

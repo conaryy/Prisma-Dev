@@ -32,13 +32,23 @@ export function validateLoginPayload(input) {
 
 export function validateCreateUserPayload(input) {
   const payload = normalizeObject(input);
+  const email = normalizeString(payload.email).toLowerCase();
+  const phone = normalizeString(payload.phone).replace(/[\s().-]/g, '');
+
+  if (!email) {
+    return { ok: false, status: 422, error: 'Email wajib diisi.' };
+  }
+  if (phone && !/^62\d{7,15}$/.test(phone)) {
+    return { ok: false, status: 422, error: 'Nomor WhatsApp harus memakai format 62.' };
+  }
 
   return {
     ok: true,
     data: {
       name: normalizeString(payload.name),
       username: normalizeString(payload.username),
-      email: payload.email,
+      email,
+      phone,
       password: String(payload.password ?? ''),
       role: payload.role,
       status: payload.status,
@@ -49,6 +59,13 @@ export function validateCreateUserPayload(input) {
 
 export function validateUpdateUserPayload(input) {
   const payload = normalizeObject(input);
+  const phone = payload.phone === undefined
+    ? undefined
+    : normalizeString(payload.phone).replace(/[\s().-]/g, '');
+
+  if (phone && !/^62\d{7,15}$/.test(phone)) {
+    return { ok: false, status: 422, error: 'Nomor WhatsApp harus memakai format 62.' };
+  }
 
   return {
     ok: true,
@@ -56,6 +73,7 @@ export function validateUpdateUserPayload(input) {
       name: payload.name,
       username: payload.username,
       email: payload.email,
+      phone,
       password: payload.password,
       role: payload.role,
       status: payload.status,
@@ -83,6 +101,13 @@ export function validateResetPasswordPayload(input) {
 
 export function validateSelfProfilePayload(input) {
   const payload = normalizeObject(input);
+  const phone = payload.phone === undefined
+    ? undefined
+    : normalizeString(payload.phone).replace(/[\s().-]/g, '');
+
+  if (phone && !/^62\d{7,15}$/.test(phone)) {
+    return { ok: false, status: 422, error: 'Nomor WhatsApp harus memakai format 62.' };
+  }
 
   return {
     ok: true,
@@ -90,6 +115,7 @@ export function validateSelfProfilePayload(input) {
       name: normalizeString(payload.name),
       username: normalizeString(payload.username),
       email: payload.email,
+      phone,
     },
   };
 }

@@ -23,6 +23,7 @@ class SsoUserSynchronizer
         $email = strtolower($this->toString(Arr::get($claims, $emailClaim)));
         $username = $this->toString(Arr::get($claims, $usernameClaim));
         $name = $this->toString(Arr::get($claims, $nameClaim));
+        $phone = $this->normalizePhone($this->toString(Arr::get($claims, 'phone')));
 
         if ($subject === '' && $email === '' && $username === '') {
             return null;
@@ -37,6 +38,7 @@ class SsoUserSynchronizer
             $email,
             $username,
             $name,
+            $phone,
             $localRole,
             $canAccessExternalDnp
         ) {
@@ -73,6 +75,7 @@ class SsoUserSynchronizer
             if ($username !== '') {
                 $user->username = $username;
             }
+            $user->phone = $phone !== '' ? $phone : null;
 
             if ($name !== '') {
                 $user->name = $name;
@@ -198,5 +201,12 @@ class SsoUserSynchronizer
     private function toString(mixed $value): string
     {
         return is_string($value) ? trim($value) : '';
+    }
+
+    private function normalizePhone(string $value): string
+    {
+        $phone = preg_replace('/[\s().-]+/', '', $value) ?? '';
+
+        return preg_match('/^62\d{7,15}$/', $phone) === 1 ? $phone : '';
     }
 }

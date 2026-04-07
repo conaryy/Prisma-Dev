@@ -22,6 +22,7 @@ type UserItem = {
   name: string;
   username: string;
   email: string | null;
+  phone: string | null;
   role: 'Admin' | 'Viewer';
   status: 'Active' | 'Disabled';
   permissions: PermissionState;
@@ -69,6 +70,7 @@ export function UserManagement() {
     name: '',
     username: '',
     email: '',
+    phone: '',
     password: '',
     role: 'Viewer' as 'Admin' | 'Viewer',
     status: 'Active' as 'Active' | 'Disabled',
@@ -76,12 +78,15 @@ export function UserManagement() {
   });
 
   const canSubmit = useMemo(() => {
+    const phone = form.phone.trim();
     return (
       form.name.trim().length >= 2 &&
       form.username.trim().length >= 3 &&
+      form.email.trim().length > 0 &&
+      (phone.length === 0 || /^62\d{7,15}$/.test(phone)) &&
       form.password.length >= 8
     );
-  }, [form.name, form.username, form.password]);
+  }, [form.name, form.username, form.email, form.phone, form.password]);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -142,7 +147,8 @@ export function UserManagement() {
         body: JSON.stringify({
           name: form.name.trim(),
           username: form.username.trim(),
-          email: form.email.trim() || null,
+          email: form.email.trim(),
+          phone: form.phone.trim() || null,
           password: form.password,
           role: form.role,
           status: form.status,
@@ -153,6 +159,7 @@ export function UserManagement() {
         name: '',
         username: '',
         email: '',
+        phone: '',
         password: '',
         role: 'Viewer',
         status: 'Active',
@@ -253,10 +260,11 @@ export function UserManagement() {
         </header>
 
         <form onSubmit={onCreate} className="space-y-4 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm transition-colors duration-300 dark:border-[#3158bb66] dark:bg-[#0a1538]/85 dark:shadow-none">
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
             <Input placeholder="Nama lengkap" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
             <Input placeholder="Username" value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} />
-            <Input placeholder="Email (opsional)" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
+            <Input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
+            <Input inputMode="tel" pattern="62[0-9]{7,15}" placeholder="WhatsApp 62..." value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
             <Input type="password" placeholder="Password min 8 karakter" value={form.password} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} />
           </div>
 
@@ -321,6 +329,7 @@ export function UserManagement() {
               <tr>
                 <th className="px-3 py-2">Username</th>
                 <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">WhatsApp</th>
                 <th className="px-3 py-2">Role</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Service</th>
@@ -329,14 +338,15 @@ export function UserManagement() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={6}>Memuat data...</td></tr>
+                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={7}>Memuat data...</td></tr>
               ) : users.length === 0 ? (
-                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={6}>Belum ada user.</td></tr>
+                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={7}>Belum ada user.</td></tr>
               ) : (
                 users.map((user) => (
                   <tr key={user.id} className="border-t border-slate-200 transition-colors duration-300 dark:border-[#3158bb55]">
                     <td className="px-3 py-2">{user.username}</td>
                     <td className="px-3 py-2">{user.email || '-'}</td>
+                    <td className="px-3 py-2">{user.phone || '-'}</td>
                     <td className="px-3 py-2">{user.role}</td>
                     <td className="px-3 py-2">{user.status}</td>
                     <td className="px-3 py-2">

@@ -6,6 +6,7 @@ use App\Models\SelfAssessmentAnswer;
 use App\Models\SelfAssessmentEvidence;
 use App\Models\SystemNotification;
 use App\Models\User;
+use App\Services\Whatsapp\SelfAssessmentWhatsappNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -127,6 +128,17 @@ class SelfAssessmentAnswerController extends ApiController
             }
             if (!empty($notifications)) {
                 SystemNotification::query()->insert($notifications);
+            }
+
+            $submittedAnswers = SelfAssessmentAnswer::query()
+                ->with(['sessionArea.session', 'user'])
+                ->whereIn('id', $submittedAnswerIds)
+                ->get()
+                ->groupBy('session_area_id');
+
+            $whatsappService = app(SelfAssessmentWhatsappNotificationService::class);
+            foreach ($submittedAnswers as $answers) {
+                $whatsappService->notifySelfAssessmentSubmitted($answers);
             }
         }
 

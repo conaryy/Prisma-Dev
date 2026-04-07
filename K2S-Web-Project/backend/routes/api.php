@@ -32,6 +32,7 @@ use App\Http\Controllers\Api\SelfAssessmentQuestionCategoryController;
 use App\Http\Controllers\Api\SelfAssessmentReviewController;
 use App\Http\Controllers\Api\SelfAssessmentSessionController;
 use App\Http\Controllers\Api\SelfAssessmentSessionAreaController;
+use App\Http\Controllers\Api\SelfAssessmentWhatsappSettingController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -241,6 +242,8 @@ Route::middleware('auth.api')->group(function () {
         Route::get('admin/whatsapp/session', [ExternalDnpWhatsappController::class, 'adminSessionStatus']);
         Route::post('admin/whatsapp/session/logout', [ExternalDnpWhatsappController::class, 'adminSessionLogout']);
         Route::post('admin/whatsapp/session/new', [ExternalDnpWhatsappController::class, 'adminSessionNew']);
+        Route::get('admin/whatsapp/self-assessment/settings', [SelfAssessmentWhatsappSettingController::class, 'show']);
+        Route::put('admin/whatsapp/self-assessment/settings', [SelfAssessmentWhatsappSettingController::class, 'update']);
         Route::post('admin/whatsapp/preview-batch', [ExternalDnpWhatsappController::class, 'adminPreviewBatch']);
         Route::post('admin/whatsapp/send', [ExternalDnpWhatsappController::class, 'adminSend']);
         Route::post('admin/whatsapp/send-batch', [ExternalDnpWhatsappController::class, 'adminSendBatch']);

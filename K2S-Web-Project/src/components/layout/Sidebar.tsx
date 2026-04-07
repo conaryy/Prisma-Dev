@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/collapsible';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getAuthUser } from '@/lib/api';
+import { getAuthPortalUrl } from '@/lib/authPortal';
 import { canAccessExternalDnp, canManageAdminModule } from '@/lib/permissions';
 import { useAppData } from '@/contexts/AppDataContext';
 
@@ -179,6 +180,10 @@ export function Sidebar({
     location.pathname === '/admin' || location.pathname === '/admin/dashboard';
   const isAdminUsersActive = location.pathname.startsWith('/admin/users');
   const isAdminWhatsappApiActive = location.pathname.startsWith('/admin/whatsapp');
+  const isAdminWhatsappExternalDnpActive =
+    location.pathname === '/admin/whatsapp/external-dnp';
+  const isAdminWhatsappSelfAssessmentActive =
+    location.pathname === '/admin/whatsapp/self-assessment';
   const isAdminSelfAssessmentQuestionActive =
     location.pathname === '/admin/self-assessment';
   const isAdminSelfAssessmentSessionActive =
@@ -228,6 +233,9 @@ export function Sidebar({
   );
   const [externalDnpSurveillanceOpen, setExternalDnpSurveillanceOpen] = useState(
     isExternalDnpSurveillanceActive
+  );
+  const [adminWhatsappMenuOpen, setAdminWhatsappMenuOpen] = useState(
+    isAdminWhatsappApiActive
   );
   const [adminSelfAssessmentMenuOpen, setAdminSelfAssessmentMenuOpen] = useState(
     isAdminSelfAssessmentMenuActive
@@ -340,6 +348,12 @@ export function Sidebar({
   }, [isExternalDnpSurveillanceActive]);
 
   useEffect(() => {
+    if (isAdminWhatsappApiActive) {
+      setAdminWhatsappMenuOpen(true);
+    }
+  }, [isAdminWhatsappApiActive]);
+
+  useEffect(() => {
     if (isAdminSelfAssessmentMenuActive) {
       setAdminSelfAssessmentMenuOpen(true);
     }
@@ -379,14 +393,14 @@ export function Sidebar({
     );
   const handleCollapsedTriggerClick =
     (setOpen: Dispatch<SetStateAction<boolean>>) =>
-    (event: MouseEvent<HTMLButtonElement>) => {
-      if (!isCollapsed) {
-        return;
-      }
-      event.preventDefault();
-      setOpen(true);
-      onExpandRequest?.();
-    };
+      (event: MouseEvent<HTMLButtonElement>) => {
+        if (!isCollapsed) {
+          return;
+        }
+        event.preventDefault();
+        setOpen(true);
+        onExpandRequest?.();
+      };
   const handleCollapsedNavLinkClick = (event: MouseEvent<HTMLElement>) => {
     if (!isCollapsed) {
       return;
@@ -401,7 +415,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'zoom-performance fixed left-0 top-0 z-40 h-screen w-72 overflow-hidden rounded-r-[24px] border-r border-white/60 bg-white/80 text-slate-900 transition-[transform,width] duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100',
+        'zoom-performance fixed left-0 top-0 z-40 h-screen w-72 overflow-hidden rounded-r-[24px] border-r border-white/70 bg-[rgba(255,255,255,0.98)] text-slate-900 shadow-[0_22px_60px_rgba(15,23,42,0.18)] transition-[transform,width] duration-300 ease-in-out lg:border-white/60 lg:bg-[rgba(255,255,255,0.82)] lg:shadow-[0_18px_44px_rgba(15,23,42,0.12)] dark:border-[#25448f] dark:bg-[#08143f] dark:text-slate-100 dark:shadow-[0_22px_60px_rgba(2,8,28,0.58)] lg:dark:border-slate-800 lg:dark:bg-[rgba(15,23,42,0.92)] lg:dark:shadow-[0_18px_44px_rgba(2,8,28,0.45)]',
         isOpen ? 'translate-x-0' : '-translate-x-full',
         isCollapsed ? 'lg:w-20' : 'lg:w-72',
         'lg:translate-x-0'
@@ -409,7 +423,7 @@ export function Sidebar({
     >
       <div className="flex h-full min-h-0 flex-col">
         <div
-          className="relative border-b border-white/70 bg-gradient-to-b from-white via-white to-blue-50/80 px-6 py-6 dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800"
+          className="relative border-b border-white/80 bg-gradient-to-b from-white via-white to-blue-50 px-6 py-6 lg:border-white/70 lg:to-blue-50/80 dark:border-[#25448f] dark:from-[#08143f] dark:via-[#08143f] dark:to-[#12357f] lg:dark:border-slate-800 lg:dark:from-slate-900 lg:dark:via-slate-900 lg:dark:to-slate-800"
         >
           <div
             className="flex items-center gap-3"
@@ -1031,190 +1045,190 @@ export function Sidebar({
           </Collapsible>
 
           {canAccessExternalDnpMenu && (
-          <Collapsible open={externalDnpOpen} onOpenChange={setExternalDnpOpen}>
-            <CollapsibleTrigger
-              className={navClass(isExternalDnpActive)}
-              onClick={handleCollapsedTriggerClick(setExternalDnpOpen)}
-            >
-              <Share2 className={navIconClass} />
-              <span className={labelClass('flex-1 text-left')}>Menu External DNP</span>
-              {!isCollapsed && (
-                <ChevronDown
-                  className={cn(
-                    'h-4 w-4 text-current/70 transition-transform',
-                    externalDnpOpen && 'rotate-180'
-                  )}
-                />
-              )}
-            </CollapsibleTrigger>
-            <CollapsibleContent
-              className={cn(
-                'mt-1 space-y-1 overflow-hidden pb-1 pl-5 pr-2 pt-1',
-                isCollapsed && 'invisible pointer-events-none'
-              )}
-            >
-              <Link
-                to="/external-dnp/export-document"
+            <Collapsible open={externalDnpOpen} onOpenChange={setExternalDnpOpen}>
+              <CollapsibleTrigger
+                className={navClass(isExternalDnpActive)}
+                onClick={handleCollapsedTriggerClick(setExternalDnpOpen)}
+              >
+                <Share2 className={navIconClass} />
+                <span className={labelClass('flex-1 text-left')}>Menu External DNP</span>
+                {!isCollapsed && (
+                  <ChevronDown
+                    className={cn(
+                      'h-4 w-4 text-current/70 transition-transform',
+                      externalDnpOpen && 'rotate-180'
+                    )}
+                  />
+                )}
+              </CollapsibleTrigger>
+              <CollapsibleContent
                 className={cn(
-                  subNavClass(isExternalDnpExportDocumentActive),
-                  'pr-2'
+                  'mt-1 space-y-1 overflow-hidden pb-1 pl-5 pr-2 pt-1',
+                  isCollapsed && 'invisible pointer-events-none'
                 )}
               >
-                <FileText className={navIconClass} />
-                <span className={labelClass('flex-1')}>Export Document</span>
-              </Link>
-
-              <Collapsible
-                open={externalDnpAuditOpen}
-                onOpenChange={setExternalDnpAuditOpen}
-              >
-                <CollapsibleTrigger
-                  className={cn(subNavClass(isExternalDnpAuditActive), 'pr-2')}
-                  onClick={handleCollapsedTriggerClick(setExternalDnpAuditOpen)}
-                >
-                  <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                    <ClipboardCheck className={navIconClass} />
-                    <span className={labelClass('flex-1')}>Audit</span>
-                  </span>
-                  {!isCollapsed && (
-                    <ChevronDown
-                      className={cn(
-                        'h-4 w-4 text-current/70 transition-transform',
-                        externalDnpAuditOpen && 'rotate-180'
-                      )}
-                    />
-                  )}
-                </CollapsibleTrigger>
-                <CollapsibleContent
+                <Link
+                  to="/external-dnp/export-document"
                   className={cn(
-                    'mt-1 space-y-1 overflow-hidden pb-1 pl-5 pr-2 pt-1',
-                    isCollapsed && 'invisible pointer-events-none'
+                    subNavClass(isExternalDnpExportDocumentActive),
+                    'pr-2'
                   )}
                 >
-                  <Link
-                    to="/external-dnp/audit/cap/penyusunan"
-                    className={cn(
-                      subNavClass(isExternalDnpAuditCapDraftActive),
-                      'pl-8 text-[13px]'
-                    )}
-                  >
-                    <FolderOpen className={navIconClass} />
-                    <span className={labelClass('flex-1')}>Penyusunan CAP</span>
-                  </Link>
-                  <Link
-                    to="/external-dnp/audit/cap/pemenuhan"
-                    className={cn(
-                      subNavClass(isExternalDnpAuditCapFulfillmentActive),
-                      'pl-8 text-[13px]'
-                    )}
-                  >
-                    <CheckCircle className={navIconClass} />
-                    <span className={labelClass('flex-1')}>Pemenuhan CAP</span>
-                  </Link>
-                </CollapsibleContent>
-              </Collapsible>
+                  <FileText className={navIconClass} />
+                  <span className={labelClass('flex-1')}>Export Document</span>
+                </Link>
 
-              <Collapsible
-                open={externalDnpInspeksiOpen}
-                onOpenChange={setExternalDnpInspeksiOpen}
-              >
-                <CollapsibleTrigger
-                  className={cn(subNavClass(isExternalDnpInspeksiActive), 'pr-2')}
-                  onClick={handleCollapsedTriggerClick(setExternalDnpInspeksiOpen)}
+                <Collapsible
+                  open={externalDnpAuditOpen}
+                  onOpenChange={setExternalDnpAuditOpen}
                 >
-                  <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                    <ClipboardList className={navIconClass} />
-                    <span className={labelClass('flex-1')}>Inspeksi</span>
-                  </span>
-                  {!isCollapsed && (
-                    <ChevronDown
+                  <CollapsibleTrigger
+                    className={cn(subNavClass(isExternalDnpAuditActive), 'pr-2')}
+                    onClick={handleCollapsedTriggerClick(setExternalDnpAuditOpen)}
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                      <ClipboardCheck className={navIconClass} />
+                      <span className={labelClass('flex-1')}>Audit</span>
+                    </span>
+                    {!isCollapsed && (
+                      <ChevronDown
+                        className={cn(
+                          'h-4 w-4 text-current/70 transition-transform',
+                          externalDnpAuditOpen && 'rotate-180'
+                        )}
+                      />
+                    )}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent
+                    className={cn(
+                      'mt-1 space-y-1 overflow-hidden pb-1 pl-5 pr-2 pt-1',
+                      isCollapsed && 'invisible pointer-events-none'
+                    )}
+                  >
+                    <Link
+                      to="/external-dnp/audit/cap/penyusunan"
                       className={cn(
-                        'h-4 w-4 text-current/70 transition-transform',
-                        externalDnpInspeksiOpen && 'rotate-180'
+                        subNavClass(isExternalDnpAuditCapDraftActive),
+                        'pl-8 text-[13px]'
                       )}
-                    />
-                  )}
-                </CollapsibleTrigger>
-                <CollapsibleContent
-                  className={cn(
-                    'mt-1 space-y-1 overflow-hidden pb-1 pl-5 pr-2 pt-1',
-                    isCollapsed && 'invisible pointer-events-none'
-                  )}
-                >
-                  <Link
-                    to="/external-dnp/inspeksi/cap/penyusunan"
-                    className={cn(
-                      subNavClass(isExternalDnpInspeksiCapDraftActive),
-                      'pl-8 text-[13px]'
-                    )}
-                  >
-                    <FolderOpen className={navIconClass} />
-                    <span className={labelClass('flex-1')}>Penyusunan CAP</span>
-                  </Link>
-                  <Link
-                    to="/external-dnp/inspeksi/cap/pemenuhan"
-                    className={cn(
-                      subNavClass(isExternalDnpInspeksiCapFulfillmentActive),
-                      'pl-8 text-[13px]'
-                    )}
-                  >
-                    <CheckCircle className={navIconClass} />
-                    <span className={labelClass('flex-1')}>Pemenuhan CAP</span>
-                  </Link>
-                </CollapsibleContent>
-              </Collapsible>
+                    >
+                      <FolderOpen className={navIconClass} />
+                      <span className={labelClass('flex-1')}>Penyusunan CAP</span>
+                    </Link>
+                    <Link
+                      to="/external-dnp/audit/cap/pemenuhan"
+                      className={cn(
+                        subNavClass(isExternalDnpAuditCapFulfillmentActive),
+                        'pl-8 text-[13px]'
+                      )}
+                    >
+                      <CheckCircle className={navIconClass} />
+                      <span className={labelClass('flex-1')}>Pemenuhan CAP</span>
+                    </Link>
+                  </CollapsibleContent>
+                </Collapsible>
 
-              <Collapsible
-                open={externalDnpSurveillanceOpen}
-                onOpenChange={setExternalDnpSurveillanceOpen}
-              >
-                <CollapsibleTrigger
-                  className={cn(subNavClass(isExternalDnpSurveillanceActive), 'pr-2')}
-                  onClick={handleCollapsedTriggerClick(setExternalDnpSurveillanceOpen)}
+                <Collapsible
+                  open={externalDnpInspeksiOpen}
+                  onOpenChange={setExternalDnpInspeksiOpen}
                 >
-                  <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                    <Radar className={navIconClass} />
-                    <span className={labelClass('flex-1')}>Surveillance</span>
-                  </span>
-                  {!isCollapsed && (
-                    <ChevronDown
+                  <CollapsibleTrigger
+                    className={cn(subNavClass(isExternalDnpInspeksiActive), 'pr-2')}
+                    onClick={handleCollapsedTriggerClick(setExternalDnpInspeksiOpen)}
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                      <ClipboardList className={navIconClass} />
+                      <span className={labelClass('flex-1')}>Inspeksi</span>
+                    </span>
+                    {!isCollapsed && (
+                      <ChevronDown
+                        className={cn(
+                          'h-4 w-4 text-current/70 transition-transform',
+                          externalDnpInspeksiOpen && 'rotate-180'
+                        )}
+                      />
+                    )}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent
+                    className={cn(
+                      'mt-1 space-y-1 overflow-hidden pb-1 pl-5 pr-2 pt-1',
+                      isCollapsed && 'invisible pointer-events-none'
+                    )}
+                  >
+                    <Link
+                      to="/external-dnp/inspeksi/cap/penyusunan"
                       className={cn(
-                        'h-4 w-4 text-current/70 transition-transform',
-                        externalDnpSurveillanceOpen && 'rotate-180'
+                        subNavClass(isExternalDnpInspeksiCapDraftActive),
+                        'pl-8 text-[13px]'
                       )}
-                    />
-                  )}
-                </CollapsibleTrigger>
-                <CollapsibleContent
-                  className={cn(
-                    'mt-1 space-y-1 overflow-hidden pb-1 pl-5 pr-2 pt-1',
-                    isCollapsed && 'invisible pointer-events-none'
-                  )}
+                    >
+                      <FolderOpen className={navIconClass} />
+                      <span className={labelClass('flex-1')}>Penyusunan CAP</span>
+                    </Link>
+                    <Link
+                      to="/external-dnp/inspeksi/cap/pemenuhan"
+                      className={cn(
+                        subNavClass(isExternalDnpInspeksiCapFulfillmentActive),
+                        'pl-8 text-[13px]'
+                      )}
+                    >
+                      <CheckCircle className={navIconClass} />
+                      <span className={labelClass('flex-1')}>Pemenuhan CAP</span>
+                    </Link>
+                  </CollapsibleContent>
+                </Collapsible>
+
+                <Collapsible
+                  open={externalDnpSurveillanceOpen}
+                  onOpenChange={setExternalDnpSurveillanceOpen}
                 >
-                  <Link
-                    to="/external-dnp/surveillance/cap/penyusunan"
+                  <CollapsibleTrigger
+                    className={cn(subNavClass(isExternalDnpSurveillanceActive), 'pr-2')}
+                    onClick={handleCollapsedTriggerClick(setExternalDnpSurveillanceOpen)}
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                      <Radar className={navIconClass} />
+                      <span className={labelClass('flex-1')}>Surveillance</span>
+                    </span>
+                    {!isCollapsed && (
+                      <ChevronDown
+                        className={cn(
+                          'h-4 w-4 text-current/70 transition-transform',
+                          externalDnpSurveillanceOpen && 'rotate-180'
+                        )}
+                      />
+                    )}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent
                     className={cn(
-                      subNavClass(isExternalDnpSurveillanceCapDraftActive),
-                      'pl-8 text-[13px]'
+                      'mt-1 space-y-1 overflow-hidden pb-1 pl-5 pr-2 pt-1',
+                      isCollapsed && 'invisible pointer-events-none'
                     )}
                   >
-                    <FolderOpen className={navIconClass} />
-                    <span className={labelClass('flex-1')}>Penyusunan CAP</span>
-                  </Link>
-                  <Link
-                    to="/external-dnp/surveillance/cap/pemenuhan"
-                    className={cn(
-                      subNavClass(isExternalDnpSurveillanceCapFulfillmentActive),
-                      'pl-8 text-[13px]'
-                    )}
-                  >
-                    <CheckCircle className={navIconClass} />
-                    <span className={labelClass('flex-1')}>Pemenuhan CAP</span>
-                  </Link>
-                </CollapsibleContent>
-              </Collapsible>
-            </CollapsibleContent>
-          </Collapsible>
+                    <Link
+                      to="/external-dnp/surveillance/cap/penyusunan"
+                      className={cn(
+                        subNavClass(isExternalDnpSurveillanceCapDraftActive),
+                        'pl-8 text-[13px]'
+                      )}
+                    >
+                      <FolderOpen className={navIconClass} />
+                      <span className={labelClass('flex-1')}>Penyusunan CAP</span>
+                    </Link>
+                    <Link
+                      to="/external-dnp/surveillance/cap/pemenuhan"
+                      className={cn(
+                        subNavClass(isExternalDnpSurveillanceCapFulfillmentActive),
+                        'pl-8 text-[13px]'
+                      )}
+                    >
+                      <CheckCircle className={navIconClass} />
+                      <span className={labelClass('flex-1')}>Pemenuhan CAP</span>
+                    </Link>
+                  </CollapsibleContent>
+                </Collapsible>
+              </CollapsibleContent>
+            </Collapsible>
           )}
 
           {canAccessAdminMenu && (
@@ -1230,14 +1244,59 @@ export function Sidebar({
                 <ShieldCheck className={navIconClass} />
                 <span className={labelClass('flex-1')}>Dashboard Admin</span>
               </Link>
-              <Link to="/admin/users" className={navClass(isAdminUsersActive)}>
+              <a href={getAuthPortalUrl('/portal-admin/users')} className={navClass(isAdminUsersActive)}>
                 <Users className={navIconClass} />
                 <span className={labelClass('flex-1')}>Kelola User</span>
-              </Link>
-              <Link to="/admin/whatsapp" className={navClass(isAdminWhatsappApiActive)}>
-                <Share2 className={navIconClass} />
-                <span className={labelClass('flex-1')}>WhatsApp API</span>
-              </Link>
+              </a>
+              <Collapsible
+                open={adminWhatsappMenuOpen}
+                onOpenChange={setAdminWhatsappMenuOpen}
+              >
+                <CollapsibleTrigger
+                  className={cn(navClass(isAdminWhatsappApiActive), 'pr-2')}
+                  onClick={handleCollapsedTriggerClick(setAdminWhatsappMenuOpen)}
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                    <Share2 className={navIconClass} />
+                    <span className={labelClass('flex-1')}>WhatsApp API</span>
+                  </span>
+                  {!isCollapsed && (
+                    <ChevronDown
+                      className={cn(
+                        'h-4 w-4 text-current/70 transition-transform',
+                        adminWhatsappMenuOpen && 'rotate-180'
+                      )}
+                    />
+                  )}
+                </CollapsibleTrigger>
+                <CollapsibleContent
+                  className={cn(
+                    'mt-1 space-y-1 overflow-hidden pb-1 pl-5 pr-2 pt-1',
+                    isCollapsed && 'invisible pointer-events-none'
+                  )}
+                >
+                  <Link
+                    to="/admin/whatsapp/external-dnp"
+                    className={cn(
+                      subNavClass(isAdminWhatsappExternalDnpActive),
+                      'pl-8 text-[13px]'
+                    )}
+                  >
+                    <Share2 className={navIconClass} />
+                    <span className={labelClass('flex-1')}>External DNP</span>
+                  </Link>
+                  <Link
+                    to="/admin/whatsapp/self-assessment"
+                    className={cn(
+                      subNavClass(isAdminWhatsappSelfAssessmentActive),
+                      'pl-8 text-[13px]'
+                    )}
+                  >
+                    <ClipboardList className={navIconClass} />
+                    <span className={labelClass('flex-1')}>Self Assessment</span>
+                  </Link>
+                </CollapsibleContent>
+              </Collapsible>
               <Collapsible
                 open={adminSelfAssessmentMenuOpen}
                 onOpenChange={setAdminSelfAssessmentMenuOpen}

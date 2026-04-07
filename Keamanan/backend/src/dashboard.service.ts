@@ -1,5 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PersonnelStatus, Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import { basename, extname, join } from 'node:path';
 import { PrismaService } from './database/prisma.service';
 
 type PersonnelWithRelations = Prisma.PersonnelGetPayload<{
@@ -9,6 +12,42 @@ type PersonnelWithRelations = Prisma.PersonnelGetPayload<{
     trainingHistories: true;
   };
 }>;
+
+type SupervisionCategoryValue = 'AUDIT' | 'INSPEKSI' | 'TEST';
+type SupervisionStatusValue = 'BELUM_TERLAKSANA' | 'TERLAKSANA' | 'PERLU_TINDAK_LANJUT';
+
+type DbSupervisionActivityRow = {
+  id: string;
+  slug: string;
+  title: string;
+  category: SupervisionCategoryValue;
+  location: string | null;
+  inspectorNames: string[];
+  scheduleLabel: string;
+  scheduleYear: number;
+  scheduleMonth: number | null;
+  scheduleWeek: number | null;
+  sourceDocument: string | null;
+  status: SupervisionStatusValue;
+  completedAt: Date | null;
+  completionNote: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type DbSupervisionEvidenceRow = {
+  id: string;
+  activityId: string;
+  fileName: string;
+  storageName: string;
+  mimeType: string | null;
+  sizeBytes: number;
+  uploadedAt: Date;
+};
+
+type SupervisionActivityWithRelations = DbSupervisionActivityRow & {
+  evidences: DbSupervisionEvidenceRow[];
+};
 
 type NavigationItem = {
   id: string;
@@ -74,12 +113,26 @@ type LicenseItem = {
   recurrentPlan: string;
 };
 
+type TestEvidenceItem = {
+  id: string;
+  name: string;
+  url: string;
+  uploadedAt: string;
+};
+
 type TestItem = {
+  id: string;
   title: string;
+  category: 'Audit' | 'Inspeksi' | 'Test';
   owner: string;
+  inspector: string;
   date: string;
   score: string;
-  status: 'Selesai' | 'Terjadwal' | 'Perlu Tindak Lanjut';
+  status: 'Belum Terlaksana' | 'Terlaksana' | 'Perlu Tindak Lanjut';
+  completedAt: string | null;
+  completionNote: string | null;
+  sourceDocument: string;
+  evidenceFiles: TestEvidenceItem[];
 };
 
 type DocumentItem = {
@@ -96,8 +149,87 @@ type ActivityItem = {
   timestamp: string;
 };
 
+type SupervisionSeedItem = {
+  id: string;
+  slug: string;
+  title: string;
+  category: SupervisionCategoryValue;
+  location: string | null;
+  inspectorNames: string[];
+  scheduleLabel: string;
+  scheduleYear: number;
+  scheduleMonth: number | null;
+  scheduleWeek: number | null;
+  sourceDocument: string | null;
+};
+
+const SUPERVISION_SOURCE_DOCUMENT = 'Jadwal Kegiatan Pengawasan Keamanan - Tahun 2026.pdf';
+const SUPERVISION_INSPECTOR_NAMES = ['Arif Hartono', 'Adhe Rafika Yulianti'];
+const SUPERVISION_TEST_MONTHS = [
+  { month: 2, label: 'Minggu II Februari 2026' },
+  { month: 4, label: 'Minggu II April 2026' },
+  { month: 6, label: 'Minggu II Juni 2026' },
+  { month: 8, label: 'Minggu II Agustus 2026' },
+  { month: 10, label: 'Minggu II Oktober 2026' },
+  { month: 12, label: 'Minggu II Desember 2026' },
+];
+
+const SUPERVISION_ACTIVITY_SEED: SupervisionSeedItem[] = [
+  {
+    id: 'audit-internal-keamanan-2026',
+    slug: 'audit-internal-keamanan-2026',
+    title: 'Audit Internal Keamanan',
+    category: 'AUDIT',
+    location: 'Perum LPPNPI Cabang Surabaya',
+    inspectorNames: SUPERVISION_INSPECTOR_NAMES,
+    scheduleLabel: '1 kali dalam 2 tahun (internal)',
+    scheduleYear: 2026,
+    scheduleMonth: null,
+    scheduleWeek: null,
+    sourceDocument: SUPERVISION_SOURCE_DOCUMENT,
+  },
+  ...[
+    'Cabang Surabaya',
+    'KCP Banyuwangi',
+    'KCP Malang',
+    'KCP Sumenep',
+    'Penyedia Personel AVSEC',
+  ].map((location) => ({
+    id: `inspeksi-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-2026`,
+    slug: `inspeksi-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-2026`,
+    title: 'Inspeksi Keamanan',
+    category: 'INSPEKSI' as const,
+    location,
+    inspectorNames: SUPERVISION_INSPECTOR_NAMES,
+    scheduleLabel: '1 kali dalam tahun 2026 (lokasi pelaksanaan menyesuaikan program pengawasan)',
+    scheduleYear: 2026,
+    scheduleMonth: null,
+    scheduleWeek: null,
+    sourceDocument: SUPERVISION_SOURCE_DOCUMENT,
+  })),
+  ...['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'].flatMap((location) =>
+    SUPERVISION_TEST_MONTHS.map(({ month, label }) => ({
+      id: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
+      slug: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
+      title: 'Pengujian (Test) Keamanan',
+      category: 'TEST' as const,
+      location,
+      inspectorNames: SUPERVISION_INSPECTOR_NAMES,
+      scheduleLabel: label,
+      scheduleYear: 2026,
+      scheduleMonth: month,
+      scheduleWeek: 2,
+      sourceDocument: SUPERVISION_SOURCE_DOCUMENT,
+    }))
+  ),
+];
+
 @Injectable()
 export class DashboardService {
+  private readonly uploadsRoot = join(__dirname, '..', 'uploads');
+  private readonly supervisionEvidenceUploadsRoot = join(this.uploadsRoot, 'supervision-evidence');
+  private supervisionStorageReadyPromise: Promise<void> | null = null;
+
   constructor(private readonly prisma: PrismaService) {}
 
   private mapPersonnelStatus(status: PersonnelStatus): LicenseItem['status'] {
@@ -124,6 +256,42 @@ export class DashboardService {
     return PersonnelStatus.VALID;
   }
 
+  private mapSupervisionCategory(category: SupervisionCategoryValue): TestItem['category'] {
+    if (category === 'AUDIT') {
+      return 'Audit';
+    }
+
+    if (category === 'INSPEKSI') {
+      return 'Inspeksi';
+    }
+
+    return 'Test';
+  }
+
+  private mapSupervisionStatus(status: SupervisionStatusValue): TestItem['status'] {
+    if (status === 'TERLAKSANA') {
+      return 'Terlaksana';
+    }
+
+    if (status === 'PERLU_TINDAK_LANJUT') {
+      return 'Perlu Tindak Lanjut';
+    }
+
+    return 'Belum Terlaksana';
+  }
+
+  private toSupervisionStatus(status: TestItem['status']): SupervisionStatusValue {
+    if (status === 'Terlaksana') {
+      return 'TERLAKSANA';
+    }
+
+    if (status === 'Perlu Tindak Lanjut') {
+      return 'PERLU_TINDAK_LANJUT';
+    }
+
+    return 'BELUM_TERLAKSANA';
+  }
+
   private slugify(value: string) {
     return value
       .normalize('NFD')
@@ -144,6 +312,259 @@ export class DashboardService {
     }
 
     return nextSlug;
+  }
+
+  private formatDate(value: Date) {
+    return new Intl.DateTimeFormat('id-ID', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(value);
+  }
+
+  private supervisionEvidenceUrl(storageName: string) {
+    return `/uploads/supervision-evidence/${storageName}`;
+  }
+
+  private toEvidenceItem(evidence: DbSupervisionEvidenceRow): TestEvidenceItem {
+    return {
+      id: evidence.id,
+      name: evidence.fileName,
+      url: this.supervisionEvidenceUrl(evidence.storageName),
+      uploadedAt: this.formatDate(evidence.uploadedAt),
+    };
+  }
+
+  private toTestItem(activity: SupervisionActivityWithRelations): TestItem {
+    const evidences = [...activity.evidences]
+      .sort((left, right) => right.uploadedAt.getTime() - left.uploadedAt.getTime())
+      .map((item) => this.toEvidenceItem(item));
+
+    const evidenceSummary =
+      evidences.length > 0 ? `${evidences.length} file evidence` : 'Belum ada evidence';
+
+    return {
+      id: activity.id,
+      title: activity.title,
+      category: this.mapSupervisionCategory(activity.category),
+      owner: activity.location ?? 'Perum LPPNPI Cabang Surabaya',
+      inspector: activity.inspectorNames.join(', '),
+      date: activity.scheduleLabel,
+      score: evidenceSummary,
+      status: this.mapSupervisionStatus(activity.status),
+      completedAt: activity.completedAt ? this.formatDate(activity.completedAt) : null,
+      completionNote: activity.completionNote ?? null,
+      sourceDocument: activity.sourceDocument ?? '-',
+      evidenceFiles: evidences,
+    };
+  }
+
+  private sortSupervisionActivities(items: SupervisionActivityWithRelations[]) {
+    const categoryOrder: Record<SupervisionCategoryValue, number> = {
+      AUDIT: 0,
+      INSPEKSI: 1,
+      TEST: 2,
+    };
+
+    return [...items].sort((left, right) => {
+      const byCategory = categoryOrder[left.category] - categoryOrder[right.category];
+      if (byCategory !== 0) {
+        return byCategory;
+      }
+
+      const byMonth = (left.scheduleMonth ?? 99) - (right.scheduleMonth ?? 99);
+      if (byMonth !== 0) {
+        return byMonth;
+      }
+
+      const byLocation = (left.location ?? '').localeCompare(right.location ?? '', 'id');
+      if (byLocation !== 0) {
+        return byLocation;
+      }
+
+      return left.title.localeCompare(right.title, 'id');
+    });
+  }
+
+  private async ensureSupervisionStorage() {
+    if (!this.supervisionStorageReadyPromise) {
+      this.supervisionStorageReadyPromise = this.setupSupervisionStorage().catch((error) => {
+        this.supervisionStorageReadyPromise = null;
+        throw error;
+      });
+    }
+
+    await this.supervisionStorageReadyPromise;
+  }
+
+  private async setupSupervisionStorage() {
+    await this.prisma.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'SupervisionCategory') THEN
+          CREATE TYPE "SupervisionCategory" AS ENUM ('AUDIT', 'INSPEKSI', 'TEST');
+        END IF;
+      END
+      $$;
+    `);
+
+    await this.prisma.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'SupervisionStatus') THEN
+          CREATE TYPE "SupervisionStatus" AS ENUM ('BELUM_TERLAKSANA', 'TERLAKSANA', 'PERLU_TINDAK_LANJUT');
+        END IF;
+      END
+      $$;
+    `);
+
+    await this.prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "SupervisionActivity" (
+        "id" TEXT PRIMARY KEY,
+        "slug" TEXT NOT NULL UNIQUE,
+        "title" TEXT NOT NULL,
+        "category" "SupervisionCategory" NOT NULL,
+        "location" TEXT,
+        "inspectorNames" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+        "scheduleLabel" TEXT NOT NULL,
+        "scheduleYear" INTEGER NOT NULL,
+        "scheduleMonth" INTEGER,
+        "scheduleWeek" INTEGER,
+        "sourceDocument" TEXT,
+        "status" "SupervisionStatus" NOT NULL DEFAULT 'BELUM_TERLAKSANA',
+        "completedAt" TIMESTAMPTZ,
+        "completionNote" TEXT,
+        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await this.prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "SupervisionEvidence" (
+        "id" TEXT PRIMARY KEY,
+        "activityId" TEXT NOT NULL REFERENCES "SupervisionActivity"("id") ON DELETE CASCADE,
+        "fileName" TEXT NOT NULL,
+        "storageName" TEXT NOT NULL UNIQUE,
+        "mimeType" TEXT,
+        "sizeBytes" INTEGER NOT NULL,
+        "uploadedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await this.prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "SupervisionActivity_schedule_idx"
+      ON "SupervisionActivity" ("category", "scheduleYear", "scheduleMonth", "scheduleWeek");
+    `);
+
+    await this.prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "SupervisionEvidence_activity_uploaded_idx"
+      ON "SupervisionEvidence" ("activityId", "uploadedAt");
+    `);
+
+    const [countRow] = await this.prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+      SELECT COUNT(*)::bigint AS "count" FROM "SupervisionActivity"
+    `);
+
+    if (Number(countRow?.count ?? 0) > 0) {
+      return;
+    }
+
+    for (const item of SUPERVISION_ACTIVITY_SEED) {
+      await this.prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "SupervisionActivity" (
+          "id",
+          "slug",
+          "title",
+          "category",
+          "location",
+          "inspectorNames",
+          "scheduleLabel",
+          "scheduleYear",
+          "scheduleMonth",
+          "scheduleWeek",
+          "sourceDocument",
+          "createdAt",
+          "updatedAt"
+        )
+        VALUES (
+          ${item.id},
+          ${item.slug},
+          ${item.title},
+          ${item.category}::"SupervisionCategory",
+          ${item.location},
+          ${item.inspectorNames},
+          ${item.scheduleLabel},
+          ${item.scheduleYear},
+          ${item.scheduleMonth},
+          ${item.scheduleWeek},
+          ${item.sourceDocument},
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT ("slug") DO NOTHING
+      `);
+    }
+  }
+
+  private async loadSupervisionActivities(): Promise<SupervisionActivityWithRelations[]> {
+    await this.ensureSupervisionStorage();
+
+    const [activities, evidences] = await Promise.all([
+      this.prisma.$queryRaw<DbSupervisionActivityRow[]>(Prisma.sql`
+        SELECT
+          "id",
+          "slug",
+          "title",
+          "category",
+          "location",
+          "inspectorNames",
+          "scheduleLabel",
+          "scheduleYear",
+          "scheduleMonth",
+          "scheduleWeek",
+          "sourceDocument",
+          "status",
+          "completedAt",
+          "completionNote",
+          "createdAt",
+          "updatedAt"
+        FROM "SupervisionActivity"
+      `),
+      this.prisma.$queryRaw<DbSupervisionEvidenceRow[]>(Prisma.sql`
+        SELECT
+          "id",
+          "activityId",
+          "fileName",
+          "storageName",
+          "mimeType",
+          "sizeBytes",
+          "uploadedAt"
+        FROM "SupervisionEvidence"
+        ORDER BY "uploadedAt" DESC
+      `),
+    ]);
+
+    const evidenceMap = new Map<string, DbSupervisionEvidenceRow[]>();
+    for (const evidence of evidences) {
+      const nextItems = evidenceMap.get(evidence.activityId) ?? [];
+      nextItems.push(evidence);
+      evidenceMap.set(evidence.activityId, nextItems);
+    }
+
+    return activities.map((activity) => ({
+      ...activity,
+      evidences: evidenceMap.get(activity.id) ?? [],
+    }));
+  }
+
+  private async requireSupervisionActivity(activityId: string) {
+    const activities = await this.loadSupervisionActivities();
+    const activity = activities.find((item) => item.id === activityId) ?? null;
+
+    if (!activity) {
+      throw new NotFoundException('Agenda pengawasan tidak ditemukan.');
+    }
+
+    return activity;
   }
 
   async getDashboard() {
@@ -174,7 +595,7 @@ export class DashboardService {
         label: 'Program Pengawasan Keamanan',
         href: '/tes-keamanan',
         icon: 'test',
-        description: 'Jadwal, program, dan tindak lanjut pengawasan keamanan.',
+        description: 'Jadwal, evidence, dan status pelaksanaan pengawasan keamanan.',
       },
       {
         id: 'dokumen',
@@ -185,16 +606,19 @@ export class DashboardService {
       },
     ];
 
-    const personnelRows: PersonnelWithRelations[] = await this.prisma.personnel.findMany({
-      include: {
-        educationHistories: true,
-        workHistories: true,
-        trainingHistories: true,
-      },
-      orderBy: [{ createdAt: 'desc' }, { name: 'asc' }],
-    });
+    const [personnelRows, supervisionRows] = await Promise.all([
+      this.prisma.personnel.findMany({
+        include: {
+          educationHistories: true,
+          workHistories: true,
+          trainingHistories: true,
+        },
+        orderBy: [{ createdAt: 'desc' }, { name: 'asc' }],
+      }),
+      this.loadSupervisionActivities(),
+    ]);
 
-    const licenses: LicenseItem[] = personnelRows.map((item) => ({
+    const licenses: LicenseItem[] = personnelRows.map((item: PersonnelWithRelations) => ({
       slug: item.slug,
       name: item.name,
       location: item.location,
@@ -219,8 +643,18 @@ export class DashboardService {
       recurrentPlan: item.recurrentPlan ?? '-',
     }));
 
+    const tests = this.sortSupervisionActivities(supervisionRows).map((item) => this.toTestItem(item));
+
     const validPersonnelCount = licenses.filter((item) => item.status === 'Valid').length;
     const renewalPersonnelCount = licenses.filter((item) => item.status === 'Perpanjangan').length;
+    const completedSupervisionCount = tests.filter((item) => item.status === 'Terlaksana').length;
+    const followUpSupervisionCount = tests.filter(
+      (item) => item.status === 'Perlu Tindak Lanjut'
+    ).length;
+    const pendingSupervisionCount = tests.filter(
+      (item) => item.status === 'Belum Terlaksana'
+    ).length;
+    const evidenceUploadCount = tests.reduce((total, item) => total + item.evidenceFiles.length, 0);
 
     const metrics: MetricCard[] = [
       {
@@ -236,16 +670,16 @@ export class DashboardService {
         description: `${renewalPersonnelCount} personel masih dalam antrean perpanjangan lisensi aktif.`,
       },
       {
-        label: 'Tes Bulan Ini',
-        value: '07',
-        delta: '3 agenda berjalan',
-        description: 'Simulasi, random screening, dan tabletop exercise yang sudah dijadwalkan.',
+        label: 'Agenda Pengawasan',
+        value: String(tests.length),
+        delta: `${completedSupervisionCount} terlaksana`,
+        description: `${pendingSupervisionCount} agenda belum terlaksana dan ${followUpSupervisionCount} perlu tindak lanjut.`,
       },
       {
-        label: 'Dokumen Terkendali',
-        value: '38',
-        delta: '4 perlu revisi',
-        description: 'Dokumen keamanan yang masih aktif dan terhubung ke versi terbaru.',
+        label: 'Evidence Tersimpan',
+        value: String(evidenceUploadCount),
+        delta: `${followUpSupervisionCount} perlu review`,
+        description: 'Evidence unggahan kegiatan pengawasan yang sudah tersimpan pada dashboard keamanan.',
       },
     ];
 
@@ -280,30 +714,6 @@ export class DashboardService {
       },
     ];
 
-    const tests: TestItem[] = [
-      {
-        title: 'Simulasi Akses Tidak Sah',
-        owner: 'Tim Compliance',
-        date: '04 Apr 2026',
-        score: '94/100',
-        status: 'Terjadwal',
-      },
-      {
-        title: 'Random Screening Personel',
-        owner: 'Shift B',
-        date: '28 Mar 2026',
-        score: '88/100',
-        status: 'Selesai',
-      },
-      {
-        title: 'Tabletop Exercise Ancaman Bagasi',
-        owner: 'Joint Ops',
-        date: '11 Apr 2026',
-        score: 'Menunggu',
-        status: 'Perlu Tindak Lanjut',
-      },
-    ];
-
     const documents: DocumentItem[] = [
       {
         title: 'SOP Pemeriksaan Access Gate',
@@ -335,23 +745,68 @@ export class DashboardService {
       },
     ];
 
-    const activities: ActivityItem[] = [
-      {
-        title: 'Access Gate Cargo masuk jadwal servis',
-        detail: 'Ticket pemeliharaan diterbitkan dan vendor standby pukul 09:30.',
-        timestamp: 'Hari ini, 07:45',
-      },
-      {
-        title: 'Checklist Harian CCTV ditandatangani',
-        detail: 'Seluruh kamera perimeter shift pagi tervalidasi tanpa blind spot.',
-        timestamp: 'Hari ini, 06:40',
-      },
-      {
-        title: 'Dua lisensi masuk antrean perpanjangan',
-        detail: 'Supervisor shift A dan operator CCTV perlu pembaruan sebelum pertengahan April.',
-        timestamp: '29 Mar 2026, 16:20',
-      },
-    ];
+    const activitiesFromSupervision = supervisionRows
+      .flatMap((item): Array<{ title: string; detail: string; timestamp: string; value: number }> => {
+        const updates: Array<{ title: string; detail: string; timestamp: string; value: number }> = [];
+        const activityLabel = item.location
+          ? `${this.mapSupervisionCategory(item.category)} ${item.location}`
+          : item.title;
+
+        if (item.completedAt) {
+          updates.push({
+            title: activityLabel,
+            detail: `Status agenda diperbarui menjadi ${this.mapSupervisionStatus(item.status).toLowerCase()}.`,
+            timestamp: this.formatDate(item.completedAt),
+            value: item.completedAt.getTime(),
+          });
+        }
+
+        const lastEvidence = item.evidences[0];
+        if (lastEvidence) {
+          updates.push({
+            title: `Evidence ${item.location ?? item.title}`,
+            detail: `${lastEvidence.fileName} diunggah untuk ${item.title.toLowerCase()}.`,
+            timestamp: this.formatDate(lastEvidence.uploadedAt),
+            value: lastEvidence.uploadedAt.getTime(),
+          });
+        }
+
+        return updates;
+      })
+      .sort(
+        (
+          left: { title: string; detail: string; timestamp: string; value: number },
+          right: { title: string; detail: string; timestamp: string; value: number }
+        ) => right.value - left.value
+      )
+      .slice(0, 4)
+      .map(
+        ({
+          value: _value,
+          ...item
+        }: {
+          title: string;
+          detail: string;
+          timestamp: string;
+          value: number;
+        }) => item
+      );
+
+    const activities: ActivityItem[] =
+      activitiesFromSupervision.length > 0
+        ? activitiesFromSupervision
+        : [
+            {
+              title: 'Program pengawasan 2026 berhasil dimuat',
+              detail: 'Agenda audit, inspeksi, dan test diambil dari dokumen kerja pengawasan keamanan tahun 2026.',
+              timestamp: 'Hari ini',
+            },
+            {
+              title: 'Evidence belum tersedia',
+              detail: 'Unggah file evidence pada agenda yang sudah terlaksana agar status dashboard akurat.',
+              timestamp: 'Hari ini',
+            },
+          ];
 
     return {
       generatedAt: new Date().toISOString(),
@@ -375,10 +830,10 @@ export class DashboardService {
       ] as QuickAction[],
       metrics,
       alert: {
-        title: 'Notifikasi Prioritas',
-        message: '2 lisensi akan kedaluwarsa dalam 30 hari dan 1 fasilitas perlu servis segera.',
-        hint: 'Fokuskan tindak lanjut pada personel shift pagi dan access gate cargo.',
-        tone: 'warning',
+        title: 'Status Program Pengawasan',
+        message: `${pendingSupervisionCount} agenda belum terlaksana, ${followUpSupervisionCount} perlu tindak lanjut.`,
+        hint: 'Unggah evidence pada agenda yang selesai agar pelaksanaan pengawasan tercatat dengan benar.',
+        tone: pendingSupervisionCount > 0 || followUpSupervisionCount > 0 ? 'warning' : 'calm',
       } as AlertPanel,
       chart: {
         title: 'Kesiapan Keamanan',
@@ -399,7 +854,7 @@ export class DashboardService {
           },
           {
             id: 'test',
-            label: 'Tes',
+            label: 'Program',
             color: '#7f7065',
             values: [60, 63, 69, 73, 77, 80],
           },
@@ -412,19 +867,19 @@ export class DashboardService {
       activities,
       spotlight: [
         {
-          label: 'Coverage CCTV',
-          value: '98%',
-          note: 'Perimeter timur menjadi area dengan cakupan terbaik pekan ini.',
+          label: 'Agenda Total',
+          value: String(tests.length),
+          note: 'Agenda audit, inspeksi, dan test berasal dari dokumen program kerja pengawasan 2026.',
         },
         {
-          label: 'Kesiapan Shift',
-          value: '3/3',
-          note: 'Seluruh shift memiliki komposisi personel minimum terpenuhi.',
+          label: 'Terlaksana',
+          value: String(completedSupervisionCount),
+          note: 'Status terlaksana akan naik setelah evidence atau status pelaksanaan diinput.',
         },
         {
-          label: 'Dokumen Review',
-          value: '04',
-          note: 'SOP escalation alarm dan matriks lisensi perlu pembaruan final.',
+          label: 'Evidence',
+          value: String(evidenceUploadCount),
+          note: 'Jumlah file evidence yang terhubung ke agenda pengawasan keamanan.',
         },
       ],
     };
@@ -448,8 +903,7 @@ export class DashboardService {
         location,
         documentPeriod: 'Ditambahkan Manual',
         sourceDocument: 'Input Dashboard',
-        licenseNumber: body.licenseNumber?.trim() || 
-        '-',
+        licenseNumber: body.licenseNumber?.trim() || '-',
         birthPlaceDate: '-',
         address: body.address?.trim() || '-',
         maritalStatus: '-',
@@ -461,5 +915,100 @@ export class DashboardService {
         recurrentPlan: '-',
       },
     });
+  }
+
+  async updateSupervisionStatus(activityId: string, status: TestItem['status']) {
+    const activity = await this.requireSupervisionActivity(activityId);
+    const nextStatus = this.toSupervisionStatus(status);
+
+    const completedAt =
+      nextStatus === 'BELUM_TERLAKSANA' ? null : activity.completedAt ?? new Date();
+    const completionNote =
+      nextStatus === 'BELUM_TERLAKSANA'
+        ? null
+        : nextStatus === 'PERLU_TINDAK_LANJUT'
+          ? 'Pelaksanaan membutuhkan tindak lanjut tambahan.'
+          : null;
+
+    await this.ensureSupervisionStorage();
+    await this.prisma.$executeRaw(Prisma.sql`
+      UPDATE "SupervisionActivity"
+      SET
+        "status" = ${nextStatus}::"SupervisionStatus",
+        "completedAt" = ${completedAt},
+        "completionNote" = ${completionNote},
+        "updatedAt" = NOW()
+      WHERE "id" = ${activity.id}
+    `);
+
+    const updatedActivity = await this.requireSupervisionActivity(activity.id);
+
+    return this.toTestItem(updatedActivity);
+  }
+
+  async uploadSupervisionEvidence(
+    activityId: string,
+    file: {
+      originalname?: string;
+      mimetype?: string;
+      size?: number;
+      buffer?: Buffer;
+    }
+  ) {
+    const activity = await this.requireSupervisionActivity(activityId);
+
+    if (!file?.buffer || !file.originalname) {
+      throw new BadRequestException('File evidence wajib diunggah.');
+    }
+
+    await fs.mkdir(this.supervisionEvidenceUploadsRoot, { recursive: true });
+
+    const safeOriginalName = basename(file.originalname).replace(/[^a-zA-Z0-9._-]+/g, '-');
+    const extension = extname(safeOriginalName);
+    const storageName = `${Date.now()}-${randomUUID()}${extension || ''}`;
+    const targetPath = join(this.supervisionEvidenceUploadsRoot, storageName);
+    await fs.writeFile(targetPath, file.buffer);
+
+    try {
+      await this.ensureSupervisionStorage();
+      await this.prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "SupervisionEvidence" (
+          "id",
+          "activityId",
+          "fileName",
+          "storageName",
+          "mimeType",
+          "sizeBytes"
+        )
+        VALUES (
+          ${randomUUID()},
+          ${activity.id},
+          ${file.originalname},
+          ${storageName},
+          ${file.mimetype || null},
+          ${Number(file.size ?? file.buffer.byteLength ?? 0)}
+        )
+      `);
+    } catch (error) {
+      await fs.rm(targetPath, { force: true });
+      throw error;
+    }
+
+    const nextStatus = activity.status === 'BELUM_TERLAKSANA' ? 'TERLAKSANA' : activity.status;
+    const nextCompletionNote = nextStatus === 'PERLU_TINDAK_LANJUT' ? activity.completionNote : null;
+
+    await this.prisma.$executeRaw(Prisma.sql`
+      UPDATE "SupervisionActivity"
+      SET
+        "status" = ${nextStatus}::"SupervisionStatus",
+        "completedAt" = ${activity.completedAt ?? new Date()},
+        "completionNote" = ${nextCompletionNote},
+        "updatedAt" = NOW()
+      WHERE "id" = ${activity.id}
+    `);
+
+    const updatedActivity = await this.requireSupervisionActivity(activity.id);
+
+    return this.toTestItem(updatedActivity);
   }
 }

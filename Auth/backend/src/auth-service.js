@@ -6,6 +6,7 @@ export {
   nowMs,
   safePermissionsInput,
   sanitizeEmail,
+  sanitizePhone,
   sanitizeRedirectTarget,
   sanitizeText,
   toUserResponse,

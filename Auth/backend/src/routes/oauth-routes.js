@@ -168,6 +168,7 @@ export function createOauthRouter(deps = {}) {
           {
             sub: userRow.id,
             email: userRow.email,
+            phone: userRow.phone,
             preferred_username: userRow.username,
             name: userRow.username,
             role: userRow.role,
@@ -180,6 +181,7 @@ export function createOauthRouter(deps = {}) {
           {
             sub: userRow.id,
             email: userRow.email,
+            phone: userRow.phone,
             preferred_username: userRow.username,
             name: userRow.username,
             role: userRow.role,
@@ -247,6 +249,7 @@ export function createOauthRouter(deps = {}) {
           {
             sub: userRow.id,
             email: userRow.email,
+            phone: userRow.phone,
             preferred_username: userRow.username,
             name: userRow.username,
             role: userRow.role,
@@ -259,6 +262,7 @@ export function createOauthRouter(deps = {}) {
           {
             sub: userRow.id,
             email: userRow.email,
+            phone: userRow.phone,
             preferred_username: userRow.username,
             name: userRow.username,
             role: userRow.role,
@@ -331,6 +335,7 @@ export function createOauthRouter(deps = {}) {
         res.json({
           sub: payload.sub,
           email: payload.email,
+          phone: payload.phone,
           preferred_username: payload.preferred_username,
           name: payload.name,
           role: payload.role,

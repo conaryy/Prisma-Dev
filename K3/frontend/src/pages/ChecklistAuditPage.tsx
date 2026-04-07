@@ -46,6 +46,8 @@ type DriveSyncSuccessState = {
 
 const EMPTY_SECTION_FILTER = '__tanpa_bab__';
 const DEFAULT_CHECKLIST_FEEDBACK = 'Pilih dokumen audit yang ingin dipakai di checklist.';
+const MOBILE_QUESTION_NAV_BREAKPOINT = '(max-width: 860px)';
+const MOBILE_QUESTION_NAV_PAGE_SIZE = 6;
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString('id-ID', {
@@ -140,6 +142,10 @@ function buildQuestionBlocks(
   return blocks;
 }
 
+function getQuestionCodesFromBlock(block: QuestionListBlock) {
+  return block.type === 'group' ? block.items.map((item) => item.code) : [block.item.code];
+}
+
 export function ChecklistAuditPage() {
   const {
     connectGoogleDrive,
@@ -176,6 +182,8 @@ export function ChecklistAuditPage() {
   const [deletingEvidenceFileId, setDeletingEvidenceFileId] = useState<string | null>(null);
   const [driveSendDialog, setDriveSendDialog] = useState<DriveSendDialogState | null>(null);
   const [driveSyncSuccess, setDriveSyncSuccess] = useState<DriveSyncSuccessState | null>(null);
+  const [isMobileQuestionNavigation, setIsMobileQuestionNavigation] = useState(false);
+  const [questionListPage, setQuestionListPage] = useState(1);
   const questionListScrollRef = useRef<HTMLDivElement | null>(null);
   const questionNavigationRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingQuestionScrollCodeRef = useRef<string | null>(null);
@@ -189,6 +197,23 @@ export function ChecklistAuditPage() {
 
     pendingQuestionScrollCodeRef.current = requestedQuestionCode;
   }, [requestedQuestionCode]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(MOBILE_QUESTION_NAV_BREAKPOINT);
+    const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsMobileQuestionNavigation(event.matches);
+    };
+
+    handleChange(mediaQuery);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -477,10 +502,24 @@ export function ChecklistAuditPage() {
   }, [groupFilterId, questionListBlocks]);
   const visibleQuestionCodes = useMemo(
     () =>
-      visibleQuestionListBlocks.flatMap((block) =>
-        block.type === 'group' ? block.items.map((item) => item.code) : [block.item.code]
-      ),
+      visibleQuestionListBlocks.flatMap((block) => getQuestionCodesFromBlock(block)),
     [visibleQuestionListBlocks]
+  );
+  const questionListTotalPages = isMobileQuestionNavigation
+    ? Math.max(Math.ceil(visibleQuestionListBlocks.length / MOBILE_QUESTION_NAV_PAGE_SIZE), 1)
+    : 1;
+  const currentQuestionListPage = Math.min(questionListPage, questionListTotalPages);
+  const paginatedQuestionListBlocks = useMemo(() => {
+    if (!isMobileQuestionNavigation) {
+      return visibleQuestionListBlocks;
+    }
+
+    const startIndex = (currentQuestionListPage - 1) * MOBILE_QUESTION_NAV_PAGE_SIZE;
+    return visibleQuestionListBlocks.slice(startIndex, startIndex + MOBILE_QUESTION_NAV_PAGE_SIZE);
+  }, [currentQuestionListPage, isMobileQuestionNavigation, visibleQuestionListBlocks]);
+  const renderedQuestionCodes = useMemo(
+    () => paginatedQuestionListBlocks.flatMap((block) => getQuestionCodesFromBlock(block)),
+    [paginatedQuestionListBlocks]
   );
   useEffect(() => {
     if (!groupFilterId) {
@@ -501,9 +540,48 @@ export function ChecklistAuditPage() {
     }
   }, [selectedQuestionCode, visibleQuestionCodes]);
   useEffect(() => {
+    if (!isMobileQuestionNavigation) {
+      if (questionListPage !== 1) {
+        setQuestionListPage(1);
+      }
+      return;
+    }
+
+    if (questionListPage > questionListTotalPages) {
+      setQuestionListPage(questionListTotalPages);
+    }
+  }, [isMobileQuestionNavigation, questionListPage, questionListTotalPages]);
+  useEffect(() => {
+    if (!isMobileQuestionNavigation || !selectedQuestionCode) {
+      return;
+    }
+
+    const selectedBlockIndex = visibleQuestionListBlocks.findIndex((block) =>
+      getQuestionCodesFromBlock(block).includes(selectedQuestionCode)
+    );
+
+    if (selectedBlockIndex === -1) {
+      return;
+    }
+
+    const nextPage = Math.floor(selectedBlockIndex / MOBILE_QUESTION_NAV_PAGE_SIZE) + 1;
+    if (questionListPage !== nextPage) {
+      setQuestionListPage(nextPage);
+    }
+  }, [
+    isMobileQuestionNavigation,
+    questionListPage,
+    selectedQuestionCode,
+    visibleQuestionListBlocks,
+  ]);
+  useEffect(() => {
     const targetCode = pendingQuestionScrollCodeRef.current;
 
     if (!targetCode || selectedQuestionCode !== targetCode) {
+      return;
+    }
+
+    if (!renderedQuestionCodes.includes(targetCode)) {
       return;
     }
 
@@ -534,7 +612,7 @@ export function ChecklistAuditPage() {
     return () => {
       window.cancelAnimationFrame(animationFrameId);
     };
-  }, [selectedQuestionCode, visibleQuestionCodes]);
+  }, [renderedQuestionCodes, selectedQuestionCode]);
   const groupModalBlocks = useMemo(
     () => buildQuestionBlocks(groupModalItems, groupLookup, groupDisplayLookup),
     [groupDisplayLookup, groupLookup, groupModalItems]
@@ -1169,6 +1247,15 @@ export function ChecklistAuditPage() {
       setRemovingGroupId(null);
     }
   };
+  const questionListPageStart = visibleQuestionListBlocks.length === 0
+    ? 0
+    : (currentQuestionListPage - 1) * MOBILE_QUESTION_NAV_PAGE_SIZE + 1;
+  const questionListPageEnd = isMobileQuestionNavigation
+    ? Math.min(
+        (currentQuestionListPage - 1) * MOBILE_QUESTION_NAV_PAGE_SIZE + MOBILE_QUESTION_NAV_PAGE_SIZE,
+        visibleQuestionListBlocks.length
+      )
+    : visibleQuestionListBlocks.length;
 
   return (
     <div className="content-stack checklist-page">
@@ -1271,14 +1358,14 @@ export function ChecklistAuditPage() {
             </div>
 
             <div ref={questionListScrollRef} className="question-list-scroll">
-              {visibleQuestionListBlocks.length === 0 ? (
+              {paginatedQuestionListBlocks.length === 0 ? (
                 <div className="question-empty">
                   {groupFilterId
                     ? 'Kelompok yang dipilih tidak tersedia pada hasil saat ini.'
                     : 'Tidak ada pertanyaan yang cocok.'}
                 </div>
               ) : (
-                visibleQuestionListBlocks.map((block) => {
+                paginatedQuestionListBlocks.map((block) => {
                   if (block.type === 'single') {
                     return renderQuestionRow(block.item);
                   }
@@ -1315,6 +1402,41 @@ export function ChecklistAuditPage() {
                 })
               )}
             </div>
+
+            {isMobileQuestionNavigation && questionListTotalPages > 1 && (
+              <div className="pagination-bar question-list-pagination">
+                <p className="pagination-copy">
+                  Menampilkan {questionListPageStart}-{questionListPageEnd} dari{' '}
+                  {visibleQuestionListBlocks.length} kartu navigasi.
+                </p>
+
+                <div className="pagination-actions">
+                  <button
+                    type="button"
+                    className="secondary-action pagination-button"
+                    onClick={() => setQuestionListPage(Math.max(currentQuestionListPage - 1, 1))}
+                    disabled={currentQuestionListPage === 1}
+                  >
+                    Sebelumnya
+                  </button>
+                  <span className="pagination-page-indicator">
+                    Halaman {currentQuestionListPage} / {questionListTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary-action pagination-button"
+                    onClick={() =>
+                      setQuestionListPage(
+                        Math.min(currentQuestionListPage + 1, questionListTotalPages)
+                      )
+                    }
+                    disabled={currentQuestionListPage === questionListTotalPages}
+                  >
+                    Berikutnya
+                  </button>
+                </div>
+              </div>
+            )}
           </aside>
 
           <section className="question-detail-panel panel">

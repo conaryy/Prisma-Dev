@@ -1,9 +1,23 @@
 import { useDeferredValue, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import Lottie from 'lottie-react';
 import successAnimation from '@/assets/Success.json';
-import { BellIcon, ChevronDownIcon, SearchIcon, UserIcon } from '@/components/icons';
+import {
+  BellIcon,
+  ChevronDownIcon,
+  LogoutIcon,
+  MenuIcon,
+  PortalChecklistIcon,
+  PortalDashboardIcon,
+  PortalNotebookIcon,
+  SearchIcon,
+  ShieldIcon,
+  UserIcon,
+} from '@/components/icons';
 import { Sidebar } from '@/components/Sidebar';
-import { createPersonnel, fetchDashboard } from '@/lib/api';
+import {
+  createPersonnel,
+  fetchDashboard,
+} from '@/lib/api';
 import type {
   ActivityItem,
   DashboardData,
@@ -34,8 +48,189 @@ type RouteState = {
   routeId: RouteId;
   personSlug: string | null;
 };
+type PortalTarget = 'auth' | 'k2s' | 'k3' | 'keamanan';
+type PortalIconKind = 'dashboard' | 'keamanan' | 'k3' | 'k2s';
+type PortalLink = {
+  label: string;
+  href: string;
+  target: PortalTarget;
+  iconKind: PortalIconKind;
+  badgeClassName: string;
+};
+type SupervisionStatusTag = 'Sudah' | 'Belum';
+type AuditSummaryCard = {
+  kind: 'audit';
+  id: string;
+  title: string;
+  frequency: string;
+  status: SupervisionStatusTag;
+  nextSchedule: string;
+  description: string;
+};
+type InspectionSummaryCard = {
+  kind: 'inspection';
+  id: string;
+  title: string;
+  frequency: string;
+  status: SupervisionStatusTag;
+  description: string;
+  locations: Array<{
+    name: string;
+    status: SupervisionStatusTag;
+  }>;
+};
+type TestingSummaryCard = {
+  kind: 'testing';
+  id: string;
+  title: string;
+  frequency: string;
+  done: number;
+  total: number;
+  nextSchedule: string;
+  subtitle: string;
+};
+type SupervisionSummaryCard = AuditSummaryCard | InspectionSummaryCard | TestingSummaryCard;
+type TimelineStatus = 'pending' | 'done' | 'upcoming';
+type TimelineMarker = {
+  monthIndex: number;
+  slotIndex: number;
+  status: TimelineStatus;
+};
+type TimelineMonthStatus = {
+  month: string;
+  status: TimelineStatus;
+};
+type TimelineGridRow = {
+  mode: 'grid';
+  label: string;
+  detail: string;
+  statuses: TimelineStatus[];
+};
+type TimelineRow = TimelineGridRow;
+type TimelineSectionData = {
+  id: string;
+  title: string;
+  frequency: string;
+  months: string[];
+  rows: TimelineRow[];
+};
 
 const DASHBOARD_THEME_KEY = 'keamanan-dashboard-theme';
+const SUPERVISION_ACTIVE_YEAR = 'Tahun 2026';
+const YEAR_TIMELINE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const TIMELINE_SLOTS_PER_MONTH = 4;
+const TIMELINE_TOTAL_COLUMNS = YEAR_TIMELINE_MONTHS.length * TIMELINE_SLOTS_PER_MONTH;
+const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
+  {
+    kind: 'audit',
+    id: 'audit',
+    title: 'Audit',
+    frequency: '1 kali / 2 tahun',
+    status: 'Sudah',
+    nextSchedule: 'Jan 2026',
+    description: 'Audit internal berkala untuk memastikan evaluasi pengawasan berjalan menyeluruh.',
+  },
+  {
+    kind: 'inspection',
+    id: 'inspection',
+    title: 'Inspeksi',
+    frequency: '1 kali / tahun',
+    status: 'Belum',
+    description: 'Ringkasan lokasi prioritas yang menjadi fokus inspeksi tahunan saat ini.',
+    locations: [
+      { name: 'Surabaya', status: 'Sudah' },
+      { name: 'Banyuwangi', status: 'Belum' },
+      { name: 'Malang', status: 'Belum' },
+    ],
+  },
+  {
+    kind: 'testing',
+    id: 'testing',
+    title: 'Pengujian',
+    frequency: 'Tiap 2 bulan',
+    done: 3,
+    total: 6,
+    nextSchedule: 'Ags 2026',
+    subtitle: 'Pelaksanaan rutin per 2 bulan untuk memastikan kesiapan operasional tetap stabil.',
+  },
+];
+
+function buildTimelineStatuses(markers: TimelineMarker[]) {
+  const statuses = Array.from({ length: TIMELINE_TOTAL_COLUMNS }, () => 'pending' as TimelineStatus);
+
+  markers.forEach(({ monthIndex, slotIndex, status }) => {
+    const normalizedMonthIndex = Math.max(0, Math.min(YEAR_TIMELINE_MONTHS.length - 1, monthIndex));
+    const normalizedSlotIndex = Math.max(0, Math.min(TIMELINE_SLOTS_PER_MONTH - 1, slotIndex));
+    const targetIndex = normalizedMonthIndex * TIMELINE_SLOTS_PER_MONTH + normalizedSlotIndex;
+    statuses[targetIndex] = status;
+  });
+
+  return statuses;
+}
+
+const SUPERVISION_TIMELINE_SECTIONS: TimelineSectionData[] = [
+  {
+    id: 'timeline-audit',
+    title: 'Audit',
+    frequency: '1 kali / 2 tahun',
+    months: YEAR_TIMELINE_MONTHS,
+    rows: [
+      {
+        mode: 'grid',
+        label: 'Audit Internal',
+        detail: '2026 kosong, audit berikutnya menunggu siklus 2 tahunan.',
+        statuses: buildTimelineStatuses([]),
+      },
+    ],
+  },
+  {
+    id: 'timeline-inspection',
+    title: 'Inspeksi',
+    frequency: '1 kali / tahun',
+    months: YEAR_TIMELINE_MONTHS,
+    rows: [
+      {
+        mode: 'grid',
+        label: 'Surabaya',
+        detail: 'Sudah terlaksana',
+        statuses: buildTimelineStatuses([{ monthIndex: 2, slotIndex: 1, status: 'done' }]),
+      },
+      {
+        mode: 'grid',
+        label: 'Banyuwangi',
+        detail: 'Terjadwal Jul 2026',
+        statuses: buildTimelineStatuses([{ monthIndex: 6, slotIndex: 2, status: 'upcoming' }]),
+      },
+      {
+        mode: 'grid',
+        label: 'Malang',
+        detail: 'Target Okt 2026',
+        statuses: buildTimelineStatuses([{ monthIndex: 9, slotIndex: 1, status: 'upcoming' }]),
+      },
+    ],
+  },
+  {
+    id: 'timeline-testing',
+    title: 'Pengujian',
+    frequency: '1 kali / 2 bulan',
+    months: YEAR_TIMELINE_MONTHS,
+    rows: [
+      {
+        mode: 'grid',
+        label: 'Rencana 2026',
+        detail: '3 dari 6 periode selesai',
+        statuses: buildTimelineStatuses([
+          { monthIndex: 0, slotIndex: 1, status: 'done' },
+          { monthIndex: 2, slotIndex: 1, status: 'pending' },
+          { monthIndex: 4, slotIndex: 1, status: 'done' },
+          { monthIndex: 6, slotIndex: 1, status: 'upcoming' },
+          { monthIndex: 8, slotIndex: 1, status: 'done' },
+          { monthIndex: 10, slotIndex: 1, status: 'upcoming' },
+        ]),
+      },
+    ],
+  },
+];
 const ROUTE_PATHS = {
   dashboard: '/dashboard',
   'fasilitas-keamanan': '/fasilitas-keamanan',
@@ -47,6 +242,161 @@ const ROUTE_PATHS = {
 const LEGACY_ROUTE_ALIASES: Record<string, RouteId> = {
   '/lisensi-keamanan': 'personil-keamanan',
 };
+
+function env() {
+  return (import.meta as { env?: Record<string, string> }).env ?? {};
+}
+
+function normalizeBaseUrl(value: string) {
+  return value.replace(/\/+$/, '');
+}
+
+function resolvePortalBaseUrl(target: PortalTarget) {
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      if (target === 'auth') return `${protocol}//${hostname}:5174`;
+      if (target === 'k2s') return `${protocol}//${hostname}:5173`;
+      if (target === 'k3') return `${protocol}//${hostname}:5176`;
+      return `${protocol}//${hostname}:5177`;
+    }
+
+    if (hostname.startsWith('keamanan.')) {
+      if (target === 'auth') return `${protocol}//${hostname.replace(/^keamanan\./, 'auth.')}`;
+      if (target === 'k2s') return `${protocol}//${hostname.replace(/^keamanan\./, 'k2s.')}`;
+      if (target === 'k3') return `${protocol}//${hostname.replace(/^keamanan\./, 'k3.')}`;
+      return `${protocol}//${hostname.replace(/^keamanan\./, 'keamanan.')}`;
+    }
+  }
+
+  if (target === 'auth') return 'https://auth.ryvidia.my.id';
+  if (target === 'k2s') return 'https://k2s.ryvidia.my.id';
+  if (target === 'k3') return 'https://k3.ryvidia.my.id';
+  return 'https://keamanan.ryvidia.my.id';
+}
+
+function resolveDashboardPortalUrl() {
+  const currentEnv = env();
+  const explicitPortalUrl = currentEnv.VITE_PORTAL_DASHBOARD_URL?.trim();
+  if (explicitPortalUrl) {
+    return normalizeBaseUrl(explicitPortalUrl);
+  }
+
+  const authPortalUrl = currentEnv.VITE_AUTH_PORTAL_URL?.trim();
+  if (authPortalUrl) {
+    try {
+      return `${new URL(authPortalUrl).origin}/portal-admin`;
+    } catch {
+      return `${resolvePortalBaseUrl('auth')}/portal-admin`;
+    }
+  }
+
+  return `${resolvePortalBaseUrl('auth')}/portal-admin`;
+}
+
+function resolvePortalDestination(envKey: string, target: PortalTarget) {
+  const value = env()[envKey]?.trim();
+  if (value) {
+    return normalizeBaseUrl(value);
+  }
+
+  return resolvePortalBaseUrl(target);
+}
+
+function getPortalLinks(): PortalLink[] {
+  return [
+    {
+      label: 'Dashboard',
+      href: resolveDashboardPortalUrl(),
+      target: 'auth',
+      iconKind: 'dashboard',
+      badgeClassName: 'is-dashboard',
+    },
+    {
+      label: 'Keamanan',
+      href: resolvePortalDestination('VITE_PORTAL_KEAMANAN_URL', 'keamanan'),
+      target: 'keamanan',
+      iconKind: 'keamanan',
+      badgeClassName: 'is-keamanan',
+    },
+    {
+      label: 'K3',
+      href: resolvePortalDestination('VITE_PORTAL_K3_URL', 'k3'),
+      target: 'k3',
+      iconKind: 'k3',
+      badgeClassName: 'is-k3',
+    },
+    {
+      label: 'K2S',
+      href: resolvePortalDestination('VITE_PORTAL_K2S_URL', 'k2s'),
+      target: 'k2s',
+      iconKind: 'k2s',
+      badgeClassName: 'is-k2s',
+    },
+  ];
+}
+
+function isSsoEnabled() {
+  return String(env().VITE_SSO_ENABLED || '').toLowerCase() === 'true';
+}
+
+function getSsoClientId() {
+  return env().VITE_SSO_CLIENT_ID || 'keamanan-web';
+}
+
+function getSsoLogoutUrl() {
+  const configured = env().VITE_SSO_LOGOUT_URL?.trim();
+  if (configured) {
+    return normalizeBaseUrl(configured);
+  }
+
+  const configuredBase = env().VITE_SSO_AUTH_BASE_URL?.trim();
+  if (configuredBase) {
+    return `${normalizeBaseUrl(configuredBase)}/auth/logout`;
+  }
+
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `${protocol}//${hostname}:3104/auth/logout`;
+    }
+
+    if (hostname.startsWith('keamanan.')) {
+      return `${protocol}//${hostname.replace(/^keamanan\./, 'authapi.')}/auth/logout`;
+    }
+  }
+
+  return 'https://authapi.ryvidia.my.id/auth/logout';
+}
+
+function buildSsoLogoutUrl(postLogoutRedirectUri: string) {
+  const params = new URLSearchParams({
+    post_logout_redirect_uri: postLogoutRedirectUri,
+    client_id: getSsoClientId(),
+  });
+
+  return `${getSsoLogoutUrl()}?${params.toString()}`;
+}
+
+function clearKnownSessionTokens() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const keys = [
+    'auth.portal.token',
+    'k2s.authToken',
+    'logbook.auth.refreshToken',
+    'k3.auth.accessToken',
+    'k3.auth.refreshToken',
+    'keamanan.auth.accessToken',
+    'keamanan.auth.refreshToken',
+  ];
+
+  keys.forEach((key) => window.localStorage.removeItem(key));
+}
 
 function getInitialTheme(): ThemeMode {
   if (typeof window === 'undefined') {
@@ -196,31 +546,6 @@ function buildPersonnelMetrics(items: LicenseItem[]): MetricCard[] {
   ];
 }
 
-function buildTestMetrics(items: TestItem[]): MetricCard[] {
-  const counts = countByStatus(items);
-
-  return [
-    {
-      label: 'Agenda Tes',
-      value: String(items.length),
-      delta: `${counts.Selesai ?? 0} selesai`,
-      description: 'Seluruh agenda program pengawasan keamanan yang dijadwalkan pada periode aktif.',
-    },
-    {
-      label: 'Terjadwal',
-      value: String(counts.Terjadwal ?? 0),
-      delta: 'Menunggu eksekusi',
-      description: 'Sesi tes yang sudah memiliki jadwal namun belum dieksekusi oleh tim lapangan.',
-    },
-    {
-      label: 'Perlu Tindak Lanjut',
-      value: String(counts['Perlu Tindak Lanjut'] ?? 0),
-      delta: 'CAP internal',
-      description: 'Hasil tes yang menuntut evaluasi lanjutan atau tindak korektif operasional.',
-    },
-  ];
-}
-
 function buildDocumentMetrics(items: DocumentItem[]): MetricCard[] {
   const counts = countByStatus(items);
 
@@ -247,11 +572,11 @@ function buildDocumentMetrics(items: DocumentItem[]): MetricCard[] {
 }
 
 function getStatusTone(status: string) {
-  if (['Optimal', 'Valid', 'Aktif', 'Selesai'].includes(status)) {
+  if (['Optimal', 'Valid', 'Aktif', 'Terlaksana'].includes(status)) {
     return 'good';
   }
 
-  if (['Terjadwal', 'Pelatihan', 'Review'].includes(status)) {
+  if (['Pelatihan', 'Review', 'Belum Terlaksana'].includes(status)) {
     return 'neutral';
   }
 
@@ -285,8 +610,8 @@ function getRouteHero(
       return {
         eyebrow: 'Program Pengawasan Keamanan',
         title: 'Agenda pengawasan dan tindak lanjut operasional.',
-        subtitle: `Kelola ${visibleTests.length} agenda simulasi, random screening, dan evaluasi readiness tim keamanan.`,
-        chips: ['Simulasi', 'Screening', 'Pengawasan'],
+        subtitle: `Kelola ${visibleTests.length} agenda audit, inspeksi, dan test lengkap dengan evidence dan status pelaksanaan.`,
+        chips: ['Audit', 'Inspeksi', 'Test'],
       };
     case 'dokumen':
       return {
@@ -314,6 +639,34 @@ function EmptyRows({ copy }: { copy: string }) {
   return <div className="empty-inline">{copy}</div>;
 }
 
+function getSupervisionCategoryBadgeClass(category: TestItem['category']) {
+  if (category === 'Audit') {
+    return 'summary-category is-audit';
+  }
+
+  if (category === 'Inspeksi') {
+    return 'summary-category is-inspeksi';
+  }
+
+  return 'summary-category is-tes';
+}
+
+function PortalLinkIcon({ kind, className }: { kind: PortalIconKind; className?: string }) {
+  if (kind === 'keamanan') {
+    return <ShieldIcon className={className} />;
+  }
+
+  if (kind === 'k3') {
+    return <PortalChecklistIcon className={className} />;
+  }
+
+  if (kind === 'k2s') {
+    return <PortalNotebookIcon className={className} />;
+  }
+
+  return <PortalDashboardIcon className={className} />;
+}
+
 export default function App() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [routeState, setRouteState] = useState<RouteState>(getInitialRouteState);
@@ -322,9 +675,15 @@ export default function App() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
+  const [isPortalMenuOpen, setIsPortalMenuOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const certificateRef = useRef(personCertificates);
+  const portalMenuRef = useRef<HTMLDivElement | null>(null);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
   const activeId = routeState.routeId;
+  const portalLinks = getPortalLinks();
 
   useEffect(() => {
     certificateRef.current = personCertificates;
@@ -345,6 +704,66 @@ export default function App() {
     document.body.style.colorScheme = theme;
     window.localStorage.setItem(DASHBOARD_THEME_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (portalMenuRef.current && !portalMenuRef.current.contains(event.target as Node)) {
+        setIsPortalMenuOpen(false);
+      }
+
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsPortalMenuOpen(false);
+        setIsProfileMenuOpen(false);
+        setIsMobileSidebarOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [activeId, routeState.personSlug]);
+
+  function handleLogout() {
+    clearKnownSessionTokens();
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (isSsoEnabled()) {
+      window.location.replace(buildSsoLogoutUrl(window.location.origin));
+      return;
+    }
+
+    const authPortalUrl = env().VITE_AUTH_PORTAL_URL?.trim();
+    if (authPortalUrl) {
+      try {
+        const parsed = new URL(authPortalUrl);
+        const logoutUrl = new URL('/auth/logout', parsed.origin);
+        logoutUrl.searchParams.set('post_logout_redirect_uri', window.location.origin);
+        window.location.replace(logoutUrl.toString());
+        return;
+      } catch {
+        // Fall through to default login redirect.
+      }
+    }
+
+    window.location.replace(`${resolvePortalBaseUrl('auth')}/login`);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -566,7 +985,18 @@ export default function App() {
     ])
   );
   const visibleTests = dashboard.tests.filter((item) =>
-    matchesQuery(deferredSearch, [item.title, item.owner, item.date, item.score, item.status])
+    matchesQuery(deferredSearch, [
+      item.title,
+      item.category,
+      item.owner,
+      item.inspector,
+      item.date,
+      item.score,
+      item.status,
+      item.completionNote ?? undefined,
+      item.sourceDocument,
+      ...item.evidenceFiles.map((evidence) => evidence.name),
+    ])
   );
   const visibleDocuments = dashboard.documents.filter((item) =>
     matchesQuery(deferredSearch, [item.title, item.owner, item.version, item.updatedAt, item.status])
@@ -602,7 +1032,6 @@ export default function App() {
 
   const facilityMetrics = buildFacilityMetrics(dashboard.facilities);
   const personnelMetrics = buildPersonnelMetrics(dashboard.licenses);
-  const testMetrics = buildTestMetrics(dashboard.tests);
   const documentMetrics = buildDocumentMetrics(dashboard.documents);
   const topbarTitle =
     activeId === 'dashboard'
@@ -621,20 +1050,39 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <div
+        className={`sidebar-overlay ${isMobileSidebarOpen ? 'is-visible' : ''}`}
+        aria-hidden={isMobileSidebarOpen ? 'false' : 'true'}
+        onClick={() => setIsMobileSidebarOpen(false)}
+      />
       <Sidebar
         activeId={activeId}
         navigation={dashboard.navigation}
         organization={dashboard.organization}
+        isMobileOpen={isMobileSidebarOpen}
         onSelect={handleSelect}
+        onRequestClose={() => setIsMobileSidebarOpen(false)}
       />
 
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-profile">
-            <div className="topbar-backdrop">
+            <div className="topbar-mobile-shell">
+              <button
+                type="button"
+                className="mobile-nav-toggle"
+                aria-label={isMobileSidebarOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi'}
+                aria-expanded={isMobileSidebarOpen}
+                onClick={() => setIsMobileSidebarOpen((currentValue) => !currentValue)}
+              >
+                <MenuIcon className="mini-icon mobile-nav-toggle-icon" />
+              </button>
+
+              <div className="topbar-backdrop">
               <span className="topbar-chip">Workspace</span>
               <strong>{topbarTitle}</strong>
               <small className="topbar-caption">{topbarCaption}</small>
+              </div>
             </div>
           </div>
 
@@ -657,16 +1105,76 @@ export default function App() {
             >
               {theme === 'dark' ? 'Dark' : 'Light'}
             </button>
-            <button type="button" className="topbar-pill topbar-pill--menu">
-              Portal
-              <ChevronDownIcon className="mini-icon" />
-            </button>
+            <div ref={portalMenuRef} className="topbar-action-group">
+              <button
+                type="button"
+                className={`topbar-pill topbar-pill--menu ${isPortalMenuOpen ? 'is-open' : ''}`}
+                onClick={() => {
+                  setIsPortalMenuOpen((currentValue) => !currentValue);
+                  setIsProfileMenuOpen(false);
+                }}
+                aria-haspopup="menu"
+                aria-expanded={isPortalMenuOpen}
+                aria-controls="portal-prisma-menu"
+              >
+                Portal
+                <ChevronDownIcon className={`mini-icon portal-chevron ${isPortalMenuOpen ? 'is-open' : ''}`} />
+              </button>
+
+              {isPortalMenuOpen ? (
+                <div id="portal-prisma-menu" className="portal-menu" role="menu" aria-label="Portal Prisma">
+                  <p className="portal-menu-header">Portal Prisma</p>
+
+                  <div className="portal-grid">
+                    {portalLinks.map((item) => (
+                      <a
+                        key={item.label}
+                        href={item.href}
+                        role="menuitem"
+                        aria-current={item.target === 'keamanan' ? 'page' : undefined}
+                        className={`portal-link ${item.target === 'keamanan' ? 'is-current' : ''}`}
+                        onClick={() => setIsPortalMenuOpen(false)}
+                      >
+                        <span className={`portal-link-badge ${item.badgeClassName}`} aria-hidden="true">
+                          <PortalLinkIcon kind={item.iconKind} className="portal-link-icon" />
+                        </span>
+                        <span className="portal-link-label">{item.label}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
             <button type="button" className="icon-button" aria-label="Notifikasi">
               <BellIcon className="mini-icon" />
             </button>
-            <button type="button" className="icon-button" aria-label="Profil pengguna">
-              <UserIcon className="mini-icon" />
-            </button>
+            <div ref={profileMenuRef} className="topbar-action-group">
+              <button
+                type="button"
+                className={`icon-button ${isProfileMenuOpen ? 'is-open' : ''}`}
+                aria-label="Profil pengguna"
+                aria-haspopup="menu"
+                aria-expanded={isProfileMenuOpen}
+                aria-controls="profile-menu"
+                onClick={() => {
+                  setIsProfileMenuOpen((currentValue) => !currentValue);
+                  setIsPortalMenuOpen(false);
+                }}
+              >
+                <UserIcon className="mini-icon" />
+              </button>
+
+              {isProfileMenuOpen ? (
+                <div id="profile-menu" className="profile-menu" role="menu" aria-label="Profil pengguna">
+                  <button type="button" className="profile-menu-action" role="menuitem" onClick={handleLogout}>
+                    <span className="profile-menu-badge" aria-hidden="true">
+                      <LogoutIcon className="profile-menu-icon" />
+                    </span>
+                    <span>Logout</span>
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </header>
 
@@ -683,7 +1191,7 @@ export default function App() {
           />
         ) : activeId === 'personil-keamanan' && selectedPerson ? (
           <PersonnelDetailHero person={selectedPerson} onBack={() => handleSelect('personil-keamanan')} />
-        ) : (
+        ) : activeId === 'tes-keamanan' ? null : (
           <RouteHero
             eyebrow={routeHero.eyebrow}
             title={routeHero.title}
@@ -733,14 +1241,7 @@ export default function App() {
         ) : null}
 
         {activeId === 'tes-keamanan' ? (
-          <>
-            <section className="metrics-grid">
-              {testMetrics.map((metric) => (
-                <MetricCard key={metric.label} metric={metric} />
-              ))}
-            </section>
-            <TestsSection tests={visibleTests} />
-          </>
+          <TestsSection />
         ) : null}
 
         {activeId === 'dokumen' ? (
@@ -792,11 +1293,11 @@ function DashboardPage({
     ...visibleTests.map((item) => ({
       id: `test-${item.title}`,
       category: 'Tes',
-      label: item.title,
+      label: `${item.category} - ${item.title}`,
       context: item.owner,
-      detail: item.score,
+      detail: `${item.date} · ${item.score}`,
       status: item.status,
-      updatedAt: item.date,
+      updatedAt: item.completedAt ?? item.date,
     })),
     ...visibleDocuments.map((item) => ({
       id: `document-${item.title}`,
@@ -851,24 +1352,29 @@ function DashboardPage({
           </div>
 
           <div className="dashboard-toolbar-group dashboard-toolbar-group--end">
-            <span className="dashboard-toggle-label">Statistik</span>
-            <button
-              type="button"
-              className={`dashboard-toggle ${showStatistics ? 'is-on' : ''}`}
-              onClick={() => setShowStatistics((current) => !current)}
-              aria-pressed={showStatistics}
-            >
-              <span className="dashboard-toggle-thumb" />
-            </button>
-            {quickActions.map((action) => (
+            <div className="dashboard-toolbar-toggle-row">
+              <span className="dashboard-toggle-label">Statistik</span>
               <button
-                key={action.label}
                 type="button"
-                className={`dashboard-toolbar-button ${action.variant === 'primary' ? 'is-primary' : ''}`}
+                className={`dashboard-toggle ${showStatistics ? 'is-on' : ''}`}
+                onClick={() => setShowStatistics((current) => !current)}
+                aria-pressed={showStatistics}
               >
-                {action.label}
+                <span className="dashboard-toggle-thumb" />
               </button>
-            ))}
+            </div>
+
+            <div className="dashboard-toolbar-actions">
+              {quickActions.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  className={`dashboard-toolbar-button ${action.variant === 'primary' ? 'is-primary' : ''}`}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -897,7 +1403,7 @@ function DashboardPage({
           </div>
         </div>
 
-        <div className="table-shell">
+        <div className="table-shell dashboard-table-desktop">
           {visibleRows.length ? (
             <table className="data-table dashboard-summary-table">
               <thead>
@@ -932,6 +1438,40 @@ function DashboardPage({
                 ))}
               </tbody>
             </table>
+          ) : (
+            <EmptyRows copy="Tidak ada ringkasan operasional yang cocok dengan pencarian." />
+          )}
+        </div>
+
+        <div className="dashboard-summary-mobile-list">
+          {visibleRows.length ? (
+            visibleRows.map((row) => (
+              <article key={row.id} className="dashboard-summary-mobile-card">
+                <div className="dashboard-summary-mobile-top">
+                  <span className={`summary-category is-${row.category.toLowerCase()}`}>
+                    <span className="summary-category-dot" />
+                    {row.category}
+                  </span>
+                  <StatusBadge status={row.status} />
+                </div>
+
+                <div className="dashboard-summary-mobile-copy">
+                  <strong>{row.label}</strong>
+                  <p>{row.detail}</p>
+                </div>
+
+                <dl className="dashboard-summary-mobile-meta">
+                  <div>
+                    <dt>Area / PIC</dt>
+                    <dd>{row.context}</dd>
+                  </div>
+                  <div>
+                    <dt>Pembaruan</dt>
+                    <dd>{row.updatedAt}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))
           ) : (
             <EmptyRows copy="Tidak ada ringkasan operasional yang cocok dengan pencarian." />
           )}
@@ -1089,7 +1629,7 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
           </div>
         </div>
 
-        <div className="table-shell">
+        <div className="table-shell records-table-desktop">
           {facilities.length ? (
             <table className="data-table">
               <thead>
@@ -1115,6 +1655,35 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
                 ))}
               </tbody>
             </table>
+          ) : (
+            <EmptyRows copy="Tidak ada data fasilitas yang cocok dengan pencarian." />
+          )}
+        </div>
+
+        <div className="records-mobile-list">
+          {facilities.length ? (
+            facilities.map((item) => (
+              <article key={item.name} className="records-mobile-card">
+                <div className="records-mobile-top">
+                  <div className="records-mobile-copy">
+                    <strong>{item.name}</strong>
+                    <p>{item.zone}</p>
+                  </div>
+                  <StatusBadge status={item.status} />
+                </div>
+
+                <dl className="records-mobile-meta">
+                  <div>
+                    <dt>Coverage</dt>
+                    <dd>{item.coverage}</dd>
+                  </div>
+                  <div>
+                    <dt>Pembaruan</dt>
+                    <dd>{item.updatedAt}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))
           ) : (
             <EmptyRows copy="Tidak ada data fasilitas yang cocok dengan pencarian." />
           )}
@@ -1767,53 +2336,401 @@ function HistoryList({ items, emptyCopy }: { items: string[]; emptyCopy: string 
   );
 }
 
-function TestsSection({ tests }: { tests: TestItem[] }) {
+function getSupervisionStatusStyles(status: SupervisionStatusTag) {
+  if (status === 'Sudah') {
+    return {
+      badge: 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200',
+      dot: 'bg-emerald-500',
+    };
+  }
+
+  return {
+    badge: 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200',
+    dot: 'bg-slate-400',
+  };
+}
+
+function getSupervisionCardAccent(kind: SupervisionSummaryCard['kind']) {
+  if (kind === 'audit') {
+    return 'from-emerald-500 via-emerald-400 to-teal-400';
+  }
+
+  if (kind === 'inspection') {
+    return 'from-slate-500 via-slate-400 to-slate-300';
+  }
+
+  return 'from-sky-500 via-blue-500 to-cyan-400';
+}
+
+function getTimelineCellStyles(status: TimelineStatus) {
+  if (status === 'done') {
+    return 'bg-emerald-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.28)]';
+  }
+
+  if (status === 'upcoming') {
+    return 'bg-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]';
+  }
+
+  return 'border border-slate-200 bg-white';
+}
+
+function getMonthlyTimelineStatuses(statuses: TimelineStatus[]): TimelineMonthStatus[] {
+  return YEAR_TIMELINE_MONTHS.map((month, monthIndex) => {
+    const startIndex = monthIndex * TIMELINE_SLOTS_PER_MONTH;
+    const currentMonthStatuses = statuses.slice(startIndex, startIndex + TIMELINE_SLOTS_PER_MONTH);
+
+    if (currentMonthStatuses.includes('done')) {
+      return { month, status: 'done' };
+    }
+
+    if (currentMonthStatuses.includes('upcoming')) {
+      return { month, status: 'upcoming' };
+    }
+
+    return { month, status: 'pending' };
+  });
+}
+
+function getTimelineMonthCardStyles(status: TimelineStatus) {
+  if (status === 'done') {
+    return {
+      card: 'border-emerald-200 bg-emerald-50',
+      dot: 'bg-emerald-500',
+      label: 'text-emerald-700',
+      copy: 'Done',
+    };
+  }
+
+  if (status === 'upcoming') {
+    return {
+      card: 'border-slate-300 bg-slate-100',
+      dot: 'bg-slate-700',
+      label: 'text-slate-700',
+      copy: 'Upcoming',
+    };
+  }
+
+  return {
+    card: 'border-slate-200 bg-white',
+    dot: 'bg-slate-300',
+    label: 'text-slate-500',
+    copy: 'Belum',
+  };
+}
+
+function TestsSection() {
   return (
-    <section className="section-grid">
-      <article className="panel">
-        <div className="panel-head">
-          <div>
-            <p className="eyebrow">Program Pengawasan Keamanan</p>
-            <h2 className="panel-title">Agenda dan hasil pengawasan</h2>
-            <p className="panel-copy">Program rutin dan simulasi insiden untuk menjaga readiness tim.</p>
+    <section className="mx-auto flex min-w-0 w-full max-w-6xl flex-col gap-4 sm:gap-5 md:gap-6">
+      <div className="rounded-[26px] border border-slate-200/80 bg-white/95 px-4 py-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:rounded-[30px] sm:px-6 sm:py-6 md:px-8 md:py-8">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-400">
+              Program Pengawasan Keamanan
+            </p>
+            <h2 className="mt-3 break-words text-[1.9rem] font-semibold tracking-[-0.04em] text-slate-900 sm:text-3xl md:text-[2.35rem]">
+              Dashboard Jadwal Pengawasan Internal
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500 sm:text-[15px] md:text-base">
+              Monitoring pelaksanaan Audit, Inspeksi, dan Pengujian secara terpusat untuk
+              membantu tim internal melihat status utama dengan cepat.
+            </p>
+          </div>
+
+          <div className="inline-flex w-fit items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(15,23,42,0.18)]">
+            {SUPERVISION_ACTIVE_YEAR}
           </div>
         </div>
+      </div>
 
-        <div className="test-grid">
-          {tests.length ? (
-            tests.map((item) => (
-              <div key={item.title} className="test-card">
-                <div className="test-card-top">
-                  <StatusBadge status={item.status} />
-                  <span className="data-chip">{item.date}</span>
+      <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+        {SUPERVISION_SUMMARY_CARDS.map((card) => {
+          const accent = getSupervisionCardAccent(card.kind);
+
+          return (
+            <article
+              key={card.id}
+              className="relative min-w-0 overflow-hidden rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:rounded-[28px] sm:p-6"
+            >
+              <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent}`} />
+
+              <div className="relative flex h-full flex-col gap-5 sm:gap-6">
+                <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-start">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                      {card.frequency}
+                    </p>
+                    <h3 className="mt-3 break-words text-[1.45rem] font-semibold tracking-[-0.03em] text-slate-900 sm:text-[1.6rem]">
+                      {card.title}
+                    </h3>
+                  </div>
+
+                  {'status' in card ? (
+                    <span
+                      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${getSupervisionStatusStyles(card.status).badge}`}
+                    >
+                      {card.status}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 ring-1 ring-inset ring-sky-200">
+                      {card.done} / {card.total} done
+                    </span>
+                  )}
                 </div>
-                <h3>{item.title}</h3>
-                <p>{item.owner}</p>
-                <strong>{item.score}</strong>
-              </div>
-            ))
-          ) : (
-            <EmptyRows copy="Tidak ada agenda program pengawasan yang cocok dengan pencarian." />
-          )}
-        </div>
-      </article>
 
-      <article className="panel panel-side">
-        <div className="panel-head">
-          <div>
-            <p className="eyebrow">Checklist Latihan</p>
-            <h2 className="panel-title">Prioritas tindak lanjut</h2>
+                {card.kind === 'audit' ? (
+                  <>
+                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Status Utama
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <span className={`h-3 w-3 rounded-full ${getSupervisionStatusStyles(card.status).dot}`} />
+                        <strong className="text-3xl font-semibold tracking-[-0.04em] text-slate-900">
+                          {card.status}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Next Schedule
+                      </p>
+                      <strong className="text-xl font-semibold tracking-[-0.03em] text-slate-900">
+                        {card.nextSchedule}
+                      </strong>
+                      <p className="text-sm leading-6 text-slate-500">{card.description}</p>
+                    </div>
+                  </>
+                ) : null}
+
+                {card.kind === 'inspection' ? (
+                  <>
+                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Status Global
+                      </p>
+                      <strong className="mt-3 block text-3xl font-semibold tracking-[-0.04em] text-slate-900">
+                        {card.status}
+                      </strong>
+                      <p className="mt-2 text-sm leading-6 text-slate-500">{card.description}</p>
+                    </div>
+
+                    <div className="space-y-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Preview Lokasi
+                      </p>
+
+                      {card.locations.map((location) => (
+                        <div key={location.name} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`h-2.5 w-2.5 rounded-full ${getSupervisionStatusStyles(location.status).dot}`}
+                            />
+                            <span className="text-sm font-medium text-slate-700">{location.name}</span>
+                          </div>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${getSupervisionStatusStyles(location.status).badge}`}
+                          >
+                            {location.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+
+                {card.kind === 'testing' ? (
+                  <>
+                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Progress
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+                        <strong className="text-3xl font-semibold tracking-[-0.04em] text-slate-900">
+                          {card.done} / {card.total}
+                        </strong>
+                        <span className="text-sm font-medium text-slate-500">done</span>
+                      </div>
+
+                      <div className="mt-4 h-2.5 rounded-full bg-slate-200">
+                        <div
+                          className="h-2.5 rounded-full bg-gradient-to-r from-sky-500 to-cyan-400"
+                          style={{ width: `${Math.round((card.done / card.total) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Pelaksanaan Rutin
+                      </p>
+                      <p className="text-sm leading-6 text-slate-500">{card.subtitle}</p>
+                      <div className="inline-flex w-fit items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 ring-1 ring-inset ring-sky-200">
+                        Agenda berikutnya {card.nextSchedule}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <article className="overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:rounded-[32px]">
+        <div className="border-b border-slate-200/80 px-4 py-5 sm:px-6 sm:py-6 md:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                Timeline / Calendar View
+              </p>
+              <h3 className="mt-3 text-[1.7rem] font-semibold tracking-[-0.04em] text-slate-900 sm:text-2xl md:text-[2rem]">
+                Monitoring timeline pelaksanaan per kategori
+              </h3>
+              <p className="mt-3 text-sm leading-7 text-slate-500 md:text-base">
+                Tampilan horizontal untuk melihat agenda yang sudah selesai, belum berjalan, dan
+                yang akan datang dalam satu panel monitoring.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
+                <span className="h-2.5 w-2.5 rounded-sm border border-slate-300 bg-white" />
+                Belum
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
+                Done
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-inset ring-slate-200">
+                <span className="h-2.5 w-2.5 rounded-sm bg-slate-800" />
+                Upcoming
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="mini-stat-list">
-          <MiniStat label="Simulasi berikutnya" value="04 Apr" note="Akses tidak sah di gate perimeter." />
-          <MiniStat label="Nilai tertinggi" value="94/100" note="Random screening shift B memimpin pekan ini." />
-          <MiniStat
-            label="Action item"
-            value="03"
-            note="Tabletop exercise ancaman bagasi perlu skenario lanjutan."
-          />
+        <div className="flex flex-col gap-4 px-4 py-5 sm:gap-5 sm:px-6 sm:py-6 md:px-8">
+          {SUPERVISION_TIMELINE_SECTIONS.map((section) => (
+            <div
+              key={section.id}
+              className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-3.5 py-4 sm:rounded-[28px] sm:px-5 sm:py-5"
+            >
+              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                    {section.frequency}
+                  </p>
+                  <h4 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-900">
+                    {section.title}
+                  </h4>
+                </div>
+                <div className="inline-flex w-fit items-center rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
+                  {section.months.length} slot monitoring
+                </div>
+              </div>
+
+              <div className="space-y-3 md:hidden">
+                {section.rows.map((row) => {
+                  const monthlyStatuses = getMonthlyTimelineStatuses(row.statuses);
+                  const hasTimelineActivity = monthlyStatuses.some((item) => item.status !== 'pending');
+
+                  return (
+                    <article
+                      key={`${section.id}-${row.label}-mobile`}
+                      className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">{row.label}</p>
+                        <p className="mt-1 text-xs leading-6 text-slate-500">{row.detail}</p>
+                      </div>
+
+                      {hasTimelineActivity ? (
+                        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                          {monthlyStatuses.map((item) => {
+                            const tone = getTimelineMonthCardStyles(item.status);
+
+                            return (
+                              <div
+                                key={`${row.label}-${item.month}-mobile`}
+                                className={`rounded-[16px] border px-3 py-2 ${tone.card}`}
+                              >
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                  {item.month}
+                                </span>
+                                <div className="mt-2 flex items-center gap-2">
+                                  <span className={`h-2.5 w-2.5 rounded-full ${tone.dot}`} />
+                                  <span className={`text-xs font-semibold ${tone.label}`}>{tone.copy}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-[18px] bg-slate-900 px-4 py-3 text-white shadow-[0_12px_28px_rgba(15,23,42,0.14)]">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">
+                            Catatan 2026
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-slate-100">
+                            Tidak ada slot pelaksanaan pada tahun ini karena agenda mengikuti siklus dua tahunan.
+                          </p>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="hidden overflow-x-auto pb-1 md:block">
+                <div className="min-w-[880px] sm:min-w-[1040px] xl:min-w-[1360px]">
+                  <div
+                    className="grid items-center gap-x-1.5 gap-y-3 border-b border-slate-200 pb-3"
+                    style={{
+                      gridTemplateColumns: `minmax(140px, 180px) repeat(${TIMELINE_TOTAL_COLUMNS}, minmax(14px, 18px))`,
+                    }}
+                  >
+                    <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                      Lokasi / Agenda
+                    </div>
+                    {section.months.map((month) => (
+                      <div
+                        key={`${section.id}-${month}`}
+                        className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400"
+                        style={{ gridColumn: `span ${TIMELINE_SLOTS_PER_MONTH} / span ${TIMELINE_SLOTS_PER_MONTH}` }}
+                      >
+                        {month}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {section.rows.map((row) => (
+                      <div
+                        key={`${section.id}-${row.label}`}
+                        className="grid items-center gap-x-1.5 gap-y-3"
+                        style={{
+                          gridTemplateColumns: `minmax(140px, 180px) repeat(${TIMELINE_TOTAL_COLUMNS}, minmax(14px, 18px))`,
+                        }}
+                      >
+                        <div className="pr-3">
+                          <p className="text-sm font-semibold text-slate-800">{row.label}</p>
+                          <p className="mt-1 text-xs font-medium text-slate-500">{row.detail}</p>
+                        </div>
+
+                        {row.statuses.map((status, index) => (
+                          <div key={`${row.label}-${index}`} className="flex items-center justify-center">
+                            <span
+                              className={`h-[18px] w-[18px] rounded-[5px] ${getTimelineCellStyles(status)}`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </article>
     </section>
@@ -1832,7 +2749,7 @@ function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
           </div>
         </div>
 
-        <div className="table-shell">
+        <div className="table-shell records-table-desktop">
           {documents.length ? (
             <table className="data-table">
               <thead>
@@ -1858,6 +2775,35 @@ function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
                 ))}
               </tbody>
             </table>
+          ) : (
+            <EmptyRows copy="Tidak ada dokumen yang cocok dengan pencarian." />
+          )}
+        </div>
+
+        <div className="records-mobile-list">
+          {documents.length ? (
+            documents.map((item) => (
+              <article key={item.title} className="records-mobile-card">
+                <div className="records-mobile-top">
+                  <div className="records-mobile-copy">
+                    <strong>{item.title}</strong>
+                    <p>{item.owner}</p>
+                  </div>
+                  <StatusBadge status={item.status} />
+                </div>
+
+                <dl className="records-mobile-meta">
+                  <div>
+                    <dt>Versi</dt>
+                    <dd>{item.version}</dd>
+                  </div>
+                  <div>
+                    <dt>Pembaruan</dt>
+                    <dd>{item.updatedAt}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))
           ) : (
             <EmptyRows copy="Tidak ada dokumen yang cocok dengan pencarian." />
           )}

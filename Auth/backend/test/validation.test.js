@@ -39,6 +39,31 @@ test('validateCreateUserPayload normalizes permissions object', () => {
   });
 });
 
+test('validateCreateUserPayload rejects empty email', () => {
+  const result = validateCreateUserPayload({
+    name: 'Admin User',
+    username: 'admin',
+    email: '',
+    password: 'secret123',
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 422);
+});
+
+test('validateCreateUserPayload rejects non-62 phone format', () => {
+  const result = validateCreateUserPayload({
+    name: 'Admin User',
+    username: 'admin',
+    email: 'admin@example.com',
+    phone: '08123456789',
+    password: 'secret123',
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 422);
+});
+
 test('validateUpdateUserPayload keeps undefined permissions untouched', () => {
   const result = validateUpdateUserPayload({
     username: 'viewer',

@@ -18,6 +18,11 @@ export function sanitizeEmail(value) {
   return normalized || null;
 }
 
+export function sanitizePhone(value) {
+  const normalized = sanitizeText(value).replace(/[\s().-]/g, '');
+  return normalized || null;
+}
+
 export function ensureRole(value) {
   if (!ALLOWED_ROLES.has(value)) {
     throw new Error('Role harus Admin atau Viewer.');
@@ -115,6 +120,7 @@ export function toUserResponse(row) {
     name: row.username,
     username: row.username,
     email: row.email,
+    phone: row.phone,
     role: row.role,
     status: row.status,
     can_access_external_dnp: Boolean(permissions.can_access_external_dnp),
@@ -137,6 +143,7 @@ export function tokenResponse({ accessToken, idToken, refreshToken, scope, user 
       name: user.username,
       username: user.username,
       email: user.email,
+      phone: user.phone,
       role: user.role,
       status: user.status,
       permissions: user.permissions,
