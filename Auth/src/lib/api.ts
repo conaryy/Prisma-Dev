@@ -54,6 +54,20 @@ export function getAuthToken() {
   if (typeof window === 'undefined') {
     return null;
   }
+
+  try {
+    const url = new URL(window.location.href);
+    const queryToken = normalizeToken(url.searchParams.get('token'));
+    if (queryToken) {
+      window.localStorage.setItem(TOKEN_KEY, queryToken);
+      url.searchParams.delete('token');
+      window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+      return queryToken;
+    }
+  } catch {
+    // Ignore URL parsing issues and fall back to stored token.
+  }
+
   return normalizeToken(window.localStorage.getItem(TOKEN_KEY));
 }
 

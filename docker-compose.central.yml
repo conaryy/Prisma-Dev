@@ -223,7 +223,7 @@ services:
         VITE_SSO_CLIENT_ID: ${SSO_CLIENT_ID:-k2s-web}
         VITE_SSO_REDIRECT_URI: ${AUTH_DEFAULT_REDIRECT_URI:-https://k2s.ryvidia.my.id/auth/callback}
         VITE_SSO_SCOPE: ${SSO_SCOPE:-openid profile email}
-        VITE_AUTH_PORTAL_URL: ${AUTH_LOGIN_UI_URL:-https://auth.ryvidia.my.id/login}
+        VITE_AUTH_PORTAL_URL: ${AUTH_PORTAL_URL:-https://auth.ryvidia.my.id}
         VITE_LOGBOOK_BASE_URL: ${AUTH_VITE_LOGBOOK_BASE_URL:-https://logbook.ryvidia.my.id}
     container_name: k2s-frontend
     restart: unless-stopped
@@ -323,7 +323,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_LOGBOOK_API_BASE_URL: ${LOGBOOK_VITE_API_BASE_URL:-https://apilogbook.ryvidia.my.id/api/v1}
-        VITE_AUTH_PORTAL_URL: ${LOGBOOK_VITE_AUTH_PORTAL_URL:-https://auth.ryvidia.my.id/login}
+        VITE_AUTH_PORTAL_URL: ${LOGBOOK_VITE_AUTH_PORTAL_URL:-https://auth.ryvidia.my.id}
         VITE_SSO_AUTH_BASE_URL: ${LOGBOOK_VITE_SSO_AUTH_BASE_URL:-https://authapi.ryvidia.my.id}
         VITE_SSO_AUTHORIZE_URL: ${LOGBOOK_VITE_SSO_AUTHORIZE_URL:-https://authapi.ryvidia.my.id/oauth/authorize}
         VITE_SSO_TOKEN_URL: ${LOGBOOK_VITE_SSO_TOKEN_URL:-https://authapi.ryvidia.my.id/oauth/token}

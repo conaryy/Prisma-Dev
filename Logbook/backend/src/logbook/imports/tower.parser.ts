@@ -1,18 +1,23 @@
 import { formatDateForApi, normalizeDate, normalizeString, normalizeTime } from './shared';
-import type { ParsedTowerRow } from './types';
+import type { ParsedTowerRow, ParsedRowResult, RowParseError } from './types';
 
 export const TOWER_SHEET_NAME = 'Rekap Logbook TWR';
 export const TOWER_HEADER_ROW_INDEX = 23;
 
-export function parseTowerRows(rows: Array<Array<string | number | Date | null>>, date1904: boolean) {
+export function parseTowerRows(rows: Array<Array<string | number | Date | null>>, date1904: boolean): ParsedRowResult<ParsedTowerRow>[] {
+  let currentEntryNo = 0;
   let currentEntryDate: Date | null = null;
+  let currentEntryDateRaw: string | null = null;
   let currentOperationType = '';
   let currentFacility = '';
 
-  const parsedRows: Array<Omit<ParsedTowerRow, 'entryNo'>> = [];
+  const results: ParsedRowResult<ParsedTowerRow>[] = [];
 
   for (let index = TOWER_HEADER_ROW_INDEX; index < rows.length; index += 1) {
     const row = rows[index] ?? [];
+
+    // Fallback array length safety
+    const entryNoRaw = row[0];
     const entryDateRaw = row[1];
     const entryTimeRaw = row[2];
     const operationTypeRaw = row[3];
@@ -20,14 +25,20 @@ export function parseTowerRows(rows: Array<Array<string | number | Date | null>>
     const callSignRaw = row[5];
     const descriptionRaw = row[6];
 
-    const normalizedDate = normalizeDate(entryDateRaw, date1904);
+    const rawPayload = JSON.stringify(row);
+    const rawDateStr = normalizeString(entryDateRaw) || null;
+    const rawTimeStr = normalizeString(entryTimeRaw) || null;
+
+    const normalizedNoStr = normalizeString(entryNoRaw);
     const normalizedTime = normalizeTime(entryTimeRaw);
+    const normalizedDate = normalizeDate(entryDateRaw, date1904);
     const normalizedOperationType = normalizeString(operationTypeRaw);
     const normalizedFacility = normalizeString(facilityRaw);
     const normalizedCallSign = normalizeString(callSignRaw);
     const normalizedDescription = normalizeString(descriptionRaw);
 
     if (
+      !normalizedNoStr &&
       !normalizedDate &&
       !normalizedTime &&
       !normalizedOperationType &&
@@ -38,8 +49,16 @@ export function parseTowerRows(rows: Array<Array<string | number | Date | null>>
       continue;
     }
 
+    if (normalizedNoStr) {
+      const parsedNo = parseInt(normalizedNoStr, 10);
+      if (!isNaN(parsedNo)) {
+        currentEntryNo = parsedNo;
+      }
+    }
+
     if (normalizedDate) {
       currentEntryDate = normalizedDate;
+      currentEntryDateRaw = rawDateStr;
     }
     if (normalizedOperationType) {
       currentOperationType = normalizedOperationType;
@@ -49,51 +68,61 @@ export function parseTowerRows(rows: Array<Array<string | number | Date | null>>
     }
 
     const isContinuationRow =
+      !normalizedNoStr &&
       !normalizedDate &&
       !normalizedTime &&
       !normalizedOperationType &&
       !normalizedFacility &&
       !normalizedCallSign &&
       Boolean(normalizedDescription) &&
-      parsedRows.length > 0;
+      results.length > 0;
 
     if (isContinuationRow) {
-      const lastRow = parsedRows[parsedRows.length - 1];
-      lastRow.description = `${lastRow.description} ${normalizedDescription}`.trim();
+      const lastResult = results[results.length - 1];
+      if (lastResult.data) {
+        lastResult.data.description = `${lastResult.data.description} ${normalizedDescription}`.trim();
+        lastResult.rawPayload = JSON.stringify([lastResult.rawPayload, rawPayload]);
+      }
       continue;
     }
 
-    if (!currentEntryDate || !normalizedDescription) {
-      continue;
+    const errors: RowParseError[] = [];
+    let isValid = true;
+    let data: ParsedTowerRow | null = null;
+
+    if (!currentEntryDate) {
+      errors.push({ fieldName: 'Tanggal', errorCode: 'MISSING_DATE', errorMessage: 'Tanggal tidak ditemukan (konteks terputus).' });
+      isValid = false;
     }
 
-    parsedRows.push({
-      entryDate: currentEntryDate,
-      entryTime: normalizedTime || '00:00',
-      operationType: normalizedOperationType || currentOperationType || 'Operation Report',
-      facility: normalizedFacility || currentFacility || '',
-      callSign: normalizedCallSign,
-      description: normalizedDescription,
+    if (!normalizedDescription) {
+      errors.push({ fieldName: 'Keterangan', errorCode: 'MISSING_DESCRIPTION', errorMessage: 'Laporan Kejadian/Keterangan kosong.' });
+      isValid = false;
+    }
+
+    if (isValid && currentEntryDate) {
+      data = {
+        entryNo: currentEntryNo || 1,
+        entryDate: currentEntryDate,
+        entryTime: normalizedTime || '00:00',
+        operationType: normalizedOperationType || currentOperationType || 'Operation Report',
+        facility: normalizedFacility || currentFacility || '',
+        callSign: normalizedCallSign || '-',
+        description: normalizedDescription,
+        sourceRowNumber: index + 1,
+      };
+    }
+
+    results.push({
       sourceRowNumber: index + 1,
+      rawPayload,
+      rawDateValue: rawDateStr || currentEntryDateRaw,
+      rawTimeValue: rawTimeStr,
+      isValid,
+      errors,
+      data,
     });
   }
 
-  const sortedRows = [...parsedRows].sort((left, right) => {
-    const leftKey = `${formatDateForApi(left.entryDate)} ${left.entryTime}`;
-    const rightKey = `${formatDateForApi(right.entryDate)} ${right.entryTime}`;
-
-    if (leftKey < rightKey) {
-      return -1;
-    }
-    if (leftKey > rightKey) {
-      return 1;
-    }
-
-    return left.sourceRowNumber - right.sourceRowNumber;
-  });
-
-  return sortedRows.map((row, index) => ({
-    entryNo: index + 1,
-    ...row,
-  }));
+  return results;
 }

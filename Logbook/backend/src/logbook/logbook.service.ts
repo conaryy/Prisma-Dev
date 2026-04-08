@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { PrismaService } from '../database/prisma.service';
 import { parseAppRows, APP_HEADER_ROW_INDEX, APP_SHEET_NAME } from './imports/app.parser';
 import {
@@ -35,7 +35,7 @@ function buildWhereClause(conditions: Prisma.Sql[]) {
 
 @Injectable()
 export class LogbookService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private readImportWorkbook(
     buffer: Buffer,
@@ -183,7 +183,7 @@ export class LogbookService {
         data: rows.map((row) => ({
           id: row.id,
           no: row.entryNo,
-          date: row.entryDate,
+          date: String(row.entryDate).substring(0, 10),
           time: row.entryTime,
           operationType: row.operationType,
           facility: row.facility,
@@ -269,7 +269,7 @@ export class LogbookService {
         data: rows.map((row) => ({
           id: row.id,
           no: row.entryNo,
-          date: row.entryDate,
+          date: String(row.entryDate).substring(0, 10),
           time: row.entryTime,
           operationType: row.operationType,
           facility: row.facility,
@@ -351,7 +351,7 @@ export class LogbookService {
       data: rows.map((row) => ({
         id: row.id,
         no: row.entryNo,
-        date: row.entryDate,
+        date: String(row.entryDate).substring(0, 10),
         time: row.entryTime,
         equipment: row.equipment,
         frequencyOrSection: row.frequencySection,
@@ -378,17 +378,20 @@ export class LogbookService {
 
     const parsedRows = parseTeknikRows(rows, date1904);
     if (parsedRows.length === 0) {
-      throw new BadRequestException('Tidak ada baris Logbook Teknik yang valid untuk diimpor.');
+      throw new BadRequestException('Tidak ada baris Logbook Teknik yang valid untuk dibaca.');
     }
 
     const batchId = randomUUID();
-    const totalRows = Math.max(rows.length - TEKNIK_HEADER_ROW_INDEX, 0);
-    const invalidRows = totalRows - parsedRows.length;
+    const validRows = parsedRows.filter((r) => r.isValid && r.data);
+    const invalidRows = parsedRows.filter((r) => !r.isValid);
+
+    // We only count actual processed rows (which omit empty ones)
+    const totalRowsCount = parsedRows.length;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw(Prisma.sql`
         INSERT INTO logbook_import_batches (
-          id, category, source_period, source_file_name, status,
+          id, source_category, source_period, source_file_name, status,
           total_rows, valid_rows, invalid_rows, sheet_name, imported_by, completed_at
         ) VALUES (
           ${batchId},
@@ -396,9 +399,9 @@ export class LogbookService {
           ${params.sourcePeriod ?? null},
           ${params.fileName},
           'completed',
-          ${totalRows},
-          ${parsedRows.length},
-          ${Math.max(invalidRows, 0)},
+          ${totalRowsCount},
+          ${validRows.length},
+          ${invalidRows.length},
           ${sheetName},
           ${params.importedBy ?? null},
           NOW()
@@ -406,6 +409,45 @@ export class LogbookService {
       `);
 
       for (const row of parsedRows) {
+        const sourceId = randomUUID();
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO logbook_import_sources (
+            id, batch_id, sheet_name, row_number, raw_date_value, raw_time_value, raw_payload
+          ) VALUES (
+            ${sourceId},
+            ${batchId},
+            ${sheetName},
+            ${row.sourceRowNumber},
+            ${row.rawDateValue ?? null},
+            ${row.rawTimeValue ?? null},
+            ${row.rawPayload}
+          )
+        `);
+
+        if (!row.isValid) {
+          for (const err of row.errors) {
+            await tx.$executeRaw(Prisma.sql`
+              INSERT INTO logbook_import_errors (
+                id, batch_id, sheet_name, row_number, field_name, error_code, error_message, raw_payload
+              ) VALUES (
+                ${randomUUID()},
+                ${batchId},
+                ${sheetName},
+                ${row.sourceRowNumber},
+                ${err.fieldName},
+                ${err.errorCode},
+                ${err.errorMessage},
+                ${row.rawPayload}
+              )
+            `);
+          }
+        }
+      }
+
+      for (const row of validRows) {
+        if (!row.data) continue;
+        const recordId = randomUUID();
+
         await tx.$executeRaw(Prisma.sql`
           INSERT INTO teknik_logbook_entries (
             id,
@@ -418,18 +460,40 @@ export class LogbookService {
             import_batch_id,
             source_type
           ) VALUES (
-            ${randomUUID()},
-            ${row.entryNo},
-            CAST(${formatDateForApi(row.entryDate)} AS DATE),
-            ${row.entryTime},
-            ${row.equipment},
-            ${row.frequencySection},
-            ${row.incident},
+            ${recordId},
+            ${row.data.entryNo},
+            CAST(${formatDateForApi(row.data.entryDate)} AS DATE),
+            ${row.data.entryTime},
+            ${row.data.equipment},
+            ${row.data.frequencySection},
+            ${row.data.incident},
             ${batchId},
             'import_teknik'
           )
         `);
+
+        // Generate record hash
+        // Simple hash of record contents
+        const hashPayload = [recordId, row.data.entryDate.toISOString(), row.data.entryTime, row.data.incident].join('|');
+        const hashValue = createHash('sha256').update(hashPayload).digest('hex');
+
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO logbook_integrity_records (
+            id, batch_id, record_type, record_ref, hash_type, hash_value
+          ) VALUES (
+            ${randomUUID()},
+            ${batchId},
+            'record',
+            ${recordId},
+            'sha256',
+            ${hashValue}
+          )
+        `);
       }
+
+      // We can also create a daily batch hash if we had grouped them by day, 
+      // but for MVP, skipping complex daily batching here.
+
     });
 
     return {
@@ -438,18 +502,18 @@ export class LogbookService {
       sheetName,
       sourceFileName: params.fileName,
       sourcePeriod: params.sourcePeriod ?? null,
-      totalRows,
-      validRows: parsedRows.length,
-      invalidRows: Math.max(invalidRows, 0),
-      insertedRows: parsedRows.length,
-      preview: parsedRows.slice(0, 5).map((row) => ({
-        no: row.entryNo,
-        date: formatDateForApi(row.entryDate),
-        time: row.entryTime,
-        equipment: row.equipment,
-        frequencySection: row.frequencySection,
-        incident: row.incident,
-        sourceRowNumber: row.sourceRowNumber,
+      totalRows: totalRowsCount,
+      validRows: validRows.length,
+      invalidRows: invalidRows.length,
+      insertedRows: validRows.length,
+      preview: validRows.slice(0, 5).map((r) => ({
+        no: r.data!.entryNo,
+        date: formatDateForApi(r.data!.entryDate),
+        time: r.data!.entryTime,
+        equipment: r.data!.equipment,
+        frequencySection: r.data!.frequencySection,
+        incident: r.data!.incident,
+        sourceRowNumber: r.data!.sourceRowNumber,
       })),
     };
   }
@@ -467,17 +531,19 @@ export class LogbookService {
 
     const parsedRows = parseAppRows(rows, date1904);
     if (parsedRows.length === 0) {
-      throw new BadRequestException('Tidak ada baris Logbook APP yang valid untuk diimpor.');
+      throw new BadRequestException('Tidak ada baris Logbook APP yang valid untuk dibaca.');
     }
 
     const batchId = randomUUID();
-    const totalRows = Math.max(rows.length - APP_HEADER_ROW_INDEX, 0);
-    const invalidRows = totalRows - parsedRows.length;
+    const validRows = parsedRows.filter((r) => r.isValid && r.data);
+    const invalidRows = parsedRows.filter((r) => !r.isValid);
+
+    const totalRowsCount = parsedRows.length;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw(Prisma.sql`
         INSERT INTO logbook_import_batches (
-          id, category, source_period, source_file_name, status,
+          id, source_category, source_period, source_file_name, status,
           total_rows, valid_rows, invalid_rows, sheet_name, imported_by, completed_at
         ) VALUES (
           ${batchId},
@@ -485,9 +551,9 @@ export class LogbookService {
           ${params.sourcePeriod ?? null},
           ${params.fileName},
           'completed',
-          ${totalRows},
-          ${parsedRows.length},
-          ${Math.max(invalidRows, 0)},
+          ${totalRowsCount},
+          ${validRows.length},
+          ${invalidRows.length},
           ${sheetName},
           ${params.importedBy ?? null},
           NOW()
@@ -495,6 +561,45 @@ export class LogbookService {
       `);
 
       for (const row of parsedRows) {
+        const sourceId = randomUUID();
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO logbook_import_sources (
+            id, batch_id, sheet_name, row_number, raw_date_value, raw_time_value, raw_payload
+          ) VALUES (
+            ${sourceId},
+            ${batchId},
+            ${sheetName},
+            ${row.sourceRowNumber},
+            ${row.rawDateValue ?? null},
+            ${row.rawTimeValue ?? null},
+            ${row.rawPayload}
+          )
+        `);
+
+        if (!row.isValid) {
+          for (const err of row.errors) {
+            await tx.$executeRaw(Prisma.sql`
+              INSERT INTO logbook_import_errors (
+                id, batch_id, sheet_name, row_number, field_name, error_code, error_message, raw_payload
+              ) VALUES (
+                ${randomUUID()},
+                ${batchId},
+                ${sheetName},
+                ${row.sourceRowNumber},
+                ${err.fieldName},
+                ${err.errorCode},
+                ${err.errorMessage},
+                ${row.rawPayload}
+              )
+            `);
+          }
+        }
+      }
+
+      for (const row of validRows) {
+        if (!row.data) continue;
+        const recordId = randomUUID();
+
         await tx.$executeRaw(Prisma.sql`
           INSERT INTO app_logbook_entries (
             id,
@@ -505,17 +610,35 @@ export class LogbookService {
             facility,
             call_sign,
             description,
+            import_batch_id,
             source_type
           ) VALUES (
-            ${randomUUID()},
-            ${row.entryNo},
-            CAST(${formatDateForApi(row.entryDate)} AS DATE),
-            ${row.entryTime},
-            ${row.operationType},
-            ${row.facility},
-            ${row.callSign},
-            ${row.description},
+            ${recordId},
+            ${row.data.entryNo},
+            CAST(${formatDateForApi(row.data.entryDate)} AS DATE),
+            ${row.data.entryTime},
+            ${row.data.operationType},
+            ${row.data.facility},
+            ${row.data.callSign},
+            ${row.data.description},
+            ${batchId},
             'import_app'
+          )
+        `);
+
+        const hashPayload = [recordId, row.data.entryDate.toISOString(), row.data.entryTime, row.data.description].join('|');
+        const hashValue = createHash('sha256').update(hashPayload).digest('hex');
+
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO logbook_integrity_records (
+            id, batch_id, record_type, record_ref, hash_type, hash_value
+          ) VALUES (
+            ${randomUUID()},
+            ${batchId},
+            'record',
+            ${recordId},
+            'sha256',
+            ${hashValue}
           )
         `);
       }
@@ -527,19 +650,19 @@ export class LogbookService {
       sheetName,
       sourceFileName: params.fileName,
       sourcePeriod: params.sourcePeriod ?? null,
-      totalRows,
-      validRows: parsedRows.length,
-      invalidRows: Math.max(invalidRows, 0),
-      insertedRows: parsedRows.length,
-      preview: parsedRows.slice(0, 5).map((row) => ({
-        no: row.entryNo,
-        date: formatDateForApi(row.entryDate),
-        time: row.entryTime,
-        operationType: row.operationType,
-        facility: row.facility,
-        callSign: row.callSign,
-        description: row.description,
-        sourceRowNumber: row.sourceRowNumber,
+      totalRows: totalRowsCount,
+      validRows: validRows.length,
+      invalidRows: invalidRows.length,
+      insertedRows: validRows.length,
+      preview: validRows.slice(0, 5).map((r) => ({
+        no: r.data!.entryNo,
+        date: formatDateForApi(r.data!.entryDate),
+        time: r.data!.entryTime,
+        operationType: r.data!.operationType,
+        facility: r.data!.facility,
+        callSign: r.data!.callSign,
+        description: r.data!.description,
+        sourceRowNumber: r.data!.sourceRowNumber,
       })),
     };
   }
@@ -557,17 +680,19 @@ export class LogbookService {
 
     const parsedRows = parseTowerRows(rows, date1904);
     if (parsedRows.length === 0) {
-      throw new BadRequestException('Tidak ada baris Logbook TWR yang valid untuk diimpor.');
+      throw new BadRequestException('Tidak ada baris Logbook TWR yang valid untuk dibaca.');
     }
 
     const batchId = randomUUID();
-    const totalRows = Math.max(rows.length - TOWER_HEADER_ROW_INDEX, 0);
-    const invalidRows = totalRows - parsedRows.length;
+    const validRows = parsedRows.filter((r) => r.isValid && r.data);
+    const invalidRows = parsedRows.filter((r) => !r.isValid);
+
+    const totalRowsCount = parsedRows.length;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw(Prisma.sql`
         INSERT INTO logbook_import_batches (
-          id, category, source_period, source_file_name, status,
+          id, source_category, source_period, source_file_name, status,
           total_rows, valid_rows, invalid_rows, sheet_name, imported_by, completed_at
         ) VALUES (
           ${batchId},
@@ -575,9 +700,9 @@ export class LogbookService {
           ${params.sourcePeriod ?? null},
           ${params.fileName},
           'completed',
-          ${totalRows},
-          ${parsedRows.length},
-          ${Math.max(invalidRows, 0)},
+          ${totalRowsCount},
+          ${validRows.length},
+          ${invalidRows.length},
           ${sheetName},
           ${params.importedBy ?? null},
           NOW()
@@ -585,6 +710,45 @@ export class LogbookService {
       `);
 
       for (const row of parsedRows) {
+        const sourceId = randomUUID();
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO logbook_import_sources (
+            id, batch_id, sheet_name, row_number, raw_date_value, raw_time_value, raw_payload
+          ) VALUES (
+            ${sourceId},
+            ${batchId},
+            ${sheetName},
+            ${row.sourceRowNumber},
+            ${row.rawDateValue ?? null},
+            ${row.rawTimeValue ?? null},
+            ${row.rawPayload}
+          )
+        `);
+
+        if (!row.isValid) {
+          for (const err of row.errors) {
+            await tx.$executeRaw(Prisma.sql`
+              INSERT INTO logbook_import_errors (
+                id, batch_id, sheet_name, row_number, field_name, error_code, error_message, raw_payload
+              ) VALUES (
+                ${randomUUID()},
+                ${batchId},
+                ${sheetName},
+                ${row.sourceRowNumber},
+                ${err.fieldName},
+                ${err.errorCode},
+                ${err.errorMessage},
+                ${row.rawPayload}
+              )
+            `);
+          }
+        }
+      }
+
+      for (const row of validRows) {
+        if (!row.data) continue;
+        const recordId = randomUUID();
+
         await tx.$executeRaw(Prisma.sql`
           INSERT INTO tower_logbook_entries (
             id,
@@ -595,17 +759,35 @@ export class LogbookService {
             facility,
             call_sign,
             description,
+            import_batch_id,
             source_type
           ) VALUES (
-            ${randomUUID()},
-            ${row.entryNo},
-            CAST(${formatDateForApi(row.entryDate)} AS DATE),
-            ${row.entryTime},
-            ${row.operationType},
-            ${row.facility},
-            ${row.callSign},
-            ${row.description},
+            ${recordId},
+            ${row.data.entryNo},
+            CAST(${formatDateForApi(row.data.entryDate)} AS DATE),
+            ${row.data.entryTime},
+            ${row.data.operationType},
+            ${row.data.facility},
+            ${row.data.callSign},
+            ${row.data.description},
+            ${batchId},
             'import_tower'
+          )
+        `);
+
+        const hashPayload = [recordId, row.data.entryDate.toISOString(), row.data.entryTime, row.data.description].join('|');
+        const hashValue = createHash('sha256').update(hashPayload).digest('hex');
+
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO logbook_integrity_records (
+            id, batch_id, record_type, record_ref, hash_type, hash_value
+          ) VALUES (
+            ${randomUUID()},
+            ${batchId},
+            'record',
+            ${recordId},
+            'sha256',
+            ${hashValue}
           )
         `);
       }
@@ -617,19 +799,19 @@ export class LogbookService {
       sheetName,
       sourceFileName: params.fileName,
       sourcePeriod: params.sourcePeriod ?? null,
-      totalRows,
-      validRows: parsedRows.length,
-      invalidRows: Math.max(invalidRows, 0),
-      insertedRows: parsedRows.length,
-      preview: parsedRows.slice(0, 5).map((row) => ({
-        no: row.entryNo,
-        date: formatDateForApi(row.entryDate),
-        time: row.entryTime,
-        operationType: row.operationType,
-        facility: row.facility,
-        callSign: row.callSign,
-        description: row.description,
-        sourceRowNumber: row.sourceRowNumber,
+      totalRows: totalRowsCount,
+      validRows: validRows.length,
+      invalidRows: invalidRows.length,
+      insertedRows: validRows.length,
+      preview: validRows.slice(0, 5).map((r) => ({
+        no: r.data!.entryNo,
+        date: formatDateForApi(r.data!.entryDate),
+        time: r.data!.entryTime,
+        operationType: r.data!.operationType,
+        facility: r.data!.facility,
+        callSign: r.data!.callSign,
+        description: r.data!.description,
+        sourceRowNumber: r.data!.sourceRowNumber,
       })),
     };
   }

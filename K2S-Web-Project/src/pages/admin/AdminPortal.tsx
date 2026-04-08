@@ -13,6 +13,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import { clearAuthToken, clearAuthUser } from '@/lib/api';
+import { getAuthPortalUrl } from '@/lib/authPortal';
 import { getStoredTheme, persistTheme } from '@/lib/theme';
 import { buildSsoLogoutUrl, isSsoEnabled } from '@/lib/sso';
 import { Button } from '@/components/ui/button';
@@ -60,7 +61,7 @@ const portalMenus: PortalMenu[] = [
     key: 'dashboard',
     title: 'Dashboard',
     description: 'Ringkasan operasional admin untuk memantau review, antrian, dan prioritas tindak lanjut.',
-    href: `${getEnvUrl('VITE_AUTH_PORTAL_URL', 'https://auth.ryvidia.my.id')}/portal-admin`,
+    href: getAuthPortalUrl('/portal-admin'),
     icon: LayoutDashboard,
     eyebrow: 'Kontrol Utama',
     meta: 'Insight admin dan prioritas harian',

@@ -1244,7 +1244,7 @@ export function Sidebar({
                 <ShieldCheck className={navIconClass} />
                 <span className={labelClass('flex-1')}>Dashboard Admin</span>
               </Link>
-              <a href={getAuthPortalUrl('/portal-admin/users')} className={navClass(isAdminUsersActive)}>
+              <a href={getAuthPortalUrl('/portal-admin/users', { includeToken: true })} className={navClass(isAdminUsersActive)}>
                 <Users className={navIconClass} />
                 <span className={labelClass('flex-1')}>Kelola User</span>
               </a>

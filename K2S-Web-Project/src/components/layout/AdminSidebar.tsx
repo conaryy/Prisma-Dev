@@ -59,7 +59,7 @@ export function AdminSidebar() {
             <LayoutDashboard className="h-4 w-4" />
             <span className="flex-1">Dashboard</span>
           </Link>
-          <a href={getAuthPortalUrl('/portal-admin/users')} className={navClass(navItem('/admin/users'))}>
+          <a href={getAuthPortalUrl('/portal-admin/users', { includeToken: true })} className={navClass(navItem('/admin/users'))}>
             <Users className="h-4 w-4" />
             <span className="flex-1">Kelola User</span>
           </a>

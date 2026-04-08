@@ -84,30 +84,16 @@ class ExternalDnpCapController extends ApiController
             'username' => ['required', 'string'],
             'password' => ['required', 'string'],
         ]);
+        $jobPayload = array_merge(['scope' => null], $validated);
 
         $userId = (string) optional($request->user())->id;
         if ($userId === '') {
             return response()->json(['error' => 'User tidak valid.'], 401);
         }
 
-        $runningJob = ExternalDnpSyncJob::query()
-            ->where('user_id', $userId)
-            ->where('scope', $validated['scope'] ?? null)
-            ->whereIn('status', ['queued', 'running'])
-            ->latest('created_at')
-            ->first();
-
-        if ($runningJob) {
-            return $this->respondData([
-                'jobId' => $runningJob->id,
-                'status' => $runningJob->status,
-                'message' => 'Sinkronisasi sebelumnya masih berjalan.',
-            ], 202);
-        }
-
         $syncJob = ExternalDnpSyncJob::query()->create([
             'user_id' => $userId,
-            'scope' => $validated['scope'] ?? null,
+            'scope' => $jobPayload['scope'],
             'status' => 'queued',
             'message' => 'Sinkronisasi dimasukkan ke antrean.',
         ]);
@@ -115,7 +101,7 @@ class ExternalDnpCapController extends ApiController
         RunExternalDnpSync::dispatch(
             syncJobId: (string) $syncJob->id,
             userId: $userId,
-            payload: $validated
+            payload: $jobPayload
         );
 
         return $this->respondData([
@@ -218,7 +204,8 @@ class ExternalDnpCapController extends ApiController
             ]);
         }
 
-        $scopes = $validated['scope'] ? [$validated['scope']] : ['audit', 'inspeksi', 'surveillance'];
+        $selectedScope = $validated['scope'] ?? null;
+        $scopes = $selectedScope ? [$selectedScope] : ['audit', 'inspeksi', 'surveillance'];
         $summary = [
             'sessions' => 0,
             'areas' => 0,

@@ -65,7 +65,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     await this.$executeRaw(Prisma.sql`
       CREATE TABLE IF NOT EXISTS logbook_import_batches (
         id TEXT PRIMARY KEY,
-        category TEXT NOT NULL,
+        source_category TEXT NOT NULL,
         source_period TEXT NULL,
         source_file_name TEXT NOT NULL,
         status TEXT NOT NULL,
@@ -75,7 +75,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         sheet_name TEXT NULL,
         notes TEXT NULL,
         imported_by TEXT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         completed_at TIMESTAMPTZ NULL
       );
     `);
@@ -106,7 +106,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     `);
     await this.$executeRaw(Prisma.sql`
       CREATE INDEX IF NOT EXISTS idx_logbook_import_batches_category_created
-      ON logbook_import_batches (category, created_at DESC);
+      ON logbook_import_batches (source_category, started_at DESC);
     `);
   }
 
@@ -203,7 +203,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       'tower_logbook_entries',
       'app_logbook_entries',
       'teknik_logbook_entries',
-      'logbook_import_batches',
     ] as const;
 
     for (const tableName of tableNames) {
@@ -212,6 +211,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP;
       `);
     }
+
+    await this.$executeRawUnsafe(`
+      ALTER TABLE logbook_import_batches
+      ALTER COLUMN started_at SET DEFAULT CURRENT_TIMESTAMP;
+    `);
 
     await this.$executeRawUnsafe(`
       ALTER TABLE tower_logbook_entries

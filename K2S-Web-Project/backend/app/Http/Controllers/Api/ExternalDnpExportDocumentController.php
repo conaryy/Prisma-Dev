@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
+use PhpOffice\PhpWord\Settings;
 use PhpOffice\PhpWord\SimpleType\Jc;
 use PhpOffice\PhpWord\SimpleType\JcTable;
 use PhpOffice\PhpWord\SimpleType\VerticalJc;
@@ -172,11 +173,11 @@ class ExternalDnpExportDocumentController extends ApiController
                     'members' => array_values(array_filter($session->team_members ?? [], fn ($value) => is_string($value) && trim($value) !== '')),
                     'audity' => array_values(array_filter($session->team_audity ?? [], fn ($value) => is_string($value) && trim($value) !== '')),
                     'pqNumber' => (string) ($answer->question_code ?? '-'),
-                    'questionText' => trim((string) ($question?->text ?? '')),
                     'reference' => trim((string) ($question?->reference ?? '')),
                     'temuan' => $temuan,
                     'recommendations' => trim((string) ($review?->recommendations ?? '')),
                     'actionPlan' => trim((string) ($cap->action_plan ?? '')),
+                    'actionOffice' => trim((string) ($latestFulfillment->action_office ?? '')),
                     'progress' => (int) ($latestFulfillment->progress ?? 0),
                 ];
             })
@@ -301,17 +302,17 @@ class ExternalDnpExportDocumentController extends ApiController
                 ->values()
                 ->implode(', ');
 
-            $section->addText($instansiName !== '' ? $instansiName : '-', $sectionTitleStyle, $sectionTitleParagraph);
+            $section->addText($this->normalizeExportText($instansiName), $sectionTitleStyle, $sectionTitleParagraph);
             $section->addText(Str::title($scope), $sectionScopeStyle, $sectionScopeParagraph);
-            $section->addText('Schedule : '.($scheduleInfo !== '' ? $scheduleInfo : '-'), null, $scheduleParagraph);
+            $section->addText('Schedule : '.$this->normalizeExportText($scheduleInfo), null, $scheduleParagraph);
 
             $table = $section->addTable($tableStyle);
             $table->addRow(500);
             $this->addCellText($table, 800, 'No', $headerCellStyle, $headerTextStyle, $headerParagraphStyle);
             $this->addCellText($table, 1200, 'PQ Number', $headerCellStyle, $headerTextStyle, $headerParagraphStyle);
-            $this->addCellText($table, 3400, 'Protocol Question', $headerCellStyle, $headerTextStyle, $headerParagraphStyle);
-            $this->addCellText($table, 3800, 'Finding', $headerCellStyle, $headerTextStyle, $headerParagraphStyle);
-            $this->addCellText($table, 3800, 'Recommendation', $headerCellStyle, $headerTextStyle, $headerParagraphStyle);
+            $this->addCellText($table, 4200, 'Finding', $headerCellStyle, $headerTextStyle, $headerParagraphStyle);
+            $this->addCellText($table, 4200, 'Recommendation', $headerCellStyle, $headerTextStyle, $headerParagraphStyle);
+            $this->addCellText($table, 2700, 'Action Office', $headerCellStyle, $headerTextStyle, $headerParagraphStyle);
             $this->addCellText($table, 1100, 'Progress', $headerCellStyle, $headerTextStyle, $centerParagraphStyle);
 
             foreach ($group
@@ -321,15 +322,15 @@ class ExternalDnpExportDocumentController extends ApiController
 
                 $table->addRow(350);
                 $areaCell = $table->addCell(14100, $areaRowStyle);
-                $areaCell->addText('Area : '.($areaName !== '' ? $areaName : '-'), ['bold' => true, 'size' => 11], $bodyParagraphStyle);
+                $areaCell->addText('Area : '.$this->normalizeExportText($areaName), ['bold' => true, 'size' => 11], $bodyParagraphStyle);
 
                 foreach ($areaItems->values() as $index => $item) {
                     $table->addRow();
                     $this->addCellText($table, 800, (string) ($index + 1), ['valign' => VerticalJc::CENTER], $bodyTextStyle, $centerParagraphStyle);
                     $this->addCellMultilineText($table, 1200, (string) ($item['pqNumber'] ?? '-'), ['valign' => VerticalJc::CENTER], $bodyTextStyle, $centerParagraphStyle);
-                    $this->addCellMultilineText($table, 3400, $this->normalizeExportText((string) ($item['questionText'] ?? '-')), ['valign' => VerticalJc::TOP], $bodyTextStyle, $bodyParagraphStyle);
-                    $this->addCellMultilineText($table, 3800, $this->normalizeExportText((string) ($item['temuan'] ?? '-')), ['valign' => VerticalJc::TOP], $bodyTextStyle, $bodyParagraphStyle);
-                    $this->addCellMultilineText($table, 3800, $this->normalizeExportText((string) ($item['recommendations'] ?? '-')), ['valign' => VerticalJc::TOP], $bodyTextStyle, $bodyParagraphStyle);
+                    $this->addCellMultilineText($table, 4200, $this->normalizeExportText((string) ($item['temuan'] ?? '-')), ['valign' => VerticalJc::TOP], $bodyTextStyle, $bodyParagraphStyle);
+                    $this->addCellMultilineText($table, 4200, $this->normalizeExportText((string) ($item['recommendations'] ?? '-')), ['valign' => VerticalJc::TOP], $bodyTextStyle, $bodyParagraphStyle);
+                    $this->addCellMultilineText($table, 2700, $this->normalizeExportText((string) ($item['actionOffice'] ?? '-')), ['valign' => VerticalJc::TOP], $bodyTextStyle, $bodyParagraphStyle);
                     $this->addCellText($table, 1100, ((string) ($item['progress'] ?? 0)).'%', ['valign' => VerticalJc::CENTER], $bodyTextStyle, $centerParagraphStyle);
                 }
             }
@@ -339,18 +340,25 @@ class ExternalDnpExportDocumentController extends ApiController
             }
         }
 
-        IOFactory::createWriter($phpWord, 'Word2007')->save($absolutePath);
+        $previousOutputEscaping = Settings::isOutputEscapingEnabled();
+        Settings::setOutputEscapingEnabled(true);
+
+        try {
+            IOFactory::createWriter($phpWord, 'Word2007')->save($absolutePath);
+        } finally {
+            Settings::setOutputEscapingEnabled($previousOutputEscaping);
+        }
     }
 
     private function addCellText($table, int $width, string $text, array $cellStyle, array $fontStyle, array $paragraphStyle): void
     {
-        $table->addCell($width, $cellStyle)->addText($text !== '' ? $text : '-', $fontStyle, $paragraphStyle);
+        $table->addCell($width, $cellStyle)->addText($this->normalizeExportText($text), $fontStyle, $paragraphStyle);
     }
 
     private function addCellMultilineText($table, int $width, string $text, array $cellStyle, array $fontStyle, array $paragraphStyle): void
     {
         $cell = $table->addCell($width, $cellStyle);
-        $lines = preg_split("/\r\n|\n|\r/", $text) ?: ['-'];
+        $lines = preg_split("/\r\n|\n|\r/", $this->normalizeExportText($text)) ?: ['-'];
 
         foreach ($lines as $line) {
             $cell->addText($line !== '' ? $line : ' ', $fontStyle, $paragraphStyle);
@@ -359,10 +367,18 @@ class ExternalDnpExportDocumentController extends ApiController
 
     private function normalizeExportText(string $text): string
     {
-        $normalized = preg_replace("/\r\n|\r/u", "\n", trim($text)) ?? '';
+        $normalized = $this->removeInvalidXmlCharacters($text);
+        $normalized = preg_replace("/\r\n|\r/u", "\n", trim($normalized)) ?? '';
         $normalized = preg_replace("/[ \t]+/u", ' ', $normalized) ?? '';
 
         return $normalized !== '' ? $normalized : '-';
+    }
+
+    private function removeInvalidXmlCharacters(string $text): string
+    {
+        $withoutControlCharacters = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $text) ?? '';
+
+        return preg_replace('/[^\x09\x0A\x0D\x20-\x{D7FF}\x{E000}-\x{FFFD}]/u', '', $withoutControlCharacters) ?? '';
     }
 
     private function formatSchedule(mixed $startDate, mixed $endDate): string

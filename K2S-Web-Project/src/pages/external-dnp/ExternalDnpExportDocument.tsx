@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Download, FileText, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -13,8 +14,11 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { downloadApiFile } from '@/lib/download';
 import {
+  fetchExternalDnpSyncJobStatus,
   fetchExternalDnpExportDocumentItems,
   generateExternalDnpExportDocument,
+  initExternalDnpSync,
+  startExternalDnpSyncJob,
   type ExternalDnpExportDocumentItem,
 } from '@/lib/externalDnp';
 import type { SelfAssessmentScope } from '@/types/selfAssessment';
@@ -27,19 +31,40 @@ const SCOPE_OPTIONS: Array<{ value: SelfAssessmentScope; label: string }> = [
 
 const selectClassName =
   'h-11 w-full rounded-xl border border-input bg-white/80 px-4 text-sm text-slate-700 shadow-sm transition-colors focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:bg-slate-950 dark:text-slate-100 sm:w-56';
+const EXPORT_DOCUMENT_SYNC_QUEUE_KEY = 'k2s.externalDnp.exportDocument.syncQueue';
+
+type SyncQueueEntry = {
+  jobId: string;
+  username: string;
+};
+
+function extractScheduleYear(schedule: string) {
+  return schedule.match(/\b(20\d{2}|19\d{2})\b/)?.[1] ?? '';
+}
 
 export function ExternalDnpExportDocument() {
   const [scope, setScope] = useState<SelfAssessmentScope>('audit');
   const [items, setItems] = useState<ExternalDnpExportDocumentItem[]>([]);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [selectedInstansi, setSelectedInstansi] = useState('all');
+  const [selectedYear, setSelectedYear] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSyncSubmitting, setIsSyncSubmitting] = useState(false);
+  const [captchaSessionId, setCaptchaSessionId] = useState('');
+  const [captchaUrl, setCaptchaUrl] = useState('');
+  const [captchaValue, setCaptchaValue] = useState('');
+  const [syncUsername, setSyncUsername] = useState('');
+  const [syncPassword, setSyncPassword] = useState('');
+  const [syncQueue, setSyncQueue] = useState<SyncQueueEntry[]>([]);
   const [downloadUrl, setDownloadUrl] = useState('');
   const [downloadFilename, setDownloadFilename] = useState('external-dnp-export.doc');
 
   const loadItems = async (nextScope: SelfAssessmentScope) => {
     setIsLoading(true);
     setSelectedGroupIds([]);
+    setSelectedInstansi('all');
+    setSelectedYear('all');
     try {
       const response = await fetchExternalDnpExportDocumentItems(nextScope);
       setItems(response);
@@ -60,6 +85,148 @@ export function ExternalDnpExportDocument() {
     void loadItems(scope);
   }, [scope]);
 
+  useEffect(() => {
+    setSelectedGroupIds([]);
+  }, [selectedInstansi, selectedYear]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(EXPORT_DOCUMENT_SYNC_QUEUE_KEY) ?? '[]';
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setSyncQueue(
+          parsed.filter(
+            (item): item is SyncQueueEntry =>
+              Boolean(item)
+              && typeof item === 'object'
+              && typeof item.jobId === 'string'
+              && item.jobId.trim() !== ''
+              && typeof item.username === 'string'
+          )
+        );
+      }
+    } catch {
+      window.localStorage.removeItem(EXPORT_DOCUMENT_SYNC_QUEUE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (syncQueue.length === 0) {
+      return;
+    }
+
+    let stopped = false;
+
+    const poll = async () => {
+      try {
+        const results = await Promise.all(
+          syncQueue.map(async (entry) => ({
+            entry,
+            status: await fetchExternalDnpSyncJobStatus(entry.jobId),
+          }))
+        );
+
+        if (stopped) {
+          return;
+        }
+
+        const finishedJobIds = new Set<string>();
+        let shouldReload = false;
+
+        results.forEach(({ entry, status }) => {
+          if (status.status === 'succeeded') {
+            finishedJobIds.add(entry.jobId);
+            shouldReload = true;
+            toast({
+              title: 'Update selesai',
+              description: status.message ?? `Sinkronisasi semua scope untuk ${entry.username} berhasil diperbarui.`,
+            });
+            return;
+          }
+
+          if (status.status === 'failed') {
+            finishedJobIds.add(entry.jobId);
+            toast({
+              title: 'Gagal memperbarui data',
+              description: status.error ?? status.message ?? `Terjadi kesalahan saat memproses ${entry.username}.`,
+              variant: 'destructive',
+            });
+          }
+        });
+
+        if (finishedJobIds.size > 0) {
+          const remainingQueue = syncQueue.filter(({ jobId }) => !finishedJobIds.has(jobId));
+          setSyncQueue(remainingQueue);
+          if (typeof window !== 'undefined') {
+            if (remainingQueue.length > 0) {
+              window.localStorage.setItem(EXPORT_DOCUMENT_SYNC_QUEUE_KEY, JSON.stringify(remainingQueue));
+            } else {
+              window.localStorage.removeItem(EXPORT_DOCUMENT_SYNC_QUEUE_KEY);
+            }
+          }
+          if (shouldReload) {
+            await loadItems(scope);
+          }
+        }
+
+        window.setTimeout(() => {
+          if (!stopped) {
+            void poll();
+          }
+        }, 2500);
+      } catch {
+        if (stopped) {
+          return;
+        }
+
+        window.setTimeout(() => {
+          if (!stopped) {
+            void poll();
+          }
+        }, 3000);
+      }
+    };
+
+    void poll();
+
+    return () => {
+      stopped = true;
+    };
+  }, [scope, syncQueue]);
+
+  const instansiOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(items.map((item) => item.instansiName || '-').filter((value) => value.trim() !== ''))
+      ).sort((left, right) => left.localeCompare(right)),
+    [items]
+  );
+
+  const yearOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(items.map((item) => extractScheduleYear(item.schedule || '')).filter(Boolean))
+      ).sort((left, right) => right.localeCompare(left)),
+    [items]
+  );
+
+  const filteredItems = useMemo(
+    () =>
+      items.filter((item) => {
+        const instansiMatches =
+          selectedInstansi === 'all' || (item.instansiName || '-') === selectedInstansi;
+        const yearMatches =
+          selectedYear === 'all' || extractScheduleYear(item.schedule || '') === selectedYear;
+
+        return instansiMatches && yearMatches;
+      }),
+    [items, selectedInstansi, selectedYear]
+  );
+
   const groupedItems = useMemo(() => {
     const groups = new Map<
       string,
@@ -75,7 +242,7 @@ export function ExternalDnpExportDocument() {
       }
     >();
 
-    items.forEach((item) => {
+    filteredItems.forEach((item) => {
       const key = item.sessionAreaId || [item.instansiName, item.area, item.schedule, item.leader].join('::');
       const existing = groups.get(key);
       if (existing) {
@@ -96,7 +263,7 @@ export function ExternalDnpExportDocument() {
     });
 
     return Array.from(groups.values());
-  }, [items]);
+  }, [filteredItems]);
 
   const allSelected = useMemo(
     () => groupedItems.length > 0 && selectedGroupIds.length === groupedItems.length,
@@ -170,6 +337,76 @@ export function ExternalDnpExportDocument() {
     }
   };
 
+  const handleSyncInit = async () => {
+    setIsSyncSubmitting(true);
+    try {
+      const init = await initExternalDnpSync();
+      setCaptchaSessionId(init.sessionId);
+      setCaptchaUrl(init.captchaUrl);
+      setCaptchaValue('');
+      setSyncUsername('');
+      setSyncPassword('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Gagal memulai update data.';
+      toast({
+        title: 'Gagal memulai update',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSyncSubmitting(false);
+    }
+  };
+
+  const handleSyncRun = async () => {
+    if (!captchaSessionId || !captchaValue || !syncUsername || !syncPassword) {
+      return;
+    }
+
+    setIsSyncSubmitting(true);
+    try {
+      const queuedUsername = syncUsername.trim();
+      const started = await startExternalDnpSyncJob({
+        sessionId: captchaSessionId,
+        captcha: captchaValue,
+        username: syncUsername,
+        password: syncPassword,
+      });
+
+      const nextQueue = [
+        ...syncQueue.filter(({ jobId }) => jobId !== started.jobId),
+        {
+          jobId: started.jobId,
+          username: queuedUsername || 'Tanpa username',
+        },
+      ];
+      setSyncQueue(nextQueue);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(EXPORT_DOCUMENT_SYNC_QUEUE_KEY, JSON.stringify(nextQueue));
+      }
+
+      toast({
+        title: 'Update dimulai',
+        description: started.message ?? `Sinkronisasi semua scope untuk ${queuedUsername || 'akun DNP'} masuk ke antrean background.`,
+      });
+
+      setCaptchaSessionId('');
+      setCaptchaUrl('');
+      setCaptchaValue('');
+      setSyncUsername('');
+      setSyncPassword('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Gagal memulai update data.';
+      toast({
+        title: 'Gagal memulai update',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSyncSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
@@ -208,14 +445,117 @@ export function ExternalDnpExportDocument() {
                   </>
                 )}
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-slate-200 px-4 text-slate-600 shadow-sm hover:border-blue-200 hover:bg-blue-50"
+                onClick={() => void handleSyncInit()}
+                disabled={isSyncSubmitting}
+              >
+                {isSyncSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Memuat
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Update Data
+                  </>
+                )}
+              </Button>
               <span className="rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm">
                 {SCOPE_OPTIONS.find((option) => option.value === scope)?.label ?? scope}
               </span>
             </div>
+            {syncQueue.length > 0 && (
+              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {syncQueue.length} job update dalam antrean
+              </div>
+            )}
           </div>
         </header>
 
         <div className="space-y-5 px-6 py-6">
+          {captchaUrl && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="text-sm font-semibold text-slate-700">
+                  Masukkan Akun DNP dan Captcha untuk Update Data Semua Scope
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 rounded-xl border-slate-200 px-3 text-slate-600 shadow-sm hover:border-blue-200 hover:bg-blue-50"
+                  onClick={() => void handleSyncInit()}
+                  disabled={isSyncSubmitting}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Ganti Captcha
+                </Button>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-4">
+                <Input
+                  value={syncUsername}
+                  onChange={(event) => setSyncUsername(event.target.value)}
+                  className="h-11 w-48 rounded-xl bg-white"
+                  placeholder="Username DNP"
+                  autoComplete="username"
+                />
+                <Input
+                  type="password"
+                  value={syncPassword}
+                  onChange={(event) => setSyncPassword(event.target.value)}
+                  className="h-11 w-48 rounded-xl bg-white"
+                  placeholder="Password DNP"
+                  autoComplete="current-password"
+                />
+                <img
+                  src={captchaUrl}
+                  alt="Captcha"
+                  className="h-12 rounded-lg border border-slate-200"
+                />
+                <Input
+                  value={captchaValue}
+                  onChange={(event) => setCaptchaValue(event.target.value)}
+                  className="h-11 w-48 rounded-xl bg-white"
+                  placeholder="Isi captcha"
+                />
+                <Button
+                  type="button"
+                  className="h-11 rounded-xl bg-blue-500 px-5 text-white shadow-sm hover:bg-blue-600"
+                  onClick={() => void handleSyncRun()}
+                  disabled={isSyncSubmitting || !syncUsername || !syncPassword || !captchaValue}
+                >
+                  {isSyncSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Memproses
+                    </>
+                  ) : (
+                    'Update Sekarang'
+                  )}
+                </Button>
+              </div>
+              {syncQueue.length > 0 && (
+                <div className="mt-4 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300">
+                  <div className="mb-2 font-semibold text-slate-700 dark:text-slate-100">
+                    Antrean update yang sedang berjalan
+                  </div>
+                  <ul className="space-y-1">
+                    {syncQueue.map((entry, index) => (
+                      <li key={entry.jobId} className="flex items-center gap-2">
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-100 px-1.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-500/20 dark:text-blue-200">
+                          {index + 1}
+                        </span>
+                        <span className="font-medium">{entry.username || 'Tanpa username'}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-4">
             <select
               value={scope}
@@ -225,6 +565,32 @@ export function ExternalDnpExportDocument() {
               {SCOPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={selectedInstansi}
+              onChange={(event) => setSelectedInstansi(event.target.value)}
+              className={selectClassName}
+              disabled={isLoading || instansiOptions.length === 0}
+            >
+              <option value="all">Semua instansi</option>
+              {instansiOptions.map((instansi) => (
+                <option key={instansi} value={instansi}>
+                  {instansi}
+                </option>
+              ))}
+            </select>
+            <select
+              value={selectedYear}
+              onChange={(event) => setSelectedYear(event.target.value)}
+              className={selectClassName}
+              disabled={isLoading || yearOptions.length === 0}
+            >
+              <option value="all">Semua tahun</option>
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>
+                  {year}
                 </option>
               ))}
             </select>
@@ -248,7 +614,8 @@ export function ExternalDnpExportDocument() {
               Download Latest
             </Button>
             <div className="text-sm text-slate-500 dark:text-slate-400">
-              {selectedGroupIds.length} dari {groupedItems.length} data dipilih
+              {selectedGroupIds.length} dari {groupedItems.length} grup dipilih
+              <span className="ml-2 text-slate-400">({filteredItems.length} item)</span>
             </div>
           </div>
 
@@ -282,10 +649,10 @@ export function ExternalDnpExportDocument() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ) : items.length === 0 ? (
+                ) : filteredItems.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="py-10 text-center text-slate-500 dark:text-slate-300">
-                      Belum ada data pemenuhan CAP yang bisa dijadikan dokumen untuk scope ini.
+                      Belum ada data pemenuhan CAP yang cocok dengan filter ini.
                     </TableCell>
                   </TableRow>
                 ) : (

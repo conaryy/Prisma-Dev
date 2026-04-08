@@ -5,6 +5,22 @@ export type ImportLogbookParams = {
   importedBy?: string;
 };
 
+export type RowParseError = {
+  fieldName: string;
+  errorCode: string;
+  errorMessage: string;
+};
+
+export type ParsedRowResult<T> = {
+  sourceRowNumber: number;
+  rawPayload: string;
+  rawDateValue: string | null;
+  rawTimeValue: string | null;
+  isValid: boolean;
+  errors: RowParseError[];
+  data: T | null;
+};
+
 export type ParsedTeknikRow = {
   entryNo: number;
   entryDate: Date;

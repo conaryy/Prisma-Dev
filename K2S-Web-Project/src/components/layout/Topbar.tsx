@@ -25,7 +25,11 @@ import { NotificationCenter } from '@/components/notifications/NotificationCente
 import { getStoredTheme, persistTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { getAuthPortalUrl } from '@/lib/authPortal';
-import { canAccessExternalDnp, canManageAdminModule } from '@/lib/permissions';
+import {
+  canAccessAdminPortal,
+  canAccessExternalDnp,
+  canManageAdminModule,
+} from '@/lib/permissions';
 import { buildSsoLogoutUrl, isSsoEnabled } from '@/lib/sso';
 import burgerMenu from '@/assets/burger-menu.json';
 import { apiFetch, clearAuthToken, clearAuthUser, getAuthToken, getAuthUser } from '@/lib/api';
@@ -46,6 +50,16 @@ function normalizeBaseUrl(value: string) {
 function getLogbookPortalUrl() {
   const env = (import.meta as { env?: Record<string, string> }).env ?? {};
   return normalizeBaseUrl(env.VITE_LOGBOOK_BASE_URL || 'http://localhost:5175');
+}
+
+function getK3PortalUrl() {
+  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+  return normalizeBaseUrl(env.VITE_K3_BASE_URL || 'http://localhost:5176');
+}
+
+function getKeamananPortalUrl() {
+  const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+  return normalizeBaseUrl(env.VITE_KEAMANAN_BASE_URL || 'http://localhost:5177');
 }
 
 const MENU_LOTTIE_FALLBACK_END = Math.max(
@@ -146,6 +160,7 @@ export function Topbar({
     permissions?: Record<string, unknown>;
   }>();
   const canAccessAdminMenu = canManageAdminModule(authUser);
+  const canAccessCentralAdminPortal = canAccessAdminPortal(authUser);
   const canAccessExternalDnpMenu = canAccessExternalDnp(authUser);
   const { instansi } = useAppData();
   const profileName =
@@ -191,7 +206,7 @@ export function Topbar({
         {
           label: 'Admin - Kelola User',
           path: '/admin/users',
-          externalUrl: getAuthPortalUrl('/portal-admin/users'),
+          externalUrl: getAuthPortalUrl('/portal-admin/users', { includeToken: true }),
           adminOnly: true,
         },
         {
@@ -449,7 +464,12 @@ export function Topbar({
                       title="Dashboard"
                       onClick={() => {
                         setIsPortalOpen(false);
-                        window.location.assign(getAuthPortalUrl());
+                        window.location.assign(
+                          getAuthPortalUrl(
+                            canAccessCentralAdminPortal ? '/portal-admin' : '/portal-user',
+                            { includeToken: true }
+                          )
+                        );
                       }}
                     >
                       <LayoutDashboard className="h-5 w-5" />
@@ -463,8 +483,8 @@ export function Topbar({
                       aria-label="Keamanan"
                       title="Keamanan"
                       onClick={() => {
-                        navigate('/dashboard');
                         setIsPortalOpen(false);
+                        window.location.assign(getKeamananPortalUrl());
                       }}
                     >
                       <ShieldCheck className="h-5 w-5" />
@@ -478,8 +498,8 @@ export function Topbar({
                       aria-label="K3"
                       title="K3"
                       onClick={() => {
-                        navigate('/admin/self-assessment-reviews');
                         setIsPortalOpen(false);
+                        window.location.assign(getK3PortalUrl());
                       }}
                     >
                       <ClipboardCheck className="h-5 w-5" />

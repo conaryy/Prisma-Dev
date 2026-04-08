@@ -3,7 +3,7 @@ import { getAuthPortalUrl } from '@/lib/authPortal';
 
 export function UserManagement() {
   useEffect(() => {
-    window.location.replace(getAuthPortalUrl('/portal-admin/users'));
+    window.location.replace(getAuthPortalUrl('/portal-admin/users', { includeToken: true }));
   }, []);
 
   return (
