@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Fragment, useDeferredValue, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import Lottie from 'lottie-react';
 import successAnimation from '@/assets/Success.json';
 import {
@@ -90,36 +90,25 @@ type TestingSummaryCard = {
   subtitle: string;
 };
 type SupervisionSummaryCard = AuditSummaryCard | InspectionSummaryCard | TestingSummaryCard;
-type TimelineStatus = 'pending' | 'done' | 'upcoming';
-type TimelineMarker = {
+type SupervisionHeatmapLevel = 0 | 1 | 2 | 3 | 4;
+type SupervisionHeatmapMarker = {
   monthIndex: number;
   slotIndex: number;
-  status: TimelineStatus;
+  level: SupervisionHeatmapLevel;
 };
-type TimelineMonthStatus = {
-  month: string;
-  status: TimelineStatus;
-};
-type TimelineGridRow = {
-  mode: 'grid';
-  label: string;
-  detail: string;
-  statuses: TimelineStatus[];
-};
-type TimelineRow = TimelineGridRow;
-type TimelineSectionData = {
+type SupervisionHeatmapRow = {
   id: string;
-  title: string;
-  frequency: string;
-  months: string[];
-  rows: TimelineRow[];
+  label: string;
+  cells: SupervisionHeatmapLevel[];
+  isSpacer?: boolean;
 };
 
 const DASHBOARD_THEME_KEY = 'keamanan-dashboard-theme';
 const SUPERVISION_ACTIVE_YEAR = 'Tahun 2026';
-const YEAR_TIMELINE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const YEAR_TIMELINE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const TIMELINE_SLOTS_PER_MONTH = 4;
 const TIMELINE_TOTAL_COLUMNS = YEAR_TIMELINE_MONTHS.length * TIMELINE_SLOTS_PER_MONTH;
+const HEATMAP_LEGEND_LEVELS: SupervisionHeatmapLevel[] = [0, 1, 2, 3, 4];
 const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
   {
     kind: 'audit',
@@ -155,80 +144,71 @@ const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
   },
 ];
 
-function buildTimelineStatuses(markers: TimelineMarker[]) {
-  const statuses = Array.from({ length: TIMELINE_TOTAL_COLUMNS }, () => 'pending' as TimelineStatus);
+function buildSupervisionHeatmapCells(markers: SupervisionHeatmapMarker[]) {
+  const cells = Array.from({ length: TIMELINE_TOTAL_COLUMNS }, () => 0 as SupervisionHeatmapLevel);
 
-  markers.forEach(({ monthIndex, slotIndex, status }) => {
+  markers.forEach(({ monthIndex, slotIndex, level }) => {
     const normalizedMonthIndex = Math.max(0, Math.min(YEAR_TIMELINE_MONTHS.length - 1, monthIndex));
     const normalizedSlotIndex = Math.max(0, Math.min(TIMELINE_SLOTS_PER_MONTH - 1, slotIndex));
     const targetIndex = normalizedMonthIndex * TIMELINE_SLOTS_PER_MONTH + normalizedSlotIndex;
-    statuses[targetIndex] = status;
+    cells[targetIndex] = level;
   });
 
-  return statuses;
+  return cells;
 }
 
-const SUPERVISION_TIMELINE_SECTIONS: TimelineSectionData[] = [
+const SUPERVISION_HEATMAP_ROWS: SupervisionHeatmapRow[] = [
   {
-    id: 'timeline-audit',
-    title: 'Audit',
-    frequency: '1 kali / 2 tahun',
-    months: YEAR_TIMELINE_MONTHS,
-    rows: [
-      {
-        mode: 'grid',
-        label: 'Audit Internal',
-        detail: '2026 kosong, audit berikutnya menunggu siklus 2 tahunan.',
-        statuses: buildTimelineStatuses([]),
-      },
-    ],
+    id: 'spacer-top',
+    label: '',
+    cells: buildSupervisionHeatmapCells([]),
+    isSpacer: true,
   },
   {
-    id: 'timeline-inspection',
-    title: 'Inspeksi',
-    frequency: '1 kali / tahun',
-    months: YEAR_TIMELINE_MONTHS,
-    rows: [
-      {
-        mode: 'grid',
-        label: 'Surabaya',
-        detail: 'Sudah terlaksana',
-        statuses: buildTimelineStatuses([{ monthIndex: 2, slotIndex: 1, status: 'done' }]),
-      },
-      {
-        mode: 'grid',
-        label: 'Banyuwangi',
-        detail: 'Terjadwal Jul 2026',
-        statuses: buildTimelineStatuses([{ monthIndex: 6, slotIndex: 2, status: 'upcoming' }]),
-      },
-      {
-        mode: 'grid',
-        label: 'Malang',
-        detail: 'Target Okt 2026',
-        statuses: buildTimelineStatuses([{ monthIndex: 9, slotIndex: 1, status: 'upcoming' }]),
-      },
-    ],
+    id: 'heatmap-audit',
+    label: 'Audit',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 3, slotIndex: 1, level: 4 }]),
   },
   {
-    id: 'timeline-testing',
-    title: 'Pengujian',
-    frequency: '1 kali / 2 bulan',
-    months: YEAR_TIMELINE_MONTHS,
-    rows: [
-      {
-        mode: 'grid',
-        label: 'Rencana 2026',
-        detail: '3 dari 6 periode selesai',
-        statuses: buildTimelineStatuses([
-          { monthIndex: 0, slotIndex: 1, status: 'done' },
-          { monthIndex: 2, slotIndex: 1, status: 'pending' },
-          { monthIndex: 4, slotIndex: 1, status: 'done' },
-          { monthIndex: 6, slotIndex: 1, status: 'upcoming' },
-          { monthIndex: 8, slotIndex: 1, status: 'done' },
-          { monthIndex: 10, slotIndex: 1, status: 'upcoming' },
-        ]),
-      },
-    ],
+    id: 'spacer-middle',
+    label: '',
+    cells: buildSupervisionHeatmapCells([]),
+    isSpacer: true,
+  },
+  {
+    id: 'heatmap-inspection',
+    label: 'Inspeksi',
+    cells: buildSupervisionHeatmapCells([
+      { monthIndex: 1, slotIndex: 2, level: 1 },
+      { monthIndex: 2, slotIndex: 1, level: 2 },
+      { monthIndex: 6, slotIndex: 2, level: 3 },
+      { monthIndex: 9, slotIndex: 1, level: 2 },
+      { monthIndex: 10, slotIndex: 1, level: 1 },
+    ]),
+  },
+  {
+    id: 'spacer-bottom-middle',
+    label: '',
+    cells: buildSupervisionHeatmapCells([]),
+    isSpacer: true,
+  },
+  {
+    id: 'heatmap-testing',
+    label: 'Pengujian',
+    cells: buildSupervisionHeatmapCells([
+      { monthIndex: 0, slotIndex: 1, level: 2 },
+      { monthIndex: 2, slotIndex: 1, level: 1 },
+      { monthIndex: 4, slotIndex: 1, level: 3 },
+      { monthIndex: 6, slotIndex: 1, level: 2 },
+      { monthIndex: 8, slotIndex: 1, level: 4 },
+      { monthIndex: 10, slotIndex: 1, level: 2 },
+    ]),
+  },
+  {
+    id: 'spacer-final',
+    label: '',
+    cells: buildSupervisionHeatmapCells([]),
+    isSpacer: true,
   },
 ];
 const ROUTE_PATHS = {
@@ -2362,60 +2342,24 @@ function getSupervisionCardAccent(kind: SupervisionSummaryCard['kind']) {
   return 'from-sky-500 via-blue-500 to-cyan-400';
 }
 
-function getTimelineCellStyles(status: TimelineStatus) {
-  if (status === 'done') {
-    return 'bg-emerald-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.28)]';
+function getSupervisionHeatmapTone(level: SupervisionHeatmapLevel) {
+  if (level === 4) {
+    return 'bg-[#2f56c7]';
   }
 
-  if (status === 'upcoming') {
-    return 'bg-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]';
+  if (level === 3) {
+    return 'bg-[#4677ea]';
   }
 
-  return 'border border-slate-200 bg-white';
-}
-
-function getMonthlyTimelineStatuses(statuses: TimelineStatus[]): TimelineMonthStatus[] {
-  return YEAR_TIMELINE_MONTHS.map((month, monthIndex) => {
-    const startIndex = monthIndex * TIMELINE_SLOTS_PER_MONTH;
-    const currentMonthStatuses = statuses.slice(startIndex, startIndex + TIMELINE_SLOTS_PER_MONTH);
-
-    if (currentMonthStatuses.includes('done')) {
-      return { month, status: 'done' };
-    }
-
-    if (currentMonthStatuses.includes('upcoming')) {
-      return { month, status: 'upcoming' };
-    }
-
-    return { month, status: 'pending' };
-  });
-}
-
-function getTimelineMonthCardStyles(status: TimelineStatus) {
-  if (status === 'done') {
-    return {
-      card: 'border-emerald-200 bg-emerald-50',
-      dot: 'bg-emerald-500',
-      label: 'text-emerald-700',
-      copy: 'Done',
-    };
+  if (level === 2) {
+    return 'bg-[#7ea6f5]';
   }
 
-  if (status === 'upcoming') {
-    return {
-      card: 'border-slate-300 bg-slate-100',
-      dot: 'bg-slate-700',
-      label: 'text-slate-700',
-      copy: 'Upcoming',
-    };
+  if (level === 1) {
+    return 'bg-[#c5dafd]';
   }
 
-  return {
-    card: 'border-slate-200 bg-white',
-    dot: 'bg-slate-300',
-    label: 'text-slate-500',
-    copy: 'Belum',
-  };
+  return 'bg-[#eef3fb]';
 }
 
 function TestsSection() {
@@ -2579,7 +2523,7 @@ function TestsSection() {
 
       <article className="overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:rounded-[32px]">
         <div className="border-b border-slate-200/80 px-4 py-5 sm:px-6 sm:py-6 md:px-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-4">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
                 Timeline / Calendar View
@@ -2588,149 +2532,60 @@ function TestsSection() {
                 Monitoring timeline pelaksanaan per kategori
               </h3>
               <p className="mt-3 text-sm leading-7 text-slate-500 md:text-base">
-                Tampilan horizontal untuk melihat agenda yang sudah selesai, belum berjalan, dan
-                yang akan datang dalam satu panel monitoring.
+                Tampilan heatmap tahunan untuk melihat persebaran pelaksanaan Audit, Inspeksi,
+                dan Pengujian dalam satu panel monitoring.
               </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
-                <span className="h-2.5 w-2.5 rounded-sm border border-slate-300 bg-white" />
-                Belum
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
-                <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
-                Done
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-inset ring-slate-200">
-                <span className="h-2.5 w-2.5 rounded-sm bg-slate-800" />
-                Upcoming
-              </span>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-col gap-4 px-4 py-5 sm:gap-5 sm:px-6 sm:py-6 md:px-8">
-          {SUPERVISION_TIMELINE_SECTIONS.map((section) => (
-            <div
-              key={section.id}
-              className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-3.5 py-4 sm:rounded-[28px] sm:px-5 sm:py-5"
-            >
-              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
-                    {section.frequency}
-                  </p>
-                  <h4 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-900">
-                    {section.title}
-                  </h4>
-                </div>
-                <div className="inline-flex w-fit items-center rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
-                  {section.months.length} slot monitoring
-                </div>
-              </div>
-
-              <div className="space-y-3 md:hidden">
-                {section.rows.map((row) => {
-                  const monthlyStatuses = getMonthlyTimelineStatuses(row.statuses);
-                  const hasTimelineActivity = monthlyStatuses.some((item) => item.status !== 'pending');
-
-                  return (
-                    <article
-                      key={`${section.id}-${row.label}-mobile`}
-                      className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900">{row.label}</p>
-                        <p className="mt-1 text-xs leading-6 text-slate-500">{row.detail}</p>
-                      </div>
-
-                      {hasTimelineActivity ? (
-                        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                          {monthlyStatuses.map((item) => {
-                            const tone = getTimelineMonthCardStyles(item.status);
-
-                            return (
-                              <div
-                                key={`${row.label}-${item.month}-mobile`}
-                                className={`rounded-[16px] border px-3 py-2 ${tone.card}`}
-                              >
-                                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                  {item.month}
-                                </span>
-                                <div className="mt-2 flex items-center gap-2">
-                                  <span className={`h-2.5 w-2.5 rounded-full ${tone.dot}`} />
-                                  <span className={`text-xs font-semibold ${tone.label}`}>{tone.copy}</span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="mt-4 rounded-[18px] bg-slate-900 px-4 py-3 text-white shadow-[0_12px_28px_rgba(15,23,42,0.14)]">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">
-                            Catatan 2026
-                          </p>
-                          <p className="mt-2 text-sm leading-6 text-slate-100">
-                            Tidak ada slot pelaksanaan pada tahun ini karena agenda mengikuti siklus dua tahunan.
-                          </p>
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
-
-              <div className="hidden overflow-x-auto pb-1 md:block">
-                <div className="min-w-[880px] sm:min-w-[1040px] xl:min-w-[1360px]">
+        <div className="px-4 py-5 sm:px-6 sm:py-6 md:px-8">
+          <div className="overflow-x-auto pb-2">
+            <div className="min-w-[980px] rounded-[28px] border border-slate-100 bg-white px-8 py-8 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+              <div
+                className="grid items-end gap-x-4 gap-y-6"
+                style={{ gridTemplateColumns: `64px repeat(${TIMELINE_TOTAL_COLUMNS}, 18px)` }}
+              >
+                <div />
+                {YEAR_TIMELINE_MONTHS.map((month) => (
                   <div
-                    className="grid items-center gap-x-1.5 gap-y-3 border-b border-slate-200 pb-3"
-                    style={{
-                      gridTemplateColumns: `minmax(140px, 180px) repeat(${TIMELINE_TOTAL_COLUMNS}, minmax(14px, 18px))`,
-                    }}
+                    key={`heatmap-month-${month}`}
+                    className="text-left text-[12px] font-medium text-slate-400"
+                    style={{ gridColumn: `span ${TIMELINE_SLOTS_PER_MONTH} / span ${TIMELINE_SLOTS_PER_MONTH}` }}
                   >
-                    <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                      Lokasi / Agenda
+                    {month}
+                  </div>
+                ))}
+
+                {SUPERVISION_HEATMAP_ROWS.map((row) => (
+                  <Fragment key={row.id}>
+                    <div
+                      className={`text-[12px] font-medium text-slate-400 ${row.isSpacer ? 'opacity-0' : ''}`}
+                    >
+                      {row.label}
                     </div>
-                    {section.months.map((month) => (
-                      <div
-                        key={`${section.id}-${month}`}
-                        className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400"
-                        style={{ gridColumn: `span ${TIMELINE_SLOTS_PER_MONTH} / span ${TIMELINE_SLOTS_PER_MONTH}` }}
-                      >
-                        {month}
-                      </div>
+                    {row.cells.map((level, index) => (
+                      <span
+                        key={`${row.id}-${index}`}
+                        className={`h-[18px] w-[18px] rounded-[4px] ${getSupervisionHeatmapTone(level)}`}
+                      />
                     ))}
-                  </div>
+                  </Fragment>
+                ))}
+              </div>
 
-                  <div className="mt-4 space-y-3">
-                    {section.rows.map((row) => (
-                      <div
-                        key={`${section.id}-${row.label}`}
-                        className="grid items-center gap-x-1.5 gap-y-3"
-                        style={{
-                          gridTemplateColumns: `minmax(140px, 180px) repeat(${TIMELINE_TOTAL_COLUMNS}, minmax(14px, 18px))`,
-                        }}
-                      >
-                        <div className="pr-3">
-                          <p className="text-sm font-semibold text-slate-800">{row.label}</p>
-                          <p className="mt-1 text-xs font-medium text-slate-500">{row.detail}</p>
-                        </div>
-
-                        {row.statuses.map((status, index) => (
-                          <div key={`${row.label}-${index}`} className="flex items-center justify-center">
-                            <span
-                              className={`h-[18px] w-[18px] rounded-[5px] ${getTimelineCellStyles(status)}`}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              <div className="mt-6 flex items-center justify-end gap-2 text-[12px] font-medium text-slate-400">
+                <span>Less</span>
+                {HEATMAP_LEGEND_LEVELS.map((level) => (
+                  <span
+                    key={`heatmap-legend-${level}`}
+                    className={`h-[18px] w-[18px] rounded-[4px] ${getSupervisionHeatmapTone(level)}`}
+                  />
+                ))}
+                <span>More</span>
               </div>
             </div>
-          ))}
+          </div>
         </div>
       </article>
     </section>
