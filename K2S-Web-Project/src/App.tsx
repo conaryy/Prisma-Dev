@@ -8,7 +8,7 @@ import { NotFound } from '@/pages/NotFound';
 const AppShell = lazy(() => import('@/AppShell'));
 
 const Dashboard = lazy(() =>
-  import('@/pages/Dashboard').then((module) => ({ default: module.Dashboard }))
+  import('@/pages/DashboardEntry').then((module) => ({ default: module.DashboardEntry }))
 );
 const InstansiProfil = lazy(() =>
   import('@/pages/InformasiInstansi').then((module) => ({ default: module.Instansi }))

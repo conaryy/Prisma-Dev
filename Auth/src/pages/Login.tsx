@@ -12,7 +12,7 @@ import {
   setAuthUser,
 } from '@/lib/api';
 import supportAnimation from '../../Support.json';
-import airnavBackground from '../../airnav.webp';
+import loginBackground from '../../bg2.jpeg';
 
 const LazyLottie = lazy(() => import('lottie-react'));
 
@@ -162,7 +162,7 @@ export function Login() {
           <div className="pointer-events-none absolute inset-0">
             <div
               className="absolute inset-y-0 left-0 right-0 bg-cover bg-center bg-no-repeat opacity-30 md:-right-20 lg:-right-28"
-              style={{ backgroundImage: `url(${airnavBackground})` }}
+              style={{ backgroundImage: `url(${loginBackground})` }}
             />
             <div className="absolute inset-y-0 left-0 right-0 bg-white/88 backdrop-blur-[1px] md:-right-20 lg:-right-28 dark:bg-slate-950/80" />
           </div>
@@ -182,7 +182,7 @@ export function Login() {
                     Airnav Indonesia
                   </p>
                   <h1 className="text-4xl font-extrabold uppercase tracking-[0.26em] sm:text-5xl">
-                    <span className="text-[#1e3a8a]">PRIS</span>
+                    <span className="text-[#1e3a8a]">PRI</span>
                     <span className="relative inline-block align-baseline">
                       <span className="invisible">M</span>
                       <span className="pointer-events-none absolute inset-0 text-[#1e3a8a] [clip-path:polygon(0_0,70%_0,45%_100%,0_100%)]">
@@ -197,7 +197,7 @@ export function Login() {
                 </div>
               </div>
               <p className="text-base text-slate-500 dark:text-slate-300">
-                Masuk untuk membuka portal pengguna atau portal admin Prisma sesuai akses akun Anda.
+                Masuk untuk membuka portal pengguna atau portal admin Prima sesuai akses akun Anda.
               </p>
             </div>
 

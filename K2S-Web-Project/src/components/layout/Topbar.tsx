@@ -164,7 +164,7 @@ export function Topbar({
   const canAccessExternalDnpMenu = canAccessExternalDnp(authUser);
   const { instansi } = useAppData();
   const profileName =
-    instansi?.name?.trim() || authUser?.name?.trim() || 'Pengguna';
+    authUser?.name?.trim() || instansi?.name?.trim() || 'Pengguna';
 
   const menuItems = useMemo(
     () =>

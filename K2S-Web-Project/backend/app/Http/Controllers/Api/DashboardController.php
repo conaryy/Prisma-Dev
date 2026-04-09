@@ -67,8 +67,10 @@ class DashboardController extends ApiController
             ],
         ],
         'north-west' => [
-            'title' => 'Unit Blora',
+            'title' => 'Unit Ngloram',
             'instansiAliases' => [
+                'perum lppnpi unit ngloram',
+                'unit ngloram',
                 'perum lppnpi unit blora',
                 'unit blora',
             ],

@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import locationMapAnimation from '@/assets/location-map.json';
+import { useAppData } from '@/contexts/AppDataContext';
 import { apiFetch, getAuthUser } from '@/lib/api';
 import { downloadFromSignedUrl } from '@/lib/download';
 import { toast } from '@/hooks/use-toast';
@@ -23,7 +24,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { CalendarHeatmap } from '@/components/charts/CalendarHeatmap';
 
 type ChartPoint = {
   label: string;
@@ -183,7 +183,7 @@ const MAP_KCP_MARKERS: MapKcpMarker[] = [
     color: '#ff4148',
     code: 'BXW',
     title: 'Unit Bawean',
-    region: 'Pulau Bawean',
+    region: 'Harun Thohir Airport',
     description: 'Menandai unit layanan Bawean sebagai titik referensi utara pada cakupan peta KCP.',
   },
   {
@@ -193,8 +193,8 @@ const MAP_KCP_MARKERS: MapKcpMarker[] = [
     color: '#ffd95a',
     code: 'CPF',
     title: 'Unit Blora',
-    region: 'Koridor barat laut',
-    description: 'Menunjukkan unit Blora pada sisi barat laut sebagai bagian dari cakupan koordinasi KCP.',
+    region: 'Ngloram Airport',
+    description: 'Menunjukkan Unit Ngloram pada sisi barat laut sebagai bagian dari cakupan koordinasi KCP.',
   },
   {
     key: 'north-central',
@@ -203,7 +203,7 @@ const MAP_KCP_MARKERS: MapKcpMarker[] = [
     color: '#6129ef',
     code: 'SUB',
     title: 'Cabang Surabaya',
-    region: 'Pusat koordinasi utama',
+    region: 'Juanda International Airport',
     description: 'Menjadi titik koordinasi utama untuk monitoring, inspeksi, dan tindak lanjut wilayah inti.',
   },
   {
@@ -213,7 +213,7 @@ const MAP_KCP_MARKERS: MapKcpMarker[] = [
     color: '#62dbe8',
     code: 'SUP',
     title: 'KCP Sumenep',
-    region: 'Madura timur',
+    region: 'Trunojoyo Airport',
     description: 'Mencakup wilayah operasional timur Pulau Madura dan area pendukungnya.',
   },
   {
@@ -223,7 +223,7 @@ const MAP_KCP_MARKERS: MapKcpMarker[] = [
     color: '#79767c',
     code: 'DHX',
     title: 'Unit Kediri',
-    region: 'Kediri dan sekitarnya',
+    region: 'Dhoho Airport',
     description: 'Mewakili unit Kediri sebagai bagian dari cakupan pemantauan wilayah tengah-barat.',
   },
   {
@@ -233,7 +233,7 @@ const MAP_KCP_MARKERS: MapKcpMarker[] = [
     color: '#8f4302',
     code: 'MLG',
     title: 'KCP Malang',
-    region: 'Malang Raya',
+    region: 'Abdul Rachman Saleh Airport',
     description: 'Menunjukkan cakupan lokasi KCP pada wilayah selatan-tengah Jawa Timur.',
   },
   {
@@ -243,7 +243,7 @@ const MAP_KCP_MARKERS: MapKcpMarker[] = [
     color: '#3b0442',
     code: 'JBB',
     title: 'Unit Jember',
-    region: 'Jember dan sekitarnya',
+    region: 'Notohadinegoro Airport',
     description: 'Menandai unit Jember pada koridor timur selatan dalam sebaran layanan KCP.',
   },
   {
@@ -253,7 +253,7 @@ const MAP_KCP_MARKERS: MapKcpMarker[] = [
     color: '#f48bc8',
     code: 'BWX',
     title: 'KCP Banyuwangi',
-    region: 'Ujung timur Jawa Timur',
+    region: 'Banyuwangi Airport / Blimbingsari Airpor',
     description: 'Menandai lokasi KCP paling timur untuk cakupan operasional Banyuwangi dan sekitarnya.',
   },
 ];
@@ -773,7 +773,7 @@ const MapKcpSection = memo(function MapKcpSection({
                               {resolveMapScopeDisplayValue(total, scopeAvailable)}
                             </div>
                             <div className="text-[11px] text-slate-500 dark:text-blue-100/70">
-                              {scopeAvailable ? 'Temuan' : 'Belum update'}
+                              {scopeAvailable ? 'Temuan' : 'Tidak ada data'}
                             </div>
                             <div className="mt-2 text-[11px] font-medium text-slate-500 dark:text-blue-100/70">
                               {scopeAvailable
@@ -931,7 +931,7 @@ const MapKcpSection = memo(function MapKcpSection({
                                   : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-100'
                               }`}
                             >
-                              {hasData ? 'Ada data' : 'Belum update'}
+                              {hasData ? 'Ada data' : 'Tidak ada data'}
                             </span>
                           </div>
 
@@ -952,7 +952,7 @@ const MapKcpSection = memo(function MapKcpSection({
                                   {resolveMapScopeDisplayValue(counts[scopeKey], scopeAvailability[scopeKey])}
                                 </div>
                                 <div className="text-[10px] text-slate-500 dark:text-blue-100/70">
-                                  {scopeAvailability[scopeKey] ? 'Temuan' : 'Belum update'}
+                                  {scopeAvailability[scopeKey] ? 'Temuan' : ''}
                                 </div>
                               </div>
                             ))}
@@ -989,6 +989,7 @@ const MapKcpSection = memo(function MapKcpSection({
 });
 
 export function Dashboard() {
+  const { instansi } = useAppData();
   const [isLoading, setIsLoading] = useState(true);
   const [activityLoading, setActivityLoading] = useState(true);
   const [hoveredMapMarkerKey, setHoveredMapMarkerKey] = useState<string | null>(null);
@@ -1020,6 +1021,8 @@ export function Dashboard() {
   const [trendSource, setTrendSource] = useState<TrendSource>('internal');
   const [downloadingManual, setDownloadingManual] = useState<'user' | 'admin' | null>(null);
   const isAdmin = activeUser?.role === 'Admin';
+  const dashboardProfileName =
+    activeUser?.name?.trim() || instansi?.name?.trim() || 'Pengguna';
 
   const handleDownloadManual = async (type: 'user' | 'admin') => {
     const endpoint =
@@ -1325,7 +1328,7 @@ export function Dashboard() {
                   Dashboard
                 </p>
                 <h1 className="mt-2 text-2xl font-semibold text-slate-800">
-                  Halo, Perum LPPNPI Cabang Surabaya!
+                  Halo, {dashboardProfileName}!
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
                   Ringkasan data pengawasan dan tindak lanjut terbaru.
@@ -1387,41 +1390,44 @@ export function Dashboard() {
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Link
           to="/cap?source=external-dnp"
-          className="group relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white p-4 shadow-sm transition-shadow duration-200 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+          className="group relative overflow-hidden rounded-3xl border border-sky-200/80 bg-white p-4 shadow-sm transition-all duration-200 hover:border-sky-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
         >
-          <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-blue-100/70 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          <div className="absolute inset-x-0 top-0 h-1 bg-sky-500" />
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700/65">
             Total Temuan
           </div>
-          <div className="mt-2 text-3xl font-semibold text-slate-800">
+          <div className="mt-2 text-3xl font-semibold text-sky-950">
             {isLoading ? '...' : summary.totalQuestions}
           </div>
-          <div className="mt-1 text-xs text-slate-500">
+          <div className="mt-1 text-xs text-sky-900/65">
             Update otomatis dari data CAP dan temuan.
           </div>
         </Link>
 
         <Link
           to="/cap?source=external-dnp&status=open"
-          className={`group relative overflow-hidden rounded-3xl border bg-white p-4 shadow-sm transition-shadow duration-200 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 ${
+          className={`group relative overflow-hidden rounded-3xl border bg-white p-4 shadow-sm transition-all duration-200 hover:border-red-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 ${
             openCapCount > 0
-              ? 'border-red-300/80 ring-2 ring-red-200/70'
+              ? 'border-red-300/80 ring-1 ring-red-100/80'
               : 'border-slate-200/70'
           }`}
         >
-          <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-blue-100/70 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
+          <div className="absolute inset-x-0 top-0 h-1 bg-red-400" />
           {openCapCount > 0 && (
             <span className="absolute right-4 top-4 flex h-3 w-3">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500 shadow-[0_0_0_6px_rgba(239,68,68,0.14)]" />
             </span>
           )}
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          {openCapCount > 0 && (
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 animate-pulse bg-red-500/80" />
+          )}
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600/75">
             Open CAP
           </div>
           <div
             className={`mt-2 text-3xl font-semibold ${
-              openCapCount > 0 ? 'animate-pulse text-red-700' : 'text-slate-800'
+              openCapCount > 0 ? 'text-red-700' : 'text-slate-800'
             }`}
           >
             {isLoading ? '...' : openCapCount}
@@ -1433,13 +1439,16 @@ export function Dashboard() {
 
         <Link
           to="/cap?source=external-dnp&status=closed"
-          className="group relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white p-4 shadow-sm transition-shadow duration-200 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+          className="group relative overflow-hidden rounded-3xl border border-emerald-200/80 bg-white p-4 shadow-sm transition-all duration-200 hover:border-emerald-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
         >
-          <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-blue-100/70 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          <div className="absolute inset-x-0 top-0 h-1 bg-emerald-500" />
+          {summary.closedCaps > 0 && (
+            <span className="absolute right-4 top-4 inline-flex h-3 w-3 rounded-full bg-emerald-500 shadow-[0_0_0_6px_rgba(16,185,129,0.14)]" />
+          )}
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700/65">
             Closed CAP
           </div>
-          <div className="mt-2 text-3xl font-semibold text-slate-800">
+          <div className="mt-2 text-3xl font-semibold text-emerald-700">
             {isLoading ? '...' : summary.closedCaps}
           </div>
           <div className="mt-1 text-xs text-slate-500">
@@ -1707,16 +1716,6 @@ export function Dashboard() {
         </section>
       )}
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-6 shadow-sm">
-        <div className="mb-6">
-          <h2 className="text-base font-semibold text-slate-800">Aktivitas CAP</h2>
-          <p className="text-xs text-slate-400">Intensitas penyelesaian & progress harian.</p>
-        </div>
-        <CalendarHeatmap
-          userId={isAdmin && selectedUser !== 'all' ? selectedUser : activeUser?.id || 'all'}
-          data={filteredActivity}
-        />
-      </section>
     </div>
   );
 }

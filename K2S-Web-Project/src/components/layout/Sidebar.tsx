@@ -77,7 +77,7 @@ export function Sidebar({
   const canAccessAdminMenu = canManageAdminModule(user);
   const { instansi } = useAppData();
   const profileName =
-    instansi?.name?.trim() || user?.name?.trim() || 'Pengguna';
+    user?.name?.trim() || instansi?.name?.trim() || 'Pengguna';
   const isInfoActive = location.pathname.startsWith('/informasi');
   const isInstansiActive = location.pathname.startsWith('/informasi/instansi');
   const isAuditPqActive = location.pathname.startsWith('/audit/protocol-question');

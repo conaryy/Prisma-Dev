@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Models\Concerns\RelaxedRouteBinding;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SelfAssessmentSession extends Model
 {
@@ -40,4 +42,19 @@ class SelfAssessmentSession extends Model
         'target_session_area_ids' => 'array',
         'target_agenda_ids' => 'array',
     ];
+
+    public function sessionUsers(): HasMany
+    {
+        return $this->hasMany(SelfAssessmentSessionUser::class, 'session_id');
+    }
+
+    public function users(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            User::class,
+            'self_assessment_session_users',
+            'session_id',
+            'user_id'
+        )->withTimestamps();
+    }
 }
