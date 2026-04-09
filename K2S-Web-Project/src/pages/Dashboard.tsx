@@ -8,8 +8,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import map22Image from '@/assets/map22.png';
 import locationMapAnimation from '@/assets/location-map.json';
 import { useAppData } from '@/contexts/AppDataContext';
+import { fetchExternalDnpDashboardCapList } from '@/lib/externalDnp';
 import { apiFetch, getAuthUser } from '@/lib/api';
 import { downloadFromSignedUrl } from '@/lib/download';
 import { toast } from '@/hooks/use-toast';
@@ -617,11 +619,11 @@ const MapKcpSection = memo(function MapKcpSection({
             className="flex justify-start"
             onMouseLeave={() => setHoveredMapMarkerKey(null)}
           >
-            <div className="relative inline-block max-w-full">
+            <div className="relative inline-block max-w-full rounded-2xl bg-white">
               <img
-                src="/jatim3.png"
+                src={map22Image}
                 alt="Map KCP Jawa Timur"
-                className="block max-h-[320px] w-auto max-w-full object-contain sm:max-h-[390px] lg:max-h-[430px]"
+                className="block max-h-[320px] w-auto max-w-full object-contain brightness-[1.16] contrast-[1.06] saturate-[1.08] sm:max-h-[390px] lg:max-h-[430px] dark:brightness-[1.2] dark:contrast-105"
                 loading="lazy"
               />
 
@@ -892,7 +894,7 @@ const MapKcpSection = memo(function MapKcpSection({
                     Data bersumber dari pemenuhan CAP pada menu External DNP untuk semua wilayah.
                   </div>
 
-                  <div className="min-h-0 flex-1 rounded-xl border border-slate-200/80 bg-white/90 p-3 shadow-sm dark:border-[#365891]/70 dark:bg-[#0b1736]">
+                  <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200/80 bg-white/90 p-3 shadow-sm dark:border-[#365891]/70 dark:bg-[#0b1736]">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600 dark:text-blue-100/80">
                         Daftar Semua Titik
@@ -902,7 +904,7 @@ const MapKcpSection = memo(function MapKcpSection({
                       </span>
                     </div>
 
-                    <div className="mt-3 h-[360px] space-y-2 overflow-y-auto pr-1">
+                    <div className="mt-3 h-[360px] space-y-2 overflow-y-auto pr-2 pb-6">
                       {allMapMarkerSummaries.map(({ marker, counts, scopeAvailability, hasData, summary }) => (
                         <div
                           key={marker.key}
@@ -1052,18 +1054,30 @@ export function Dashboard() {
 
   useEffect(() => {
     setIsLoading(true);
-    apiFetch<{ data: {
-      totalQuestions: number;
-      openCaps?: number;
-      openSessions: number;
-      overdueCaps: number;
-      closedCaps: number;
-      dueSoonCaps: number;
-    } }>('/api/dashboard/cap-summary')
-      .then((response) => {
+    Promise.all([
+      apiFetch<{ data: {
+        totalQuestions: number;
+        openCaps?: number;
+        openSessions: number;
+        overdueCaps: number;
+        closedCaps: number;
+        dueSoonCaps: number;
+      } }>('/api/dashboard/cap-summary'),
+      fetchExternalDnpDashboardCapList().catch(() => null),
+    ])
+      .then(([response, capItems]) => {
+        const derivedOpenCaps = capItems
+          ? capItems.filter((item) => item.hasCap && (item.latestProgress ?? 0) < 100).length
+          : null;
+        const derivedClosedCaps = capItems
+          ? capItems.filter((item) => item.hasCap && (item.latestProgress ?? 0) >= 100).length
+          : null;
+
         setSummary({
           ...response.data,
-          openCaps: response.data.openCaps ?? response.data.openSessions,
+          openCaps: derivedOpenCaps ?? response.data.openCaps ?? response.data.openSessions,
+          openSessions: derivedOpenCaps ?? response.data.openSessions,
+          closedCaps: derivedClosedCaps ?? response.data.closedCaps,
         });
       })
       .catch((error: Error) => {
@@ -1368,18 +1382,6 @@ export function Dashboard() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="border border-blue-200/80 bg-blue-500/20 text-blue-700 transition hover:border-blue-300/80 hover:bg-blue-600 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-600 hover:text-white">
-                      Download Profile
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem>PDF Profile</DropdownMenuItem>
-                    <DropdownMenuItem>Excel Profile</DropdownMenuItem>
-                    <DropdownMenuItem>Ringkasan Data</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -1390,26 +1392,26 @@ export function Dashboard() {
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Link
           to="/cap?source=external-dnp"
-          className="group relative overflow-hidden rounded-3xl border border-sky-200/80 bg-white p-4 shadow-sm transition-all duration-200 hover:border-sky-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
+          className="group relative overflow-hidden rounded-3xl border border-sky-200/80 bg-white p-4 shadow-sm transition-all duration-200 hover:border-sky-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 dark:border-sky-500/45 dark:bg-[#101b39] dark:hover:border-sky-400 dark:hover:shadow-[0_18px_42px_rgba(56,189,248,0.14)] dark:focus-visible:ring-sky-500/30"
         >
           <div className="absolute inset-x-0 top-0 h-1 bg-sky-500" />
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700/65">
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700/65 dark:text-sky-300/90">
             Total Temuan
           </div>
-          <div className="mt-2 text-3xl font-semibold text-sky-950">
+          <div className="mt-2 text-3xl font-semibold text-sky-950 dark:text-sky-100">
             {isLoading ? '...' : summary.totalQuestions}
           </div>
-          <div className="mt-1 text-xs text-sky-900/65">
+          <div className="mt-1 text-xs text-sky-900/65 dark:text-sky-100/75">
             Update otomatis dari data CAP dan temuan.
           </div>
         </Link>
 
         <Link
           to="/cap?source=external-dnp&status=open"
-          className={`group relative overflow-hidden rounded-3xl border bg-white p-4 shadow-sm transition-all duration-200 hover:border-red-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 ${
+          className={`group relative overflow-hidden rounded-3xl border bg-white p-4 shadow-sm transition-all duration-200 hover:border-red-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 dark:bg-[#101b39] dark:hover:border-red-400 dark:hover:shadow-[0_18px_42px_rgba(248,113,113,0.16)] dark:focus-visible:ring-red-500/30 ${
             openCapCount > 0
-              ? 'border-red-300/80 ring-1 ring-red-100/80'
-              : 'border-slate-200/70'
+              ? 'border-red-300/80 ring-1 ring-red-100/80 dark:border-red-400/55 dark:ring-red-500/10'
+              : 'border-slate-200/70 dark:border-[#365891]/70'
           }`}
         >
           <div className="absolute inset-x-0 top-0 h-1 bg-red-400" />
@@ -1422,36 +1424,38 @@ export function Dashboard() {
           {openCapCount > 0 && (
             <div className="pointer-events-none absolute inset-x-0 top-0 h-1 animate-pulse bg-red-500/80" />
           )}
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600/75">
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600/75 dark:text-red-300/90">
             Open CAP
           </div>
           <div
             className={`mt-2 text-3xl font-semibold ${
-              openCapCount > 0 ? 'text-red-700' : 'text-slate-800'
+              openCapCount > 0
+                ? 'text-red-700 dark:text-red-200'
+                : 'text-slate-800 dark:text-slate-100'
             }`}
           >
             {isLoading ? '...' : openCapCount}
           </div>
-          <div className="mt-1 text-xs text-slate-500">
+          <div className="mt-1 text-xs text-slate-500 dark:text-slate-300">
             Pemenuhan CAP dengan progress di bawah 100%.
           </div>
         </Link>
 
         <Link
           to="/cap?source=external-dnp&status=closed"
-          className="group relative overflow-hidden rounded-3xl border border-emerald-200/80 bg-white p-4 shadow-sm transition-all duration-200 hover:border-emerald-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
+          className="group relative overflow-hidden rounded-3xl border border-emerald-200/80 bg-white p-4 shadow-sm transition-all duration-200 hover:border-emerald-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 dark:border-emerald-500/45 dark:bg-[#101b39] dark:hover:border-emerald-400 dark:hover:shadow-[0_18px_42px_rgba(16,185,129,0.14)] dark:focus-visible:ring-emerald-500/30"
         >
           <div className="absolute inset-x-0 top-0 h-1 bg-emerald-500" />
           {summary.closedCaps > 0 && (
             <span className="absolute right-4 top-4 inline-flex h-3 w-3 rounded-full bg-emerald-500 shadow-[0_0_0_6px_rgba(16,185,129,0.14)]" />
           )}
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700/65">
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700/65 dark:text-emerald-300/90">
             Closed CAP
           </div>
-          <div className="mt-2 text-3xl font-semibold text-emerald-700">
+          <div className="mt-2 text-3xl font-semibold text-emerald-700 dark:text-emerald-200">
             {isLoading ? '...' : summary.closedCaps}
           </div>
-          <div className="mt-1 text-xs text-slate-500">
+          <div className="mt-1 text-xs text-slate-500 dark:text-slate-300">
             Pemenuhan CAP dengan progress sudah mencapai 100%.
           </div>
         </Link>

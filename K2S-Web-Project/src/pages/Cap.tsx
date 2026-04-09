@@ -56,6 +56,25 @@ interface CapSessionRow {
   overdueCapCount: number;
 }
 
+const normalizeCapStatusLabel = (statusLabel: string | null | undefined, isClosed: boolean) => {
+  if (isClosed) return 'Closed';
+  if (!statusLabel) return 'Open';
+
+  return statusLabel.toLowerCase() === 'overdue' ? 'Open' : statusLabel;
+};
+
+const isCapClosed = (item: Pick<CapRow, 'hasCap' | 'isClosed' | 'latestProgress'>) => {
+  if (!item.hasCap) return false;
+  if (typeof item.latestProgress === 'number') {
+    return item.latestProgress >= 100;
+  }
+
+  return item.isClosed;
+};
+
+const isCapOpen = (item: Pick<CapRow, 'hasCap' | 'isClosed' | 'latestProgress'>) =>
+  item.hasCap && !isCapClosed(item);
+
 export function Cap() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -78,28 +97,35 @@ export function Cap() {
           const data = await fetchExternalDnpDashboardCapList();
           if (cancelled) return;
           setItems(
-            data.map((item: ExternalDnpDashboardCapItem) => ({
-              id: item.id,
-              capId: item.capId ?? null,
-              answerId: item.answerId,
-              sessionAreaId: item.sessionAreaId,
-              scope: item.scope,
-              instansiName: item.instansiName ?? null,
-              area: item.area,
-              questionCode: item.questionCode,
-              questionText: item.questionText,
-              questionCategory: item.questionCategory ?? null,
-              questionCategoryPrefix: null,
-              leader: item.leader ?? null,
-              targetDate: item.targetDate ?? null,
-              effectiveDeadline: item.effectiveDeadline ?? item.targetDate ?? null,
-              hasCap: item.hasCap,
-              isClosed: item.isClosed,
-              isOverdue: item.isOverdue,
-              statusLabel: item.statusLabel,
-              latestProgress: item.latestProgress ?? null,
-              latestFulfillmentStatus: item.latestFulfillmentStatus ?? null,
-            }))
+            data.map((item: ExternalDnpDashboardCapItem) => {
+              const latestProgress = item.latestProgress ?? null;
+              const isClosed = item.hasCap && typeof latestProgress === 'number'
+                ? latestProgress >= 100
+                : item.isClosed;
+
+              return {
+                id: item.id,
+                capId: item.capId ?? null,
+                answerId: item.answerId,
+                sessionAreaId: item.sessionAreaId,
+                scope: item.scope,
+                instansiName: item.instansiName ?? null,
+                area: item.area,
+                questionCode: item.questionCode,
+                questionText: item.questionText,
+                questionCategory: item.questionCategory ?? null,
+                questionCategoryPrefix: null,
+                leader: item.leader ?? null,
+                targetDate: item.targetDate ?? null,
+                effectiveDeadline: item.effectiveDeadline ?? item.targetDate ?? null,
+                hasCap: item.hasCap,
+                isClosed,
+                isOverdue: item.isOverdue,
+                statusLabel: normalizeCapStatusLabel(item.statusLabel, isClosed),
+                latestProgress,
+                latestFulfillmentStatus: item.latestFulfillmentStatus ?? null,
+              };
+            })
           );
           return;
         }
@@ -117,7 +143,7 @@ export function Cap() {
               effectiveDeadline: item.targetDate,
               hasCap: true,
               isOverdue: isItemOverdue,
-              statusLabel: item.isClosed ? 'Closed' : isItemOverdue ? 'Overdue' : 'Open',
+              statusLabel: normalizeCapStatusLabel(undefined, item.isClosed),
               latestProgress: null,
               latestFulfillmentStatus: null,
             };
@@ -203,10 +229,10 @@ export function Cap() {
       };
 
       existing.totalFindings += 1;
-      if (item.hasCap && !item.isClosed) {
+      if (isCapOpen(item)) {
         existing.openCapCount += 1;
       }
-      if (item.isOverdue) {
+      if (item.isOverdue && isCapOpen(item)) {
         existing.overdueCapCount += 1;
       }
 
@@ -233,14 +259,14 @@ export function Cap() {
   const filteredCaps = useMemo(() => {
     return items.filter((item) => {
       if (statusFilter !== 'Semua') {
-        const isOpen = item.hasCap && !item.isClosed;
-        const isClosed = item.hasCap && item.isClosed;
+        const isOpen = isCapOpen(item);
+        const isClosed = isCapClosed(item);
         if (statusFilter === 'open' && !isOpen) return false;
         if (statusFilter === 'closed' && !isClosed) return false;
       }
       if (overdueOnly) {
         const deadline = item.effectiveDeadline ?? item.targetDate;
-        if (!deadline || item.isClosed) return false;
+        if (!deadline || isCapClosed(item)) return false;
         if (!isOverdue(deadline)) return false;
       }
       return true;
@@ -315,8 +341,6 @@ export function Cap() {
     const className =
       status === 'Closed'
         ? 'bg-emerald-100 text-emerald-700'
-        : status === 'Overdue'
-        ? 'bg-red-100 text-red-700'
         : status === 'Open'
         ? 'bg-blue-100 text-blue-700'
         : 'bg-amber-100 text-amber-700';
@@ -479,7 +503,6 @@ export function Cap() {
                         </div>
                         <div className="text-xs text-slate-500">
                           Total temuan {row.totalFindings}
-                          {row.overdueCapCount > 0 ? ` • ${row.overdueCapCount} overdue` : ''}
                         </div>
                       </div>
                     ),

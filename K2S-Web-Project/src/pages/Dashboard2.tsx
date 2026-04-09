@@ -479,18 +479,6 @@ export function Dashboard() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="border border-blue-200/80 bg-blue-500/20 text-blue-700 transition hover:border-blue-300/80 hover:bg-blue-600 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-600 hover:text-white">
-                      Download Profile
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem>PDF Profile</DropdownMenuItem>
-                    <DropdownMenuItem>Excel Profile</DropdownMenuItem>
-                    <DropdownMenuItem>Ringkasan Data</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
             </div>
           </div>

@@ -114,54 +114,24 @@ class DashboardController extends ApiController
             ]);
         }
 
-        $totalFindings = ExternalDnpAnswer::query()
-            ->where('is_submitted', true)
-            ->whereHas('review', function ($query) {
-                $query->where('status', 'Not Satisfactory')
-                    ->whereNotNull('sent_at');
-            })
-            ->whereHas('sessionArea.session', function ($query) {
-                $query->whereIn('scope', self::EXTERNAL_DNP_MAP_SCOPE_KEYS);
-            })
-            ->count();
+        $detailRows = $this->buildExternalDnpCapDetailRows();
+        $totalFindings = $detailRows->count();
 
-        $caps = ExternalDnpCap::query()
-            ->whereHas('answer', function ($query) {
-                $query->where('is_submitted', true)
-                    ->whereHas('review', function ($reviewQuery) {
-                        $reviewQuery->where('status', 'Not Satisfactory')
-                            ->whereNotNull('sent_at');
-                    })
-                    ->whereHas('sessionArea.session', function ($sessionQuery) {
-                        $sessionQuery->whereIn('scope', self::EXTERNAL_DNP_MAP_SCOPE_KEYS);
-                    });
-            })
-            ->with([
-                'answer.sessionArea.session:id,scope',
-                'fulfillments:id,cap_id,progress,status,submitted_at,created_at',
-                'extensions:id,cap_id,due_date,status',
-            ])
-            ->get(['id', 'answer_id', 'target_date', 'status', 'sent_at']);
-
-        $capStatuses = $caps
-            ->map(function (ExternalDnpCap $cap) use ($today, $dueSoonLimit) {
-                $scope = strtolower(trim((string) ($cap->answer?->sessionArea?->session?->scope ?? '')));
+        $capStatuses = $detailRows
+            ->filter(fn (array $row) => (bool) ($row['hasCap'] ?? false))
+            ->map(function (array $row) use ($today, $dueSoonLimit) {
+                $scope = strtolower(trim((string) ($row['scope'] ?? '')));
                 if (!in_array($scope, self::EXTERNAL_DNP_MAP_SCOPE_KEYS, true)) {
                     return null;
                 }
 
-                $highestProgress = (int) ($cap->fulfillments->max(
-                    fn ($fulfillment) => (int) ($fulfillment->progress ?? 0)
-                ) ?? 0);
-                $isClosed = $highestProgress >= 100;
-
-                $effectiveDeadline = $this->resolveExternalDnpCapEffectiveDeadline($cap);
-                $deadline = $effectiveDeadline?->copy()->endOfDay();
-
+                $deadline = !empty($row['effectiveDeadline'])
+                    ? Carbon::parse($row['effectiveDeadline'])->endOfDay()
+                    : null;
+                $isClosed = (bool) ($row['isClosed'] ?? false);
                 $isOverdue = $deadline !== null
                     && !$isClosed
                     && $deadline->lt($today);
-
                 $isDueSoon = $deadline !== null
                     && !$isClosed
                     && $deadline->greaterThanOrEqualTo($today)
@@ -169,7 +139,6 @@ class DashboardController extends ApiController
 
                 return [
                     'scope' => $scope,
-                    'highestProgress' => $highestProgress,
                     'isClosed' => $isClosed,
                     'isOverdue' => $isOverdue,
                     'isDueSoon' => $isDueSoon,
@@ -181,7 +150,7 @@ class DashboardController extends ApiController
         $closedCaps = $capStatuses->where('isClosed', true)->count();
         $overdueCaps = $capStatuses->where('isOverdue', true)->count();
         $dueSoonCaps = $capStatuses->where('isDueSoon', true)->count();
-        $openCaps = max($capStatuses->count() - $closedCaps, 0);
+        $openCaps = $capStatuses->where('isClosed', false)->count();
 
         $openCapsByScope = $capStatuses
             ->where('isClosed', false)
@@ -2123,7 +2092,7 @@ class DashboardController extends ApiController
                     && $effectiveDeadline->copy()->endOfDay()->lt($today);
                 $statusLabel = !$cap
                     ? 'Belum Susun CAP'
-                    : ($isClosed ? 'Closed' : ($isOverdue ? 'Overdue' : 'Open'));
+                    : ($isClosed ? 'Closed' : 'Open');
 
                 return [
                     'id' => $answer->id,
