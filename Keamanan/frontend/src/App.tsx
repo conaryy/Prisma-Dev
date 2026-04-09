@@ -96,19 +96,58 @@ type SupervisionHeatmapMarker = {
   slotIndex: number;
   level: SupervisionHeatmapLevel;
 };
+type SupervisionHeatmapCategory = 'Audit' | 'Inspeksi' | 'Pengujian';
 type SupervisionHeatmapRow = {
   id: string;
+  category?: SupervisionHeatmapCategory;
   label: string;
   cells: SupervisionHeatmapLevel[];
   isSpacer?: boolean;
+  isGroup?: boolean;
+  isBranch?: boolean;
 };
+type SupervisionScheduleEntry = {
+  id: string;
+  category: SupervisionHeatmapCategory;
+  branch: SupervisionBranchFilter;
+  year: number;
+  monthIndex: number;
+  slotIndex: number;
+};
+type SupervisionScheduleDraft = {
+  category: SupervisionHeatmapCategory;
+  branch: SupervisionBranchFilter;
+  year: number;
+  monthIndex: number;
+  slotIndex: number;
+};
+const SUPERVISION_BRANCH_FILTERS = [
+  'Cabang Surabaya',
+  'KCP Banyuwangi',
+  'KCP Malang',
+  'KCP Sumenep',
+  'Penyedia Personel AVSEC',
+] as const;
+type SupervisionBranchFilter = (typeof SUPERVISION_BRANCH_FILTERS)[number];
+type SupervisionHeatmapFilter = 'Semua' | SupervisionHeatmapCategory | SupervisionBranchFilter;
 
 const DASHBOARD_THEME_KEY = 'keamanan-dashboard-theme';
-const SUPERVISION_ACTIVE_YEAR = 'Tahun 2026';
+const SUPERVISION_YEAR_OPTIONS = Array.from(
+  { length: new Date().getFullYear() + 25 - 1980 + 1 },
+  (_, index) => 1980 + index,
+);
 const YEAR_TIMELINE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const TIMELINE_SLOT_LABELS = ['I', 'II', 'III', 'IV'] as const;
 const TIMELINE_SLOTS_PER_MONTH = 4;
 const TIMELINE_TOTAL_COLUMNS = YEAR_TIMELINE_MONTHS.length * TIMELINE_SLOTS_PER_MONTH;
-const HEATMAP_LEGEND_LEVELS: SupervisionHeatmapLevel[] = [0, 1, 2, 3, 4];
+const HEATMAP_LEGEND_LEVELS: SupervisionHeatmapLevel[] = [1];
+const SUPERVISION_CATEGORY_FILTERS: SupervisionHeatmapCategory[] = ['Audit', 'Inspeksi', 'Pengujian'];
+const SUPERVISION_BRANCHES_BY_CATEGORY: Record<SupervisionHeatmapCategory, SupervisionBranchFilter[]> = {
+  Audit: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Malang', 'KCP Sumenep'],
+  Inspeksi: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Malang', 'KCP Sumenep', 'Penyedia Personel AVSEC'],
+  Pengujian: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'],
+};
+const BIMONTHLY_TEST_MONTHS = [1, 3, 5, 7, 9, 11] as const;
 const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
   {
     kind: 'audit',
@@ -144,6 +183,68 @@ const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
   },
 ];
 
+function createInspectionEntries(
+  year: number,
+  plan: Array<[SupervisionBranchFilter, number, number]>
+): SupervisionScheduleEntry[] {
+  return plan.map(([branch, monthIndex, slotIndex]) => ({
+    id: `inspection-${year}-${branch}-${monthIndex}-${slotIndex}`,
+    category: 'Inspeksi',
+    branch,
+    year,
+    monthIndex,
+    slotIndex,
+  }));
+}
+
+function createTestingEntries(year: number): SupervisionScheduleEntry[] {
+  return SUPERVISION_BRANCHES_BY_CATEGORY.Pengujian.flatMap((branch) =>
+    BIMONTHLY_TEST_MONTHS.map((monthIndex) => ({
+      id: `testing-${year}-${branch}-${monthIndex}`,
+      category: 'Pengujian' as const,
+      branch,
+      year,
+      monthIndex,
+      slotIndex: 0,
+    }))
+  );
+}
+
+const BASE_SUPERVISION_SCHEDULE_ENTRIES: SupervisionScheduleEntry[] = [
+  {
+    id: 'audit-2026-surabaya',
+    category: 'Audit',
+    branch: 'Cabang Surabaya',
+    year: 2026,
+    monthIndex: 6,
+    slotIndex: 1,
+  },
+  ...createInspectionEntries(2025, [
+    ['Cabang Surabaya', 0, 1],
+    ['KCP Banyuwangi', 2, 1],
+    ['KCP Malang', 4, 1],
+    ['KCP Sumenep', 7, 1],
+    ['Penyedia Personel AVSEC', 10, 1],
+  ]),
+  ...createInspectionEntries(2026, [
+    ['Cabang Surabaya', 2, 1],
+    ['KCP Banyuwangi', 4, 1],
+    ['KCP Malang', 6, 1],
+    ['KCP Sumenep', 8, 1],
+    ['Penyedia Personel AVSEC', 10, 1],
+  ]),
+  ...createInspectionEntries(2027, [
+    ['Cabang Surabaya', 1, 1],
+    ['KCP Banyuwangi', 3, 1],
+    ['KCP Malang', 5, 1],
+    ['KCP Sumenep', 7, 1],
+    ['Penyedia Personel AVSEC', 9, 1],
+  ]),
+  ...createTestingEntries(2025),
+  ...createTestingEntries(2026),
+  ...createTestingEntries(2027),
+];
+
 function buildSupervisionHeatmapCells(markers: SupervisionHeatmapMarker[]) {
   const cells = Array.from({ length: TIMELINE_TOTAL_COLUMNS }, () => 0 as SupervisionHeatmapLevel);
 
@@ -159,56 +260,130 @@ function buildSupervisionHeatmapCells(markers: SupervisionHeatmapMarker[]) {
 
 const SUPERVISION_HEATMAP_ROWS: SupervisionHeatmapRow[] = [
   {
-    id: 'spacer-top',
-    label: '',
-    cells: buildSupervisionHeatmapCells([]),
-    isSpacer: true,
-  },
-  {
-    id: 'heatmap-audit',
+    id: 'heatmap-audit-group',
+    category: 'Audit',
     label: 'Audit',
-    cells: buildSupervisionHeatmapCells([{ monthIndex: 3, slotIndex: 1, level: 4 }]),
-  },
-  {
-    id: 'spacer-middle',
-    label: '',
     cells: buildSupervisionHeatmapCells([]),
-    isSpacer: true,
+    isGroup: true,
   },
   {
-    id: 'heatmap-inspection',
+    id: 'heatmap-audit-surabaya',
+    category: 'Audit',
+    label: 'Cabang Surabaya',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 6, slotIndex: 1, level: 4 }]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-audit-banyuwangi',
+    category: 'Audit',
+    label: 'KCP Banyuwangi',
+    cells: buildSupervisionHeatmapCells([]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-audit-malang',
+    category: 'Audit',
+    label: 'KCP Malang',
+    cells: buildSupervisionHeatmapCells([]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-audit-sumenep',
+    category: 'Audit',
+    label: 'KCP Sumenep',
+    cells: buildSupervisionHeatmapCells([]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-inspection-group',
+    category: 'Inspeksi',
     label: 'Inspeksi',
-    cells: buildSupervisionHeatmapCells([
-      { monthIndex: 1, slotIndex: 2, level: 1 },
-      { monthIndex: 2, slotIndex: 1, level: 2 },
-      { monthIndex: 6, slotIndex: 2, level: 3 },
-      { monthIndex: 9, slotIndex: 1, level: 2 },
-      { monthIndex: 10, slotIndex: 1, level: 1 },
-    ]),
-  },
-  {
-    id: 'spacer-bottom-middle',
-    label: '',
     cells: buildSupervisionHeatmapCells([]),
-    isSpacer: true,
+    isGroup: true,
   },
   {
-    id: 'heatmap-testing',
+    id: 'heatmap-inspection-surabaya',
+    category: 'Inspeksi',
+    label: 'Cabang Surabaya',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 2, slotIndex: 1, level: 4 }]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-inspection-banyuwangi',
+    category: 'Inspeksi',
+    label: 'KCP Banyuwangi',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 4, slotIndex: 1, level: 4 }]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-inspection-malang',
+    category: 'Inspeksi',
+    label: 'KCP Malang',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 6, slotIndex: 1, level: 4 }]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-inspection-sumenep',
+    category: 'Inspeksi',
+    label: 'KCP Sumenep',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 8, slotIndex: 1, level: 4 }]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-inspection-avsec',
+    category: 'Inspeksi',
+    label: 'Penyedia Personel AVSEC',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 10, slotIndex: 1, level: 4 }]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-testing-group',
+    category: 'Pengujian',
     label: 'Pengujian',
-    cells: buildSupervisionHeatmapCells([
-      { monthIndex: 0, slotIndex: 1, level: 2 },
-      { monthIndex: 2, slotIndex: 1, level: 1 },
-      { monthIndex: 4, slotIndex: 1, level: 3 },
-      { monthIndex: 6, slotIndex: 1, level: 2 },
-      { monthIndex: 8, slotIndex: 1, level: 4 },
-      { monthIndex: 10, slotIndex: 1, level: 2 },
-    ]),
+    cells: buildSupervisionHeatmapCells([]),
+    isGroup: true,
   },
   {
-    id: 'spacer-final',
-    label: '',
-    cells: buildSupervisionHeatmapCells([]),
-    isSpacer: true,
+    id: 'heatmap-testing-surabaya',
+    category: 'Pengujian',
+    label: 'Cabang Surabaya',
+    cells: buildSupervisionHeatmapCells([
+      { monthIndex: 1, slotIndex: 0, level: 4 },
+      { monthIndex: 3, slotIndex: 0, level: 4 },
+      { monthIndex: 5, slotIndex: 0, level: 4 },
+      { monthIndex: 7, slotIndex: 0, level: 4 },
+      { monthIndex: 9, slotIndex: 0, level: 4 },
+      { monthIndex: 11, slotIndex: 0, level: 4 },
+    ]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-testing-banyuwangi',
+    category: 'Pengujian',
+    label: 'KCP Banyuwangi',
+    cells: buildSupervisionHeatmapCells([
+      { monthIndex: 1, slotIndex: 0, level: 4 },
+      { monthIndex: 3, slotIndex: 0, level: 4 },
+      { monthIndex: 5, slotIndex: 0, level: 4 },
+      { monthIndex: 7, slotIndex: 0, level: 4 },
+      { monthIndex: 9, slotIndex: 0, level: 4 },
+      { monthIndex: 11, slotIndex: 0, level: 4 },
+    ]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-testing-sumenep',
+    category: 'Pengujian',
+    label: 'KCP Sumenep',
+    cells: buildSupervisionHeatmapCells([
+      { monthIndex: 1, slotIndex: 0, level: 4 },
+      { monthIndex: 3, slotIndex: 0, level: 4 },
+      { monthIndex: 5, slotIndex: 0, level: 4 },
+      { monthIndex: 7, slotIndex: 0, level: 4 },
+      { monthIndex: 9, slotIndex: 0, level: 4 },
+      { monthIndex: 11, slotIndex: 0, level: 4 },
+    ]),
+    isBranch: true,
   },
 ];
 const ROUTE_PATHS = {
@@ -2343,28 +2518,209 @@ function getSupervisionCardAccent(kind: SupervisionSummaryCard['kind']) {
 }
 
 function getSupervisionHeatmapTone(level: SupervisionHeatmapLevel) {
-  if (level === 4) {
-    return 'bg-[#2f56c7]';
+  if (level > 0) {
+    return 'bg-blue-600';
   }
 
-  if (level === 3) {
-    return 'bg-[#4677ea]';
-  }
-
-  if (level === 2) {
-    return 'bg-[#7ea6f5]';
-  }
-
-  if (level === 1) {
-    return 'bg-[#c5dafd]';
-  }
-
-  return 'bg-[#eef3fb]';
+  return 'bg-slate-100';
 }
 
 function TestsSection() {
+  const [timelineFilter, setTimelineFilter] = useState<SupervisionHeatmapFilter>('Semua');
+  const [isTimelineFilterOpen, setIsTimelineFilterOpen] = useState(false);
+  const [openTimelineYearPicker, setOpenTimelineYearPicker] = useState<'from' | 'to' | null>(null);
+  const [isScheduleComposerOpen, setIsScheduleComposerOpen] = useState(false);
+  const [customScheduleEntries, setCustomScheduleEntries] = useState<SupervisionScheduleEntry[]>([]);
+  const [timelineYearRange, setTimelineYearRange] = useState({ from: 2026, to: 2026 });
+  const [scheduleDraft, setScheduleDraft] = useState<SupervisionScheduleDraft>({
+    category: 'Audit',
+    branch: 'Cabang Surabaya',
+    year: 2026,
+    monthIndex: 0,
+    slotIndex: 0,
+  });
+  const timelineFilterRef = useRef<HTMLDivElement | null>(null);
+  const timelineYearFilterRef = useRef<HTMLDivElement | null>(null);
+  const activeBranchOptions = SUPERVISION_BRANCHES_BY_CATEGORY[scheduleDraft.category];
+  const activeYearLabel =
+    timelineYearRange.from === timelineYearRange.to
+      ? `Tahun ${timelineYearRange.from}`
+      : `${timelineYearRange.from} - ${timelineYearRange.to}`;
+  const visibleScheduleEntries = [...BASE_SUPERVISION_SCHEDULE_ENTRIES, ...customScheduleEntries].filter(
+    (entry) => entry.year >= timelineYearRange.from && entry.year <= timelineYearRange.to,
+  );
+  const heatmapRows = SUPERVISION_HEATMAP_ROWS.map((row) => {
+    if (!row.isBranch || !row.category) {
+      return {
+        ...row,
+        cells: buildSupervisionHeatmapCells([]),
+      };
+    }
+
+    const matchingEntries = visibleScheduleEntries.filter(
+      (entry) => entry.category === row.category && entry.branch === row.label,
+    );
+
+    const nextCells = buildSupervisionHeatmapCells(
+      matchingEntries.map((entry) => ({
+        monthIndex: entry.monthIndex,
+        slotIndex: entry.slotIndex,
+        level: 4 as SupervisionHeatmapLevel,
+      })),
+    );
+
+    return {
+      ...row,
+      cells: nextCells,
+    };
+  });
+  const filteredHeatmapRows =
+    timelineFilter === 'Semua'
+      ? heatmapRows
+      : SUPERVISION_BRANCH_FILTERS.includes(timelineFilter as SupervisionBranchFilter)
+        ? (() => {
+            const matchingCategories = new Set(
+              heatmapRows.filter(
+                (row) => row.isBranch && row.label === timelineFilter && row.category,
+              ).map((row) => row.category as SupervisionHeatmapCategory),
+            );
+
+            return heatmapRows.filter((row) => {
+              if (row.isSpacer) return false;
+              if (row.isGroup && row.category) return matchingCategories.has(row.category);
+              return row.isBranch && row.label === timelineFilter;
+            });
+          })()
+        : heatmapRows.filter(
+            (row) => !row.isSpacer && row.category === timelineFilter,
+          );
+
+  useEffect(() => {
+    if (activeBranchOptions.includes(scheduleDraft.branch)) {
+      return;
+    }
+
+    setScheduleDraft((current) => ({
+      ...current,
+      branch: activeBranchOptions[0],
+    }));
+  }, [activeBranchOptions, scheduleDraft.branch]);
+
+  useEffect(() => {
+    if (!isTimelineFilterOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!timelineFilterRef.current?.contains(event.target as Node)) {
+        setIsTimelineFilterOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsTimelineFilterOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isTimelineFilterOpen]);
+
+  const handleTimelineFilterSelect = (value: SupervisionHeatmapFilter) => {
+    setTimelineFilter(value);
+    setIsTimelineFilterOpen(false);
+  };
+
+  const handleTimelineYearSelect = (key: 'from' | 'to', value: number) => {
+    handleTimelineYearChange(key, value);
+    setOpenTimelineYearPicker(null);
+  };
+
+  const handleTimelineYearChange = (key: 'from' | 'to', value: number) => {
+    setTimelineYearRange((current) => {
+      if (key === 'from') {
+        return {
+          from: value,
+          to: Math.max(value, current.to),
+        };
+      }
+
+      return {
+        from: Math.min(current.from, value),
+        to: value,
+      };
+    });
+  };
+
+  useEffect(() => {
+    if (!openTimelineYearPicker) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!timelineYearFilterRef.current?.contains(event.target as Node)) {
+        setOpenTimelineYearPicker(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenTimelineYearPicker(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [openTimelineYearPicker]);
+
+  const handleAddSchedule = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const nextEntry = {
+      id:
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      category: scheduleDraft.category,
+      branch: scheduleDraft.branch,
+      year: scheduleDraft.year,
+      monthIndex: scheduleDraft.monthIndex,
+      slotIndex: scheduleDraft.slotIndex,
+    } satisfies SupervisionScheduleEntry;
+
+    setCustomScheduleEntries((current) => {
+      const alreadyExists = current.some(
+        (entry) =>
+          entry.category === nextEntry.category &&
+          entry.branch === nextEntry.branch &&
+          entry.year === nextEntry.year &&
+          entry.monthIndex === nextEntry.monthIndex &&
+          entry.slotIndex === nextEntry.slotIndex,
+      );
+
+      if (alreadyExists) {
+        return current;
+      }
+
+      return [...current, nextEntry];
+    });
+    setTimelineFilter('Semua');
+    setIsScheduleComposerOpen(false);
+  };
+
   return (
-    <section className="mx-auto flex min-w-0 w-full max-w-6xl flex-col gap-4 sm:gap-5 md:gap-6">
+    <section className="flex min-w-0 w-full max-w-none flex-col gap-4 sm:gap-5 md:gap-6">
       <div className="rounded-[26px] border border-slate-200/80 bg-white/95 px-4 py-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:rounded-[30px] sm:px-6 sm:py-6 md:px-8 md:py-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 max-w-3xl">
@@ -2381,7 +2737,7 @@ function TestsSection() {
           </div>
 
           <div className="inline-flex w-fit items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(15,23,42,0.18)]">
-            {SUPERVISION_ACTIVE_YEAR}
+            {activeYearLabel}
           </div>
         </div>
       </div>
@@ -2389,6 +2745,10 @@ function TestsSection() {
       <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
         {SUPERVISION_SUMMARY_CARDS.map((card) => {
           const accent = getSupervisionCardAccent(card.kind);
+          const inspectionCompletedCount =
+            card.kind === 'inspection' ? card.locations.filter((location) => location.status === 'Sudah').length : 0;
+          const inspectionPendingCount =
+            card.kind === 'inspection' ? card.locations.length - inspectionCompletedCount : 0;
 
           return (
             <article
@@ -2423,61 +2783,64 @@ function TestsSection() {
 
                 {card.kind === 'audit' ? (
                   <>
-                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Status Utama
-                      </p>
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <span className={`h-3 w-3 rounded-full ${getSupervisionStatusStyles(card.status).dot}`} />
-                        <strong className="text-3xl font-semibold tracking-[-0.04em] text-slate-900">
-                          {card.status}
+                    <p className="text-sm leading-6 text-slate-500">{card.description}</p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Status</p>
+                        <div className="mt-3 flex items-center gap-2">
+                          <span className={`h-2.5 w-2.5 rounded-full ${getSupervisionStatusStyles(card.status).dot}`} />
+                          <strong className="text-lg font-semibold tracking-[-0.03em] text-slate-900">{card.status}</strong>
+                        </div>
+                      </div>
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Next</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {card.nextSchedule}
                         </strong>
                       </div>
-                    </div>
-
-                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Next Schedule
-                      </p>
-                      <strong className="text-xl font-semibold tracking-[-0.03em] text-slate-900">
-                        {card.nextSchedule}
-                      </strong>
-                      <p className="text-sm leading-6 text-slate-500">{card.description}</p>
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Cycle</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          2 Tahun
+                        </strong>
+                      </div>
                     </div>
                   </>
                 ) : null}
 
                 {card.kind === 'inspection' ? (
                   <>
-                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Status Global
-                      </p>
-                      <strong className="mt-3 block text-3xl font-semibold tracking-[-0.04em] text-slate-900">
-                        {card.status}
-                      </strong>
-                      <p className="mt-2 text-sm leading-6 text-slate-500">{card.description}</p>
+                    <p className="text-sm leading-6 text-slate-500">{card.description}</p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Status</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {card.status}
+                        </strong>
+                      </div>
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Cabang</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {card.locations.length}
+                        </strong>
+                      </div>
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Belum</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {inspectionPendingCount}
+                        </strong>
+                      </div>
                     </div>
 
-                    <div className="space-y-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Preview Lokasi
-                      </p>
-
+                    <div className="flex flex-wrap gap-2">
                       {card.locations.map((location) => (
-                        <div key={location.name} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={`h-2.5 w-2.5 rounded-full ${getSupervisionStatusStyles(location.status).dot}`}
-                            />
-                            <span className="text-sm font-medium text-slate-700">{location.name}</span>
-                          </div>
-                          <span
-                            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${getSupervisionStatusStyles(location.status).badge}`}
-                          >
-                            {location.status}
-                          </span>
-                        </div>
+                        <span
+                          key={location.name}
+                          className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${getSupervisionStatusStyles(location.status).badge}`}
+                        >
+                          <span className={`h-2 w-2 rounded-full ${getSupervisionStatusStyles(location.status).dot}`} />
+                          {location.name}
+                        </span>
                       ))}
                     </div>
                   </>
@@ -2485,32 +2848,40 @@ function TestsSection() {
 
                 {card.kind === 'testing' ? (
                   <>
-                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Progress
-                      </p>
-                      <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-                        <strong className="text-3xl font-semibold tracking-[-0.04em] text-slate-900">
+                    <p className="text-sm leading-6 text-slate-500">{card.subtitle}</p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Progress</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
                           {card.done} / {card.total}
                         </strong>
-                        <span className="text-sm font-medium text-slate-500">done</span>
                       </div>
-
-                      <div className="mt-4 h-2.5 rounded-full bg-slate-200">
-                        <div
-                          className="h-2.5 rounded-full bg-gradient-to-r from-sky-500 to-cyan-400"
-                          style={{ width: `${Math.round((card.done / card.total) * 100)}%` }}
-                        />
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Batch</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {card.total}
+                        </strong>
+                      </div>
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Next</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {card.nextSchedule}
+                        </strong>
                       </div>
                     </div>
 
-                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Pelaksanaan Rutin
-                      </p>
-                      <p className="text-sm leading-6 text-slate-500">{card.subtitle}</p>
-                      <div className="inline-flex w-fit items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 ring-1 ring-inset ring-sky-200">
-                        Agenda berikutnya {card.nextSchedule}
+                    <div className="space-y-3 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                      <div className="flex flex-wrap items-end justify-between gap-3">
+                        <span className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Progress Bar</span>
+                        <span className="text-sm font-medium text-slate-500">
+                          {Math.round((card.done / card.total) * 100)}%
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-200">
+                        <div
+                          className="h-2 rounded-full bg-blue-600"
+                          style={{ width: `${Math.round((card.done / card.total) * 100)}%` }}
+                        />
                       </div>
                     </div>
                   </>
@@ -2529,60 +2900,421 @@ function TestsSection() {
                 Timeline / Calendar View
               </p>
               <h3 className="mt-3 text-[1.7rem] font-semibold tracking-[-0.04em] text-slate-900 sm:text-2xl md:text-[2rem]">
-                Monitoring timeline pelaksanaan per kategori
+                Monitoring Timeline
               </h3>
               <p className="mt-3 text-sm leading-7 text-slate-500 md:text-base">
                 Tampilan heatmap tahunan untuk melihat persebaran pelaksanaan Audit, Inspeksi,
                 dan Pengujian dalam satu panel monitoring.
               </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <div ref={timelineFilterRef} className="relative w-full max-w-[278px] sm:max-w-[290px]">
+                  <button
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded={isTimelineFilterOpen}
+                    aria-label="Filter timeline pengawasan"
+                    onClick={() => {
+                      setOpenTimelineYearPicker(null);
+                      setIsTimelineFilterOpen((current) => !current);
+                    }}
+                    className="flex h-12 w-full items-center justify-between rounded-[18px] border border-slate-200 bg-white px-4 text-left text-base font-medium text-slate-800 shadow-[0_10px_24px_rgba(15,23,42,0.06)] outline-none transition hover:border-slate-300 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)] focus:border-slate-300 focus:shadow-[0_14px_28px_rgba(15,23,42,0.1)]"
+                  >
+                    <span className="truncate whitespace-nowrap">{timelineFilter}</span>
+                    <ChevronDownIcon
+                      className={`h-4.5 w-4.5 shrink-0 text-slate-500 transition-transform duration-200 ${
+                        isTimelineFilterOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {isTimelineFilterOpen ? (
+                    <div
+                      role="listbox"
+                      aria-label="Daftar filter timeline pengawasan"
+                      className="absolute left-0 top-full z-20 mt-3 w-full rounded-[24px] border border-slate-200 bg-white p-2 shadow-[0_24px_55px_rgba(15,23,42,0.16)]"
+                    >
+                      <div className="space-y-1">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={timelineFilter === 'Semua'}
+                          onClick={() => handleTimelineFilterSelect('Semua')}
+                          className={`flex w-full items-center justify-between rounded-[18px] px-3.5 py-2.5 text-left text-[15px] font-medium transition ${
+                            timelineFilter === 'Semua'
+                              ? 'bg-slate-900 text-white'
+                              : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className="truncate whitespace-nowrap">Semua</span>
+                          {timelineFilter === 'Semua' ? <span className="h-2.5 w-2.5 rounded-full bg-orange-500" /> : null}
+                        </button>
+                      </div>
+
+                      <div className="mt-3 px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Kategori
+                      </div>
+                      <div className="space-y-1">
+                        {SUPERVISION_CATEGORY_FILTERS.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            role="option"
+                            aria-selected={timelineFilter === option}
+                            onClick={() => handleTimelineFilterSelect(option)}
+                            className={`flex w-full items-center justify-between rounded-[18px] px-3.5 py-2.5 text-left text-[15px] font-medium transition ${
+                              timelineFilter === option
+                                ? 'bg-slate-900 text-white'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span className="truncate whitespace-nowrap">{option}</span>
+                            {timelineFilter === option ? <span className="h-2.5 w-2.5 rounded-full bg-orange-500" /> : null}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mt-3 px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Cabang
+                      </div>
+                      <div className="space-y-1">
+                        {SUPERVISION_BRANCH_FILTERS.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            role="option"
+                            aria-selected={timelineFilter === option}
+                            onClick={() => handleTimelineFilterSelect(option)}
+                            className={`flex w-full items-center justify-between rounded-[18px] px-3.5 py-2.5 text-left text-[15px] font-medium transition ${
+                              timelineFilter === option
+                                ? 'bg-slate-900 text-white'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span className="truncate whitespace-nowrap">{option}</span>
+                            {timelineFilter === option ? <span className="h-2.5 w-2.5 rounded-full bg-orange-500" /> : null}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div
+                  ref={timelineYearFilterRef}
+                  className="relative flex flex-wrap items-center gap-2 rounded-[18px] border border-slate-200 bg-white px-2.5 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                >
+                  <div className="relative">
+                    <button
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={openTimelineYearPicker === 'from'}
+                      aria-label="Pilih tahun awal"
+                      onClick={() => {
+                        setIsTimelineFilterOpen(false);
+                        setOpenTimelineYearPicker((current) =>
+                          current === 'from' ? null : 'from',
+                        );
+                      }}
+                      className="flex h-10 min-w-[120px] items-center justify-between rounded-[14px] border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 transition hover:border-slate-300"
+                    >
+                      <span>{timelineYearRange.from}</span>
+                      <ChevronDownIcon
+                        className={`h-3.5 w-3.5 text-slate-400 transition-transform ${
+                          openTimelineYearPicker === 'from' ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {openTimelineYearPicker === 'from' ? (
+                      <div className="absolute left-0 top-full z-20 mt-2 w-[138px] rounded-[18px] border border-slate-200 bg-white p-2 shadow-[0_24px_55px_rgba(15,23,42,0.16)]">
+                        <div className="max-h-60 overflow-y-auto pr-1">
+                          <div className="space-y-1">
+                            {SUPERVISION_YEAR_OPTIONS.map((year) => (
+                              <button
+                                key={`picker-from-${year}`}
+                                type="button"
+                                role="option"
+                                aria-selected={timelineYearRange.from === year}
+                                onClick={() => handleTimelineYearSelect('from', year)}
+                                className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2 text-left text-sm font-medium transition ${
+                                  timelineYearRange.from === year
+                                    ? 'bg-slate-900 text-white'
+                                    : 'text-slate-700 hover:bg-slate-50'
+                                }`}
+                              >
+                                <span>{year}</span>
+                                {timelineYearRange.from === year ? (
+                                  <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+                                ) : null}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <span className="text-sm font-semibold text-slate-300">-</span>
+
+                  <div className="relative">
+                    <button
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={openTimelineYearPicker === 'to'}
+                      aria-label="Pilih tahun akhir"
+                      onClick={() => {
+                        setIsTimelineFilterOpen(false);
+                        setOpenTimelineYearPicker((current) =>
+                          current === 'to' ? null : 'to',
+                        );
+                      }}
+                      className="flex h-10 min-w-[120px] items-center justify-between rounded-[14px] border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 transition hover:border-slate-300"
+                    >
+                      <span>{timelineYearRange.to}</span>
+                      <ChevronDownIcon
+                        className={`h-3.5 w-3.5 text-slate-400 transition-transform ${
+                          openTimelineYearPicker === 'to' ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {openTimelineYearPicker === 'to' ? (
+                      <div className="absolute right-0 top-full z-20 mt-2 w-[138px] rounded-[18px] border border-slate-200 bg-white p-2 shadow-[0_24px_55px_rgba(15,23,42,0.16)]">
+                        <div className="max-h-60 overflow-y-auto pr-1">
+                          <div className="space-y-1">
+                            {SUPERVISION_YEAR_OPTIONS.map((year) => (
+                              <button
+                                key={`picker-to-${year}`}
+                                type="button"
+                                role="option"
+                                aria-selected={timelineYearRange.to === year}
+                                onClick={() => handleTimelineYearSelect('to', year)}
+                                className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2 text-left text-sm font-medium transition ${
+                                  timelineYearRange.to === year
+                                    ? 'bg-slate-900 text-white'
+                                    : 'text-slate-700 hover:bg-slate-50'
+                                }`}
+                              >
+                                <span>{year}</span>
+                                {timelineYearRange.to === year ? (
+                                  <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+                                ) : null}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsScheduleComposerOpen((current) => !current)}
+                  className="inline-flex h-12 items-center justify-center rounded-[18px] bg-slate-900 px-5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] transition hover:bg-slate-800"
+                >
+                  {isScheduleComposerOpen ? 'Tutup' : 'Tambah'}
+                </button>
+              </div>
+
+              {isScheduleComposerOpen ? (
+                <form
+                  className="mt-4 max-w-4xl rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_16px_36px_rgba(15,23,42,0.08)] sm:p-5"
+                  onSubmit={handleAddSchedule}
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Tambah Agenda Timeline
+                      </p>
+                      <h4 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                        Atur jadwal baru untuk heatmap monitoring
+                      </h4>
+                    </div>
+                    <span className="inline-flex w-fit items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
+                      {customScheduleEntries.length} jadwal tambahan
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Tahun</span>
+                      <select
+                        value={scheduleDraft.year}
+                        onChange={(event) =>
+                          setScheduleDraft((current) => ({
+                            ...current,
+                            year: Number(event.target.value),
+                          }))
+                        }
+                        className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
+                      >
+                        {SUPERVISION_YEAR_OPTIONS.map((year) => (
+                          <option key={`draft-year-${year}`} value={year}>
+                            {year}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Bulan</span>
+                      <select
+                        value={scheduleDraft.monthIndex}
+                        onChange={(event) =>
+                          setScheduleDraft((current) => ({
+                            ...current,
+                            monthIndex: Number(event.target.value),
+                          }))
+                        }
+                        className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
+                      >
+                        {YEAR_TIMELINE_MONTHS.map((month, index) => (
+                          <option key={month} value={index}>
+                            {month}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Periode</span>
+                      <select
+                        value={scheduleDraft.slotIndex}
+                        onChange={(event) =>
+                          setScheduleDraft((current) => ({
+                            ...current,
+                            slotIndex: Number(event.target.value),
+                          }))
+                        }
+                        className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
+                      >
+                        {TIMELINE_SLOT_LABELS.map((slot, index) => (
+                          <option key={slot} value={index}>
+                            Minggu {slot}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Scope</span>
+                      <select
+                        value={scheduleDraft.category}
+                        onChange={(event) =>
+                          setScheduleDraft((current) => {
+                            const nextCategory = event.target.value as SupervisionHeatmapCategory;
+                            return {
+                              ...current,
+                              category: nextCategory,
+                              branch: SUPERVISION_BRANCHES_BY_CATEGORY[nextCategory][0],
+                            };
+                          })
+                        }
+                        className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
+                      >
+                        {SUPERVISION_CATEGORY_FILTERS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Cabang</span>
+                      <select
+                        value={scheduleDraft.branch}
+                        onChange={(event) =>
+                          setScheduleDraft((current) => ({
+                            ...current,
+                            branch: event.target.value as SupervisionBranchFilter,
+                          }))
+                        }
+                        className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
+                      >
+                        {activeBranchOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsScheduleComposerOpen(false)}
+                      className="inline-flex h-11 items-center justify-center rounded-[16px] border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      className="inline-flex h-11 items-center justify-center rounded-[16px] bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(37,99,235,0.22)] transition hover:bg-blue-500"
+                    >
+                      Simpan Ke Timeline
+                    </button>
+                  </div>
+                </form>
+              ) : null}
             </div>
           </div>
         </div>
 
         <div className="px-4 py-5 sm:px-6 sm:py-6 md:px-8">
-          <div className="overflow-x-auto pb-2">
-            <div className="min-w-[980px] rounded-[28px] border border-slate-100 bg-white px-8 py-8 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+          <div className="timeline-heatmap-scroll">
+            <div className="timeline-heatmap-shell">
               <div
-                className="grid items-end gap-x-4 gap-y-6"
-                style={{ gridTemplateColumns: `64px repeat(${TIMELINE_TOTAL_COLUMNS}, 18px)` }}
+                className="timeline-heatmap-grid"
+                style={{ gridTemplateColumns: `var(--timeline-label-column) repeat(${TIMELINE_TOTAL_COLUMNS}, var(--timeline-cell-size))` }}
               >
-                <div />
+                <div className="timeline-heatmap-sticky-spacer" />
                 {YEAR_TIMELINE_MONTHS.map((month) => (
                   <div
                     key={`heatmap-month-${month}`}
-                    className="text-left text-[12px] font-medium text-slate-400"
+                    className="timeline-heatmap-month"
                     style={{ gridColumn: `span ${TIMELINE_SLOTS_PER_MONTH} / span ${TIMELINE_SLOTS_PER_MONTH}` }}
                   >
                     {month}
                   </div>
                 ))}
 
-                {SUPERVISION_HEATMAP_ROWS.map((row) => (
+                {filteredHeatmapRows.map((row) => (
                   <Fragment key={row.id}>
                     <div
-                      className={`text-[12px] font-medium text-slate-400 ${row.isSpacer ? 'opacity-0' : ''}`}
+                      className={`timeline-heatmap-label ${row.isSpacer ? 'is-spacer' : ''} ${
+                        row.isGroup ? 'is-group' : ''
+                      } ${row.isBranch ? 'is-branch' : ''}`}
                     >
-                      {row.label}
+                      {row.isBranch ? (
+                        <span className="timeline-heatmap-branch-inline">
+                          <span className="timeline-heatmap-branch-dash">-</span>
+                          <span>{row.label}</span>
+                        </span>
+                      ) : (
+                        row.label
+                      )}
                     </div>
                     {row.cells.map((level, index) => (
                       <span
                         key={`${row.id}-${index}`}
-                        className={`h-[18px] w-[18px] rounded-[4px] ${getSupervisionHeatmapTone(level)}`}
+                        className={`timeline-heatmap-cell ${getSupervisionHeatmapTone(level)}`}
                       />
                     ))}
                   </Fragment>
                 ))}
               </div>
 
-              <div className="mt-6 flex items-center justify-end gap-2 text-[12px] font-medium text-slate-400">
-                <span>Less</span>
+              <div className="timeline-heatmap-legend">
+                <span>Indikator Aktif</span>
                 {HEATMAP_LEGEND_LEVELS.map((level) => (
                   <span
                     key={`heatmap-legend-${level}`}
-                    className={`h-[18px] w-[18px] rounded-[4px] ${getSupervisionHeatmapTone(level)}`}
+                    className={`timeline-heatmap-cell ${getSupervisionHeatmapTone(level)}`}
                   />
                 ))}
-                <span>More</span>
               </div>
             </div>
           </div>
