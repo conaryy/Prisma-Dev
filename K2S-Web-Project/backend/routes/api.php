@@ -100,6 +100,9 @@ Route::middleware('auth.api')->group(function () {
     Route::get('dashboard/user-alerts', [DashboardController::class, 'userAlerts']);
     Route::get('dashboard/cap-open-trend', [DashboardController::class, 'capOpenTrend']);
     Route::get('dashboard/cap-open-trend/external-dnp', [DashboardController::class, 'externalDnpCapTrend']);
+    Route::get('dashboard/external-dnp-map-summary', [DashboardController::class, 'externalDnpMapSummary']);
+    Route::get('dashboard/external-dnp-map-detail', [DashboardController::class, 'externalDnpMapDetail']);
+    Route::get('dashboard/external-dnp-map-category-breakdown', [DashboardController::class, 'externalDnpMapCategoryBreakdown']);
     Route::get('guide/manual/user-url', [GuideManualController::class, 'userManualUrl']);
     Route::middleware('admin')->get('guide/manual/admin-url', [GuideManualController::class, 'adminManualUrl']);
     Route::middleware('admin')->get('guide/template/question-url', [GuideManualController::class, 'questionTemplateUrl']);

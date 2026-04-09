@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\ExternalDnpAnswer;
 use App\Models\ExternalDnpCap;
+use App\Models\ExternalDnpQuestion;
 use App\Models\SelfAssessmentAnswer;
 use App\Models\SelfAssessmentCap;
 use App\Models\SelfAssessmentQuestion;
@@ -20,6 +22,73 @@ use Illuminate\Http\Request;
 
 class DashboardController extends ApiController
 {
+    private const EXTERNAL_DNP_MAP_SCOPE_KEYS = ['audit', 'inspeksi', 'surveillance'];
+
+    private const EXTERNAL_DNP_MAP_MARKERS = [
+        'north-central' => [
+            'title' => 'Cabang Surabaya',
+            'instansiAliases' => [
+                'perum lppnpi cabang surabaya',
+                'cabang surabaya',
+            ],
+        ],
+        'central-south' => [
+            'title' => 'KCP Malang',
+            'instansiAliases' => [
+                'perum lppnpi cabang pembantu malang',
+                'cabang pembantu malang',
+                'capem malang',
+                'kcp malang',
+            ],
+        ],
+        'far-east' => [
+            'title' => 'KCP Banyuwangi',
+            'instansiAliases' => [
+                'perum lppnpi cabang pembantu banyuwangi',
+                'cabang pembantu banyuwangi',
+                'capem banyuwangi',
+                'kcp banyuwangi',
+            ],
+        ],
+        'madura-east' => [
+            'title' => 'KCP Sumenep',
+            'instansiAliases' => [
+                'perum lppnpi cabang pembantu sumenep',
+                'cabang pembantu sumenep',
+                'capem sumenep',
+                'kcp sumenep',
+            ],
+        ],
+        'central-west' => [
+            'title' => 'Unit Kediri',
+            'instansiAliases' => [
+                'perum lppnpi unit kediri',
+                'unit kediri',
+            ],
+        ],
+        'north-west' => [
+            'title' => 'Unit Blora',
+            'instansiAliases' => [
+                'perum lppnpi unit blora',
+                'unit blora',
+            ],
+        ],
+        'bawean' => [
+            'title' => 'Unit Bawean',
+            'instansiAliases' => [
+                'perum lppnpi unit bawean',
+                'unit bawean',
+            ],
+        ],
+        'east-south' => [
+            'title' => 'Unit Jember',
+            'instansiAliases' => [
+                'perum lppnpi unit jember',
+                'unit jember',
+            ],
+        ],
+    ];
+
     public function capSummary(Request $request)
     {
         $userId = $request->user()->id;
@@ -491,6 +560,438 @@ class DashboardController extends ApiController
             ->values();
 
         return $this->respondData($payload);
+    }
+
+    public function externalDnpMapSummary(Request $request)
+    {
+        $user = $request->user();
+        $hasAccess = (bool) ($user?->can_access_external_dnp ?? false);
+        $markers = $this->emptyExternalDnpMapMarkers();
+
+        if (!$hasAccess) {
+            return $this->respondData([
+                'hasAccess' => false,
+                'markers' => array_values($markers),
+            ]);
+        }
+
+        $submittedAnswers = ExternalDnpAnswer::query()
+            ->where('is_submitted', true)
+            ->with('sessionArea.session')
+            ->get();
+
+        if ($submittedAnswers->isEmpty()) {
+            return $this->respondData([
+                'hasAccess' => true,
+                'markers' => array_values($markers),
+            ]);
+        }
+
+        foreach ($submittedAnswers as $answer) {
+            $session = $answer->sessionArea?->session;
+            $scope = strtolower(trim((string) ($session?->scope ?? '')));
+
+            if (!$session || !in_array($scope, self::EXTERNAL_DNP_MAP_SCOPE_KEYS, true)) {
+                continue;
+            }
+
+            $matchedMarkerKeys = $this->resolveExternalDnpMapMarkerMatches(
+                $this->resolveExternalDnpMapInstansiText($answer)
+            );
+
+            if (empty($matchedMarkerKeys)) {
+                continue;
+            }
+
+            $latestActivityAt = $answer->submitted_at?->toDateTimeString()
+                ?? $answer->updated_at?->toDateTimeString()
+                ?? $answer->created_at?->toDateTimeString();
+
+            foreach ($matchedMarkerKeys as $markerKey) {
+                if (!isset($markers[$markerKey])) {
+                    continue;
+                }
+
+                $markers[$markerKey]['hasData'] = true;
+                $markers[$markerKey]['scopeAvailability'][$scope] = true;
+
+                $currentLatest = $markers[$markerKey]['latestActivityAt'] ?? null;
+                if ($latestActivityAt !== null && ($currentLatest === null || $latestActivityAt > $currentLatest)) {
+                    $markers[$markerKey]['latestActivityAt'] = $latestActivityAt;
+                }
+            }
+        }
+
+        $answers = ExternalDnpAnswer::query()
+            ->where('is_submitted', true)
+            ->whereHas('review', function ($query) {
+                $query->where('status', 'Not Satisfactory')
+                    ->whereNotNull('sent_at');
+            })
+            ->with(['review', 'sessionArea.session'])
+            ->get();
+
+        $capsByAnswerId = ExternalDnpCap::query()
+            ->whereIn('answer_id', $answers->pluck('id')->values())
+            ->with('fulfillments')
+            ->get()
+            ->keyBy('answer_id');
+
+        foreach ($answers as $answer) {
+            $review = $answer->review;
+            $session = $answer->sessionArea?->session;
+            $scope = strtolower(trim((string) ($session?->scope ?? '')));
+
+            if (!$review || !$session || !in_array($scope, self::EXTERNAL_DNP_MAP_SCOPE_KEYS, true)) {
+                continue;
+            }
+
+            $cap = $capsByAnswerId->get($answer->id);
+            $matchedMarkerKeys = $this->resolveExternalDnpMapMarkerMatches(
+                $this->resolveExternalDnpMapInstansiText($answer)
+            );
+
+            if (empty($matchedMarkerKeys)) {
+                continue;
+            }
+
+            $latestActivityAt = $this->resolveExternalDnpMapLatestActivityAt($answer, $review, $cap);
+
+            foreach ($matchedMarkerKeys as $markerKey) {
+                if (!isset($markers[$markerKey])) {
+                    continue;
+                }
+
+                $markers[$markerKey]['hasData'] = true;
+                $markers[$markerKey]['counts'][$scope] += 1;
+
+                $currentLatest = $markers[$markerKey]['latestActivityAt'] ?? null;
+                if ($latestActivityAt !== null && ($currentLatest === null || $latestActivityAt > $currentLatest)) {
+                    $markers[$markerKey]['latestActivityAt'] = $latestActivityAt;
+                }
+            }
+        }
+
+        return $this->respondData([
+            'hasAccess' => true,
+            'markers' => array_values($markers),
+        ]);
+    }
+
+    public function externalDnpMapDetail(Request $request)
+    {
+        $validated = $request->validate([
+            'markerKey' => ['required', 'in:'.implode(',', array_keys(self::EXTERNAL_DNP_MAP_MARKERS))],
+            'scope' => ['required', 'in:'.implode(',', self::EXTERNAL_DNP_MAP_SCOPE_KEYS)],
+        ]);
+
+        $user = $request->user();
+        $hasAccess = (bool) ($user?->can_access_external_dnp ?? false);
+
+        if (!$hasAccess) {
+            return $this->respondData([
+                'hasAccess' => false,
+                'markerKey' => $validated['markerKey'],
+                'scope' => $validated['scope'],
+                'items' => [],
+            ]);
+        }
+
+        $answers = ExternalDnpAnswer::query()
+            ->where('is_submitted', true)
+            ->whereHas('review', function ($query) {
+                $query->where('status', 'Not Satisfactory')
+                    ->whereNotNull('sent_at');
+            })
+            ->whereHas('sessionArea.session', function ($query) use ($validated) {
+                $query->where('scope', $validated['scope']);
+            })
+            ->with(['review', 'sessionArea.session'])
+            ->get();
+
+        if ($answers->isEmpty()) {
+            return $this->respondData([
+                'hasAccess' => true,
+                'markerKey' => $validated['markerKey'],
+                'scope' => $validated['scope'],
+                'items' => [],
+            ]);
+        }
+
+        $capsByAnswerId = ExternalDnpCap::query()
+            ->whereIn('answer_id', $answers->pluck('id')->values())
+            ->with(['review.reviewer', 'fulfillments'])
+            ->get()
+            ->keyBy('answer_id');
+
+        $matchedAnswers = [];
+        foreach ($answers as $answer) {
+            $cap = $capsByAnswerId->get($answer->id);
+            $matchedMarkerKeys = $this->resolveExternalDnpMapMarkerMatches(
+                $this->resolveExternalDnpMapInstansiText($answer)
+            );
+
+            if (!in_array($validated['markerKey'], $matchedMarkerKeys, true)) {
+                continue;
+            }
+
+            $matchedAnswers[] = $answer;
+        }
+
+        if (empty($matchedAnswers)) {
+            return $this->respondData([
+                'hasAccess' => true,
+                'markerKey' => $validated['markerKey'],
+                'scope' => $validated['scope'],
+                'items' => [],
+            ]);
+        }
+
+        $questions = ExternalDnpQuestion::query()
+            ->where('scope', $validated['scope'])
+            ->whereIn('code', collect($matchedAnswers)->pluck('question_code')->filter()->unique()->values())
+            ->get()
+            ->keyBy('code');
+
+        $items = collect($matchedAnswers)
+            ->map(function (ExternalDnpAnswer $answer) use ($capsByAnswerId, $questions) {
+                $cap = $capsByAnswerId->get($answer->id);
+                $review = $answer->review;
+                $sessionArea = $answer->sessionArea;
+                $session = $sessionArea?->session;
+                $latestFulfillment = $this->resolveExternalDnpMapLatestFulfillment($cap);
+                $question = $questions->get($answer->question_code);
+
+                return [
+                    'answerId' => $answer->id,
+                    'questionCode' => $answer->question_code,
+                    'questionText' => $question?->text ?? '',
+                    'instansiName' => $session?->instansi_name,
+                    'area' => $sessionArea?->category,
+                    'progress' => $latestFulfillment?->progress,
+                    'itemState' => $this->resolveExternalDnpMapItemState($cap),
+                    'latestActivityAt' => $this->resolveExternalDnpMapLatestActivityAt($answer, $review, $cap),
+                    'review' => $review ? [
+                        'status' => $review->status,
+                        'severity' => $review->severity,
+                        'probability' => $review->probability,
+                        'resume' => $review->resume,
+                        'finding' => $review->finding,
+                        'recommendations' => $review->recommendations,
+                        'description' => $review->description,
+                        'reviewedBy' => $review->reviewer?->only(['id', 'name', 'email']),
+                        'reviewedAt' => optional($review->sent_at)->toDateTimeString(),
+                    ] : null,
+                    'cap' => $cap ? [
+                        'id' => $cap->id,
+                        'status' => $cap->status,
+                        'actionPlan' => $cap->action_plan,
+                        'sentAt' => optional($cap->sent_at)->toDateTimeString(),
+                        'review' => $cap->review ? [
+                            'result' => $cap->review->result,
+                            'comment' => $cap->review->comment,
+                            'status' => $cap->review->status,
+                            'reviewedBy' => $cap->review->reviewer?->only(['id', 'name', 'email']),
+                            'reviewedAt' => optional($cap->review->reviewed_at)->toDateTimeString(),
+                        ] : null,
+                        'latestFulfillment' => $latestFulfillment ? [
+                            'id' => $latestFulfillment->id,
+                            'step' => $latestFulfillment->step,
+                            'progress' => $latestFulfillment->progress,
+                            'status' => $latestFulfillment->status,
+                            'completeDate' => optional($latestFulfillment->complete_date)->format('Y-m-d'),
+                            'submittedAt' => optional($latestFulfillment->submitted_at)->toDateTimeString(),
+                            'createdAt' => optional($latestFulfillment->created_at)->toDateTimeString(),
+                            'proposeAction' => $latestFulfillment->propose_action,
+                            'actionOffice' => $latestFulfillment->action_office,
+                            'evidenceReference' => $latestFulfillment->evidence_reference,
+                        ] : null,
+                    ] : null,
+                ];
+            })
+            ->sort(function (array $left, array $right) {
+                return strnatcasecmp((string) ($left['questionCode'] ?? ''), (string) ($right['questionCode'] ?? ''));
+            })
+            ->values()
+            ->all();
+
+        return $this->respondData([
+            'hasAccess' => true,
+            'markerKey' => $validated['markerKey'],
+            'scope' => $validated['scope'],
+            'items' => $items,
+        ]);
+    }
+
+    public function externalDnpMapCategoryBreakdown(Request $request)
+    {
+        $validated = $request->validate([
+            'markerKey' => ['nullable', 'in:'.implode(',', array_keys(self::EXTERNAL_DNP_MAP_MARKERS))],
+            'year' => ['nullable', 'integer', 'min:2000', 'max:2100'],
+        ]);
+
+        $markerKey = $validated['markerKey'] ?? null;
+        $selectedYear = isset($validated['year']) ? (int) $validated['year'] : null;
+        $user = $request->user();
+        $hasAccess = (bool) ($user?->can_access_external_dnp ?? false);
+
+        if (!$hasAccess) {
+            return $this->respondData([
+                'hasAccess' => false,
+                'markerKey' => $markerKey,
+                'selectedYear' => $selectedYear,
+                'availableYears' => [],
+                'categories' => [],
+                'locationLabel' => $markerKey
+                    ? (self::EXTERNAL_DNP_MAP_MARKERS[$markerKey]['title'] ?? 'Lokasi')
+                    : 'Semua Wilayah Kerja Cabang Surabaya',
+                'totalFindings' => 0,
+                'items' => [],
+            ]);
+        }
+
+        $answers = ExternalDnpAnswer::query()
+            ->where('is_submitted', true)
+            ->whereHas('review', function ($query) {
+                $query->where('status', 'Not Satisfactory')
+                    ->whereNotNull('sent_at');
+            })
+            ->with(['sessionArea.session', 'review'])
+            ->get();
+
+        if ($answers->isEmpty()) {
+            return $this->respondData([
+                'hasAccess' => true,
+                'markerKey' => $markerKey,
+                'selectedYear' => $selectedYear,
+                'availableYears' => [],
+                'categories' => [],
+                'locationLabel' => $markerKey
+                    ? (self::EXTERNAL_DNP_MAP_MARKERS[$markerKey]['title'] ?? 'Lokasi')
+                    : 'Semua Wilayah Kerja Cabang Surabaya',
+                'totalFindings' => 0,
+                'items' => [],
+            ]);
+        }
+
+        $matchedAnswers = collect();
+        foreach ($answers as $answer) {
+            $matchedMarkerKeys = $this->resolveExternalDnpMapMarkerMatches(
+                $this->resolveExternalDnpMapInstansiText($answer)
+            );
+
+            if ($markerKey !== null) {
+                if (!in_array($markerKey, $matchedMarkerKeys, true)) {
+                    continue;
+                }
+            } elseif (empty($matchedMarkerKeys)) {
+                continue;
+            }
+
+            $matchedAnswers->push($answer);
+        }
+
+        $availableYears = $matchedAnswers
+            ->map(fn (ExternalDnpAnswer $answer) => (int) optional($answer->review?->sent_at)->format('Y'))
+            ->filter(fn (int $year) => $year > 0)
+            ->unique()
+            ->sortDesc()
+            ->values()
+            ->all();
+
+        if ($selectedYear !== null) {
+            $matchedAnswers = $matchedAnswers
+                ->filter(function (ExternalDnpAnswer $answer) use ($selectedYear) {
+                    $reviewedYear = (int) optional($answer->review?->sent_at)->format('Y');
+
+                    return $reviewedYear === $selectedYear;
+                })
+                ->values();
+        }
+
+        if ($matchedAnswers->isEmpty()) {
+            return $this->respondData([
+                'hasAccess' => true,
+                'markerKey' => $markerKey,
+                'selectedYear' => $selectedYear,
+                'availableYears' => $availableYears,
+                'categories' => [],
+                'locationLabel' => $markerKey
+                    ? (self::EXTERNAL_DNP_MAP_MARKERS[$markerKey]['title'] ?? 'Lokasi')
+                    : 'Semua Wilayah Kerja Cabang Surabaya',
+                'totalFindings' => 0,
+                'items' => [],
+            ]);
+        }
+
+        $questions = ExternalDnpQuestion::query()
+            ->whereIn('code', $matchedAnswers->pluck('question_code')->filter()->unique()->values())
+            ->get(['code', 'category'])
+            ->keyBy('code');
+
+        $countsByYearCategory = $matchedAnswers->reduce(function (array $carry, ExternalDnpAnswer $answer) use ($questions) {
+            $question = $questions->get($answer->question_code);
+            $category = $this->formatExternalDnpQuestionCategoryLabel(
+                $question?->category,
+                $answer->question_code
+            );
+            $year = (int) optional($answer->review?->sent_at)->format('Y');
+
+            if ($year <= 0) {
+                return $carry;
+            }
+
+            if (!isset($carry[$year])) {
+                $carry[$year] = [];
+            }
+
+            if (!isset($carry[$year][$category])) {
+                $carry[$year][$category] = 0;
+            }
+
+            $carry[$year][$category] += 1;
+
+            return $carry;
+        }, []);
+
+        $categories = collect($countsByYearCategory)
+            ->flatMap(fn (array $counts) => array_keys($counts))
+            ->unique()
+            ->sortBy(fn (string $category) => $this->resolveExternalDnpCategoryOrder($category))
+            ->values()
+            ->all();
+
+        $items = collect(array_keys($countsByYearCategory))
+            ->map(fn (string|int $year) => (int) $year)
+            ->sort()
+            ->values()
+            ->map(function (int $year) use ($countsByYearCategory, $categories) {
+                $counts = [];
+
+                foreach ($categories as $category) {
+                    $counts[$category] = (int) ($countsByYearCategory[$year][$category] ?? 0);
+                }
+
+                return [
+                    'year' => $year,
+                    'counts' => $counts,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return $this->respondData([
+            'hasAccess' => true,
+            'markerKey' => $markerKey,
+            'selectedYear' => $selectedYear,
+            'availableYears' => $availableYears,
+            'categories' => $categories,
+            'locationLabel' => $markerKey
+                ? (self::EXTERNAL_DNP_MAP_MARKERS[$markerKey]['title'] ?? 'Lokasi')
+                : 'Semua Wilayah Kerja Cabang Surabaya',
+            'totalFindings' => $matchedAnswers->count(),
+            'items' => $items,
+        ]);
     }
 
     public function adminModuleTrend(Request $request)
@@ -1342,5 +1843,193 @@ class DashboardController extends ApiController
         }
 
         return ' Detail '.implode(', ', $parts).'.';
+    }
+
+    private function emptyExternalDnpMapMarkers(): array
+    {
+        $markers = [];
+
+        foreach (self::EXTERNAL_DNP_MAP_MARKERS as $key => $config) {
+            $markers[$key] = [
+                'key' => $key,
+                'title' => $config['title'],
+                'hasData' => false,
+                'counts' => [
+                    'audit' => 0,
+                    'inspeksi' => 0,
+                    'surveillance' => 0,
+                ],
+                'scopeAvailability' => [
+                    'audit' => false,
+                    'inspeksi' => false,
+                    'surveillance' => false,
+                ],
+                'latestActivityAt' => null,
+            ];
+        }
+
+        return $markers;
+    }
+
+    private function resolveExternalDnpMapMarkerMatches(string $instansiText): array
+    {
+        $matches = [];
+
+        foreach (self::EXTERNAL_DNP_MAP_MARKERS as $key => $config) {
+            $matchByInstansi = $this->containsAnyExternalDnpMapAlias(
+                $instansiText,
+                $config['instansiAliases'] ?? []
+            );
+
+            if ($matchByInstansi) {
+                $matches[] = $key;
+            }
+        }
+
+        return array_values(array_unique($matches));
+    }
+
+    private function resolveExternalDnpMapInstansiText(ExternalDnpAnswer $answer): string
+    {
+        return $this->normalizeExternalDnpMapText(
+            (string) ($answer->sessionArea?->session?->instansi_name ?? '')
+        );
+    }
+
+    private function containsAnyExternalDnpMapAlias(string $haystack, array $aliases): bool
+    {
+        if ($haystack === '') {
+            return false;
+        }
+
+        foreach ($aliases as $alias) {
+            $needle = $this->normalizeExternalDnpMapText((string) $alias);
+            if ($needle !== '' && str_contains($haystack, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizeExternalDnpMapText(?string $text): string
+    {
+        $value = mb_strtolower(trim((string) $text));
+        if ($value === '') {
+            return '';
+        }
+
+        $value = preg_replace('/[^[:alnum:]\s]+/u', ' ', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+
+        return trim($value);
+    }
+
+    private function formatExternalDnpQuestionCategoryLabel(?string $category, ?string $questionCode = null): string
+    {
+        $value = trim((string) $category);
+        if ($value === '' && $questionCode) {
+            $value = trim((string) strtok($questionCode, '.'));
+        }
+
+        if ($value === '') {
+            return 'Lainnya';
+        }
+
+        return match (mb_strtoupper($value)) {
+            'A' => 'Organisasi',
+            'B' => 'Prosedur',
+            'C' => 'Fasilitas',
+            'D' => 'Personel',
+            'E' => 'Dokumen',
+            'ORGANISASI' => 'Organisasi',
+            'PROSEDUR' => 'Prosedur',
+            'PERSONEL', 'PERSONNEL' => 'Personel',
+            'FASILITAS', 'FACILITY' => 'Fasilitas',
+            'DOKUMEN', 'DOKUMENTASI', 'DOCUMENT' => 'Dokumen',
+            default => ucwords(mb_strtolower($value)),
+        };
+    }
+
+    private function resolveExternalDnpCategoryOrder(string $category): int
+    {
+        return match ($category) {
+            'Organisasi' => 1,
+            'Prosedur' => 2,
+            'Fasilitas' => 3,
+            'Personel' => 4,
+            'Dokumen' => 5,
+            default => 99,
+        };
+    }
+
+    private function resolveExternalDnpMapLatestActivityAt(
+        ExternalDnpAnswer $answer,
+        $review,
+        ?ExternalDnpCap $cap
+    ): ?string {
+        $timestamps = [];
+
+        if ($answer->submitted_at) {
+            $timestamps[] = $answer->submitted_at->getTimestamp();
+        }
+        if ($review?->sent_at) {
+            $timestamps[] = $review->sent_at->getTimestamp();
+        }
+        if ($cap?->sent_at) {
+            $timestamps[] = $cap->sent_at->getTimestamp();
+        }
+
+        if ($cap) {
+            foreach ($cap->fulfillments as $fulfillment) {
+                if ($fulfillment->submitted_at) {
+                    $timestamps[] = $fulfillment->submitted_at->getTimestamp();
+                }
+                if ($fulfillment->created_at) {
+                    $timestamps[] = $fulfillment->created_at->getTimestamp();
+                }
+            }
+        }
+
+        if (empty($timestamps)) {
+            return null;
+        }
+
+        return Carbon::createFromTimestamp(max($timestamps))->toDateTimeString();
+    }
+
+    private function resolveExternalDnpMapLatestFulfillment(?ExternalDnpCap $cap)
+    {
+        if (!$cap || $cap->fulfillments->isEmpty()) {
+            return null;
+        }
+
+        return $cap->fulfillments
+            ->filter(fn ($fulfillment) => $fulfillment->submitted_at || $fulfillment->created_at)
+            ->sortByDesc(function ($fulfillment) {
+                $submitted = $fulfillment->submitted_at?->timestamp ?? 0;
+                $created = $fulfillment->created_at?->timestamp ?? 0;
+                return max($submitted, $created);
+            })
+            ->first();
+    }
+
+    private function resolveExternalDnpMapItemState(?ExternalDnpCap $cap): string
+    {
+        if (!$cap) {
+            return 'Baru';
+        }
+
+        $hasSent = $cap->fulfillments->contains(fn ($fulfillment) => $fulfillment->status === 'sent');
+        if ($hasSent) {
+            return 'Dikirim';
+        }
+
+        $hasDraft = $cap->fulfillments->contains(fn ($fulfillment) => $fulfillment->status === 'draft');
+        if ($hasDraft) {
+            return 'Draft';
+        }
+
+        return 'Baru';
     }
 }

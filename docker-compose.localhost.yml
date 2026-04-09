@@ -1,0 +1,54 @@
+services:
+  gateway:
+    profiles: ["manual_only"]
+
+  db:
+    ports: !reset []
+
+  auth-backend:
+    ports:
+      - "3104:3104"
+
+  auth-frontend:
+    ports:
+      - "5174:80"
+
+  backend-init:
+    environment:
+      SSO_ISSUER: http://localhost:3104
+      SSO_JWKS_URL: http://auth-backend:3104/.well-known/jwks.json
+      SSO_AUTHORIZE_URL: http://localhost:3104/oauth/authorize
+      SSO_TOKEN_URL: http://localhost:3104/oauth/token
+      SSO_END_SESSION_URL: http://localhost:3104/auth/logout
+
+  backend:
+    environment:
+      SSO_ISSUER: http://localhost:3104
+      SSO_JWKS_URL: http://auth-backend:3104/.well-known/jwks.json
+      SSO_AUTHORIZE_URL: http://localhost:3104/oauth/authorize
+      SSO_TOKEN_URL: http://localhost:3104/oauth/token
+      SSO_END_SESSION_URL: http://localhost:3104/auth/logout
+
+  queue-worker:
+    environment:
+      SSO_ISSUER: http://localhost:3104
+      SSO_JWKS_URL: http://auth-backend:3104/.well-known/jwks.json
+      SSO_AUTHORIZE_URL: http://localhost:3104/oauth/authorize
+      SSO_TOKEN_URL: http://localhost:3104/oauth/token
+      SSO_END_SESSION_URL: http://localhost:3104/auth/logout
+
+  backend-nginx:
+    ports:
+      - "8000:80"
+
+  frontend:
+    ports:
+      - "5173:80"
+
+  wrapper:
+    ports:
+      - "5001:5001"
+
+  whatsapp-api:
+    ports:
+      - "5002:5002"
