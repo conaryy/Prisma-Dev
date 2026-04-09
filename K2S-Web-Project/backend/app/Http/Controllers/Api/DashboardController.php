@@ -91,55 +91,108 @@ class DashboardController extends ApiController
 
     public function capSummary(Request $request)
     {
-        $userId = $request->user()->id;
+        $user = $request->user();
+        $hasAccess = (bool) ($user?->can_access_external_dnp ?? false);
         $today = Carbon::today();
-        $dueSoonLimit = Carbon::today()->addDays(7);
+        $dueSoonLimit = Carbon::today()->addDays(7)->endOfDay();
 
-        $baseQuery = SelfAssessmentCap::query()
-            ->where('user_id', $userId)
-            ->where('status', 'sent');
+        $emptyScopeSummary = collect(self::EXTERNAL_DNP_MAP_SCOPE_KEYS)
+            ->mapWithKeys(fn (string $scope) => [$scope => 0])
+            ->all();
 
-        $totalCaps = (clone $baseQuery)->count();
+        if (!$hasAccess) {
+            return $this->respondData([
+                'totalQuestions' => 0,
+                'openCaps' => 0,
+                'openSessions' => 0,
+                'openSessionsByScope' => $emptyScopeSummary,
+                'overdueCaps' => 0,
+                'dueSoonCaps' => 0,
+                'closedCaps' => 0,
+            ]);
+        }
 
-        $closedCaps = (clone $baseQuery)
-            ->whereHas('fulfillments', function ($query) {
-                $query->where('status', 'sent');
+        $totalFindings = ExternalDnpAnswer::query()
+            ->where('is_submitted', true)
+            ->whereHas('review', function ($query) {
+                $query->where('status', 'Not Satisfactory')
+                    ->whereNotNull('sent_at');
+            })
+            ->whereHas('sessionArea.session', function ($query) {
+                $query->whereIn('scope', self::EXTERNAL_DNP_MAP_SCOPE_KEYS);
             })
             ->count();
 
-        $overdueCaps = (clone $baseQuery)
-            ->whereDate('target_date', '<', $today)
-            ->whereDoesntHave('fulfillments', function ($query) {
-                $query->where('status', 'sent');
+        $caps = ExternalDnpCap::query()
+            ->whereHas('answer', function ($query) {
+                $query->where('is_submitted', true)
+                    ->whereHas('review', function ($reviewQuery) {
+                        $reviewQuery->where('status', 'Not Satisfactory')
+                            ->whereNotNull('sent_at');
+                    })
+                    ->whereHas('sessionArea.session', function ($sessionQuery) {
+                        $sessionQuery->whereIn('scope', self::EXTERNAL_DNP_MAP_SCOPE_KEYS);
+                    });
             })
-            ->count();
+            ->with([
+                'answer.sessionArea.session:id,scope',
+                'fulfillments:id,cap_id,progress,status,submitted_at,created_at',
+                'extensions:id,cap_id,due_date,status',
+            ])
+            ->get(['id', 'answer_id', 'target_date', 'status', 'sent_at']);
 
-        $dueSoonCaps = (clone $baseQuery)
-            ->whereBetween('target_date', [$today, $dueSoonLimit])
-            ->whereDoesntHave('fulfillments', function ($query) {
-                $query->where('status', 'sent');
+        $capStatuses = $caps
+            ->map(function (ExternalDnpCap $cap) use ($today, $dueSoonLimit) {
+                $scope = strtolower(trim((string) ($cap->answer?->sessionArea?->session?->scope ?? '')));
+                if (!in_array($scope, self::EXTERNAL_DNP_MAP_SCOPE_KEYS, true)) {
+                    return null;
+                }
+
+                $highestProgress = (int) ($cap->fulfillments->max(
+                    fn ($fulfillment) => (int) ($fulfillment->progress ?? 0)
+                ) ?? 0);
+                $isClosed = $highestProgress >= 100;
+
+                $effectiveDeadline = $this->resolveExternalDnpCapEffectiveDeadline($cap);
+                $deadline = $effectiveDeadline?->copy()->endOfDay();
+
+                $isOverdue = $deadline !== null
+                    && !$isClosed
+                    && $deadline->lt($today);
+
+                $isDueSoon = $deadline !== null
+                    && !$isClosed
+                    && $deadline->greaterThanOrEqualTo($today)
+                    && $deadline->lessThanOrEqualTo($dueSoonLimit);
+
+                return [
+                    'scope' => $scope,
+                    'highestProgress' => $highestProgress,
+                    'isClosed' => $isClosed,
+                    'isOverdue' => $isOverdue,
+                    'isDueSoon' => $isDueSoon,
+                ];
             })
-            ->count();
+            ->filter()
+            ->values();
 
-        $openSessionsByScope = (clone $baseQuery)
-            ->with(['answer.sessionArea.session'])
-            ->get()
-            ->filter(fn ($cap) => $cap->answer?->sessionArea?->session)
-            ->groupBy(fn ($cap) => $cap->answer->sessionArea->session->scope ?? '-')
-            ->map(function ($items) {
-                return $items
-                    ->map(fn ($cap) => $cap->answer?->session_area_id)
-                    ->filter()
-                    ->unique()
-                    ->count();
-            })
-            ->toArray();
+        $closedCaps = $capStatuses->where('isClosed', true)->count();
+        $overdueCaps = $capStatuses->where('isOverdue', true)->count();
+        $dueSoonCaps = $capStatuses->where('isDueSoon', true)->count();
+        $openCaps = max($capStatuses->count() - $closedCaps, 0);
 
-        $openSessions = array_sum($openSessionsByScope);
+        $openCapsByScope = $capStatuses
+            ->where('isClosed', false)
+            ->groupBy('scope')
+            ->map(fn ($items) => $items->count())
+            ->all();
+
+        $openSessionsByScope = array_merge($emptyScopeSummary, $openCapsByScope);
 
         return $this->respondData([
-            'totalQuestions' => $totalCaps,
-            'openSessions' => $openSessions,
+            'totalQuestions' => $totalFindings,
+            'openCaps' => $openCaps,
+            'openSessions' => $openCaps,
             'openSessionsByScope' => $openSessionsByScope,
             'overdueCaps' => $overdueCaps,
             'dueSoonCaps' => $dueSoonCaps,
@@ -444,6 +497,20 @@ class DashboardController extends ApiController
         }, $alerts);
 
         return $this->respondData($payload);
+    }
+
+    public function externalDnpCapList(Request $request)
+    {
+        $user = $request->user();
+        $hasAccess = (bool) ($user?->can_access_external_dnp ?? false);
+
+        if (!$hasAccess) {
+            return $this->respondData([]);
+        }
+
+        return $this->respondData(
+            $this->buildExternalDnpCapDetailRows()->values()
+        );
     }
 
     public function capOpenTrend(Request $request)
@@ -1998,6 +2065,90 @@ class DashboardController extends ApiController
         return Carbon::createFromTimestamp(max($timestamps))->toDateTimeString();
     }
 
+    private function buildExternalDnpCapDetailRows()
+    {
+        $today = Carbon::today();
+        $answers = ExternalDnpAnswer::query()
+            ->where('is_submitted', true)
+            ->whereHas('review', function ($query) {
+                $query->where('status', 'Not Satisfactory')
+                    ->whereNotNull('sent_at');
+            })
+            ->whereHas('sessionArea.session', function ($query) {
+                $query->whereIn('scope', self::EXTERNAL_DNP_MAP_SCOPE_KEYS);
+            })
+            ->with(['review', 'sessionArea.session'])
+            ->get();
+
+        if ($answers->isEmpty()) {
+            return collect();
+        }
+
+        $questions = ExternalDnpQuestion::query()
+            ->whereIn(
+                'code',
+                $answers->pluck('question_code')->filter()->unique()->values()
+            )
+            ->get()
+            ->keyBy('code');
+
+        $capsByAnswerId = ExternalDnpCap::query()
+            ->whereIn('answer_id', $answers->pluck('id')->values())
+            ->with(['fulfillments', 'extensions'])
+            ->get()
+            ->keyBy('answer_id');
+
+        return $answers
+            ->map(function (ExternalDnpAnswer $answer) use ($capsByAnswerId, $questions, $today) {
+                $sessionArea = $answer->sessionArea;
+                $session = $sessionArea?->session;
+                $question = $answer->question_code
+                    ? $questions[$answer->question_code] ?? null
+                    : null;
+                $cap = $capsByAnswerId->get($answer->id);
+                $latestFulfillment = $this->resolveExternalDnpMapLatestFulfillment($cap);
+                $effectiveDeadline = $cap
+                    ? $this->resolveExternalDnpCapEffectiveDeadline($cap)
+                    : null;
+                $highestProgress = $cap
+                    ? (int) ($cap->fulfillments->max(
+                        fn ($fulfillment) => (int) ($fulfillment->progress ?? 0)
+                    ) ?? 0)
+                    : 0;
+                $isClosed = $cap !== null && $highestProgress >= 100;
+                $isOverdue = $effectiveDeadline !== null
+                    && !$isClosed
+                    && $effectiveDeadline->copy()->endOfDay()->lt($today);
+                $statusLabel = !$cap
+                    ? 'Belum Susun CAP'
+                    : ($isClosed ? 'Closed' : ($isOverdue ? 'Overdue' : 'Open'));
+
+                return [
+                    'id' => $answer->id,
+                    'capId' => $cap?->id,
+                    'answerId' => $answer->id,
+                    'sessionAreaId' => $sessionArea?->id,
+                    'scope' => $session?->scope ?? '-',
+                    'instansiName' => $session?->instansi_name,
+                    'area' => $sessionArea?->category ?? '-',
+                    'questionCode' => $answer->question_code,
+                    'questionText' => $question?->text ?? '',
+                    'questionCategory' => $question?->category,
+                    'leader' => $session?->team_leader,
+                    'targetDate' => optional($cap?->target_date)->format('Y-m-d'),
+                    'effectiveDeadline' => optional($effectiveDeadline)->format('Y-m-d'),
+                    'hasCap' => $cap !== null,
+                    'isClosed' => $isClosed,
+                    'isOverdue' => $isOverdue,
+                    'statusLabel' => $statusLabel,
+                    'latestProgress' => $highestProgress,
+                    'latestFulfillmentStatus' => $latestFulfillment?->status,
+                    'sentAt' => optional($cap?->sent_at)->toDateTimeString(),
+                ];
+            })
+            ->values();
+    }
+
     private function resolveExternalDnpMapLatestFulfillment(?ExternalDnpCap $cap)
     {
         if (!$cap || $cap->fulfillments->isEmpty()) {
@@ -2012,6 +2163,17 @@ class DashboardController extends ApiController
                 return max($submitted, $created);
             })
             ->first();
+    }
+
+    private function resolveExternalDnpCapEffectiveDeadline(ExternalDnpCap $cap): ?Carbon
+    {
+        $extensionDueDate = $cap->extensions
+            ->filter(fn ($extension) => $extension->due_date !== null)
+            ->sortByDesc(fn ($extension) => $extension->due_date?->timestamp ?? 0)
+            ->first()
+            ?->due_date;
+
+        return $extensionDueDate ?? $cap->target_date;
     }
 
     private function resolveExternalDnpMapItemState(?ExternalDnpCap $cap): string

@@ -46,23 +46,6 @@ type DashboardOpenCapItem = {
   activityAt: string;
 };
 
-type DashboardUrgentAlertItem = {
-  key: string;
-  label: string;
-  count: number;
-  href: string;
-  description: string;
-};
-
-type DashboardRotatingCard = {
-  key: string;
-  label: string;
-  value: number;
-  href: string;
-  description: string;
-  isUrgent: boolean;
-};
-
 type TrendSource = 'internal' | 'dnp';
 
 type UserOption = {
@@ -1018,17 +1001,12 @@ export function Dashboard() {
   const [mapCategoryBreakdown, setMapCategoryBreakdown] = useState<MapCategoryBreakdownPayload | null>(null);
   const [summary, setSummary] = useState({
     totalQuestions: 0,
+    openCaps: 0,
     openSessions: 0,
     overdueCaps: 0,
     closedCaps: 0,
     dueSoonCaps: 0,
   });
-  const [activeCapTickerIndex, setActiveCapTickerIndex] = useState(0);
-  const [isCapTickerAnimating, setIsCapTickerAnimating] = useState(false);
-  const [activeFocusTickerIndex, setActiveFocusTickerIndex] = useState(0);
-  const [isFocusTickerAnimating, setIsFocusTickerAnimating] = useState(false);
-  const [focusLoading, setFocusLoading] = useState(true);
-  const [focusAlerts, setFocusAlerts] = useState<DashboardUrgentAlertItem[]>([]);
   const [dateFrom, setDateFrom] = useState(() => {
     const date = new Date();
     date.setMonth(date.getMonth() - 6);
@@ -1073,13 +1051,17 @@ export function Dashboard() {
     setIsLoading(true);
     apiFetch<{ data: {
       totalQuestions: number;
+      openCaps?: number;
       openSessions: number;
       overdueCaps: number;
       closedCaps: number;
       dueSoonCaps: number;
     } }>('/api/dashboard/cap-summary')
       .then((response) => {
-        setSummary(response.data);
+        setSummary({
+          ...response.data,
+          openCaps: response.data.openCaps ?? response.data.openSessions,
+        });
       })
       .catch((error: Error) => {
         toast({
@@ -1088,21 +1070,6 @@ export function Dashboard() {
         });
       })
       .finally(() => setIsLoading(false));
-  }, []);
-
-  useEffect(() => {
-    setFocusLoading(true);
-    apiFetch<{ data: DashboardUrgentAlertItem[] }>('/api/dashboard/user-alerts')
-      .then((response) => {
-        setFocusAlerts(response.data);
-      })
-      .catch((error: Error) => {
-        toast({
-          title: 'Gagal memuat panel fokus dashboard',
-          description: error.message || 'Terjadi kesalahan.',
-        });
-      })
-      .finally(() => setFocusLoading(false));
   }, []);
 
   useEffect(() => {
@@ -1243,89 +1210,6 @@ export function Dashboard() {
     return rawActivity;
   }, [rawActivity, isAdmin, selectedUser, trendSource]);
 
-  const capTickerCards = useMemo<DashboardRotatingCard[]>(() => {
-    return [
-      {
-        key: 'open-cap',
-        label: 'Open CAP',
-        value: summary.openSessions,
-        href: '/cap?status=open',
-        description: 'Temuan CAP yang masih perlu ditindaklanjuti.',
-        isUrgent: summary.openSessions > 0,
-      },
-      {
-        key: 'closed-cap',
-        label: 'Closed CAP',
-        value: summary.closedCaps,
-        href: '/cap?status=closed',
-        description: 'CAP yang sudah selesai dan sudah dikirim.',
-        isUrgent: false,
-      },
-    ];
-  }, [summary.openSessions, summary.closedCaps]);
-
-  useEffect(() => {
-    if (capTickerCards.length < 2) return;
-    const timerId = window.setInterval(() => {
-      setIsCapTickerAnimating(true);
-    }, 4500);
-    return () => window.clearInterval(timerId);
-  }, [capTickerCards.length]);
-
-  useEffect(() => {
-    if (!isCapTickerAnimating) return;
-    const timerId = window.setTimeout(() => {
-      setActiveCapTickerIndex((current) => (current + 1) % capTickerCards.length);
-      setIsCapTickerAnimating(false);
-    }, 520);
-    return () => window.clearTimeout(timerId);
-  }, [isCapTickerAnimating, capTickerCards.length]);
-
-  const focusTickerCards = useMemo<DashboardRotatingCard[]>(() => {
-    return focusAlerts
-      .filter((item) => item.count > 0)
-      .map((item) => ({
-        key: item.key,
-        label: item.label,
-        value: item.count,
-        href: item.href,
-        description: item.description,
-        isUrgent: true,
-      }));
-  }, [focusAlerts]);
-
-  useEffect(() => {
-    if (focusTickerCards.length < 2) return;
-    const timerId = window.setInterval(() => {
-      setIsFocusTickerAnimating(true);
-    }, 5200);
-    return () => window.clearInterval(timerId);
-  }, [focusTickerCards.length]);
-
-  useEffect(() => {
-    if (!isFocusTickerAnimating) return;
-    if (focusTickerCards.length === 0) {
-      setIsFocusTickerAnimating(false);
-      return;
-    }
-    const timerId = window.setTimeout(() => {
-      setActiveFocusTickerIndex((current) => (current + 1) % focusTickerCards.length);
-      setIsFocusTickerAnimating(false);
-    }, 520);
-    return () => window.clearTimeout(timerId);
-  }, [isFocusTickerAnimating, focusTickerCards.length]);
-
-  const activeCapTickerCard = capTickerCards[activeCapTickerIndex % capTickerCards.length];
-  const incomingCapTickerCard =
-    capTickerCards[(activeCapTickerIndex + 1) % capTickerCards.length];
-  const hasFocusTickerCard = focusTickerCards.length > 0;
-  const activeFocusTickerCard = hasFocusTickerCard
-    ? focusTickerCards[activeFocusTickerIndex % focusTickerCards.length]
-    : null;
-  const incomingFocusTickerCard = hasFocusTickerCard
-    ? focusTickerCards[(activeFocusTickerIndex + 1) % focusTickerCards.length]
-    : null;
-
   const trendData = useMemo<ChartPoint[]>(() => {
     const from = new Date(`${dateFrom}T00:00:00`);
     const to = new Date(`${dateTo}T23:59:59`);
@@ -1420,6 +1304,7 @@ export function Dashboard() {
 
   const selectedMapMarker =
     MAP_KCP_MARKERS.find((marker) => marker.key === pinnedMapMarkerKey) ?? null;
+  const openCapCount = summary.openCaps ?? summary.openSessions;
   const mapCategoryTrendData = useMemo(() => {
     if (!mapCategoryBreakdown) return [];
 
@@ -1499,9 +1384,9 @@ export function Dashboard() {
         </section>
       </div>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Link
-          to="/cap"
+          to="/cap?source=external-dnp"
           className="group relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white p-4 shadow-sm transition-shadow duration-200 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
         >
           <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-blue-100/70 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
@@ -1516,202 +1401,51 @@ export function Dashboard() {
           </div>
         </Link>
 
-        <div className="relative h-[168px] overflow-hidden">
-          <Link
-            key={`${activeCapTickerCard.key}-active`}
-            to={activeCapTickerCard.href}
-            className={`group absolute inset-0 overflow-hidden rounded-3xl border bg-white p-4 shadow-sm transition-all duration-500 ease-in-out hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 will-change-transform ${
-              activeCapTickerCard.isUrgent
-                ? 'border-red-300/80 ring-2 ring-red-200/70'
-                : 'border-slate-200/70'
-            } ${
-              isCapTickerAnimating
-                ? '-translate-y-[115%] scale-[0.96] opacity-0 pointer-events-none'
-                : 'translate-y-0 scale-100 opacity-100'
-            }`}
-          >
-            <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-blue-100/70 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
-            {activeCapTickerCard.isUrgent && (
-              <span className="absolute right-4 top-4 flex h-3 w-3">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-              </span>
-            )}
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              {activeCapTickerCard.label}
-            </div>
-            <div
-              className={`mt-2 text-3xl font-semibold ${
-                activeCapTickerCard.isUrgent ? 'animate-pulse text-red-700' : 'text-slate-800'
-              }`}
-            >
-              {isLoading ? '...' : activeCapTickerCard.value}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              {activeCapTickerCard.description}
-            </div>
-          </Link>
-
-          <Link
-            key={`${incomingCapTickerCard.key}-incoming`}
-            to={incomingCapTickerCard.href}
-            className={`group absolute inset-0 overflow-hidden rounded-3xl border bg-white p-4 shadow-sm transition-all duration-500 ease-in-out hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 will-change-transform ${
-              incomingCapTickerCard.isUrgent
-                ? 'border-red-300/80 ring-2 ring-red-200/70'
-                : 'border-slate-200/70'
-            } ${
-              isCapTickerAnimating
-                ? 'translate-y-0 scale-100 opacity-100'
-                : 'translate-y-[115%] scale-[0.96] opacity-0 pointer-events-none'
-            }`}
-          >
-            <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-blue-100/70 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
-            {incomingCapTickerCard.isUrgent && (
-              <span className="absolute right-4 top-4 flex h-3 w-3">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-              </span>
-            )}
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              {incomingCapTickerCard.label}
-            </div>
-            <div
-              className={`mt-2 text-3xl font-semibold ${
-                incomingCapTickerCard.isUrgent ? 'animate-pulse text-red-700' : 'text-slate-800'
-              }`}
-            >
-              {isLoading ? '...' : incomingCapTickerCard.value}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              {incomingCapTickerCard.description}
-            </div>
-          </Link>
-        </div>
-
         <Link
-          to="/cap?overdue=1"
+          to="/cap?source=external-dnp&status=open"
           className={`group relative overflow-hidden rounded-3xl border bg-white p-4 shadow-sm transition-shadow duration-200 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 ${
-            summary.overdueCaps > 0
+            openCapCount > 0
               ? 'border-red-300/80 ring-2 ring-red-200/70'
               : 'border-slate-200/70'
           }`}
         >
           <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-blue-100/70 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
-          {summary.overdueCaps > 0 && (
+          {openCapCount > 0 && (
             <span className="absolute right-4 top-4 flex h-3 w-3">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
               <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
             </span>
           )}
           <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-            Overdue
+            Open CAP
           </div>
           <div
             className={`mt-2 text-3xl font-semibold ${
-              summary.overdueCaps > 0 ? 'animate-pulse text-red-700' : 'text-slate-800'
+              openCapCount > 0 ? 'animate-pulse text-red-700' : 'text-slate-800'
             }`}
           >
-            {isLoading ? '...' : summary.overdueCaps}
+            {isLoading ? '...' : openCapCount}
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            CAP melewati deadline dan butuh tindak lanjut segera.
+            Pemenuhan CAP dengan progress di bawah 100%.
           </div>
         </Link>
 
-        {focusLoading ? (
-          <div className="rounded-3xl border border-slate-200/70 bg-white p-4 shadow-sm">
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Notifikasi Prioritas
-            </div>
-            <div className="mt-2 text-3xl font-semibold text-slate-800">...</div>
-            <div className="mt-1 text-xs text-slate-500">
-              Menyiapkan notifikasi penting terbaru.
-            </div>
+        <Link
+          to="/cap?source=external-dnp&status=closed"
+          className="group relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white p-4 shadow-sm transition-shadow duration-200 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+        >
+          <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-blue-100/70 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+            Closed CAP
           </div>
-        ) : !activeFocusTickerCard || !incomingFocusTickerCard ? (
-          <div className="rounded-3xl border border-emerald-200/70 bg-emerald-50/70 p-4 shadow-sm dark:border-emerald-400/30 dark:bg-[#153b33]/55">
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-200">
-              Notifikasi Prioritas
-            </div>
-            <div className="mt-8 text-center text-sm font-semibold text-emerald-800 dark:text-emerald-100">
-              Tidak ada alarm urgent saat ini.
-            </div>
+          <div className="mt-2 text-3xl font-semibold text-slate-800">
+            {isLoading ? '...' : summary.closedCaps}
           </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="relative h-[168px] overflow-hidden">
-              <Link
-              key={`${activeFocusTickerCard.key}-active`}
-              to={activeFocusTickerCard.href}
-              className={`group absolute inset-0 overflow-hidden rounded-3xl border bg-white p-4 shadow-sm transition-all duration-500 ease-in-out hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 will-change-transform ${
-                activeFocusTickerCard.isUrgent
-                  ? 'border-red-300/80 ring-2 ring-red-200/70'
-                  : 'border-slate-200/70'
-              } ${
-                isFocusTickerAnimating
-                  ? '-translate-y-[115%] scale-[0.96] opacity-0 pointer-events-none'
-                  : 'translate-y-0 scale-100 opacity-100'
-              }`}
-            >
-              <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-blue-100/70 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
-              {activeFocusTickerCard.isUrgent && (
-                <span className="absolute right-4 top-4 flex h-3 w-3">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-                </span>
-              )}
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                {activeFocusTickerCard.label}
-              </div>
-              <div
-                className={`mt-2 text-3xl font-semibold ${
-                  activeFocusTickerCard.isUrgent ? 'animate-pulse text-red-700' : 'text-slate-800'
-                }`}
-              >
-                {activeFocusTickerCard.value}
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                {activeFocusTickerCard.description}
-              </div>
-              </Link>
-
-              <Link
-              key={`${incomingFocusTickerCard.key}-incoming`}
-              to={incomingFocusTickerCard.href}
-              className={`group absolute inset-0 overflow-hidden rounded-3xl border bg-white p-4 shadow-sm transition-all duration-500 ease-in-out hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 will-change-transform ${
-                incomingFocusTickerCard.isUrgent
-                  ? 'border-red-300/80 ring-2 ring-red-200/70'
-                  : 'border-slate-200/70'
-              } ${
-                isFocusTickerAnimating
-                  ? 'translate-y-0 scale-100 opacity-100'
-                  : 'translate-y-[115%] scale-[0.96] opacity-0 pointer-events-none'
-              }`}
-            >
-              <div className="absolute -right-10 -top-10 h-20 w-20 rounded-full bg-blue-100/70 blur-2xl transition-opacity duration-200 group-hover:opacity-80" />
-              {incomingFocusTickerCard.isUrgent && (
-                <span className="absolute right-4 top-4 flex h-3 w-3">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-                </span>
-              )}
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                {incomingFocusTickerCard.label}
-              </div>
-              <div
-                className={`mt-2 text-3xl font-semibold ${
-                  incomingFocusTickerCard.isUrgent ? 'animate-pulse text-red-700' : 'text-slate-800'
-                }`}
-              >
-                {incomingFocusTickerCard.value}
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                {incomingFocusTickerCard.description}
-              </div>
-              </Link>
-            </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Pemenuhan CAP dengan progress sudah mencapai 100%.
           </div>
-        )}
+        </Link>
       </section>
 
       <MapKcpSection

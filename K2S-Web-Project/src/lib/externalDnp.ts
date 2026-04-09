@@ -20,6 +20,36 @@ export type ExternalDnpExportDocumentItem = {
   progress: number;
 };
 
+export type ExternalDnpDashboardCapItem = {
+  id: string;
+  capId?: string | null;
+  answerId: string;
+  sessionAreaId: string | null;
+  scope: string;
+  instansiName?: string | null;
+  area: string;
+  questionCode: string | null;
+  questionText: string;
+  questionCategory?: string | null;
+  leader?: string | null;
+  targetDate?: string | null;
+  effectiveDeadline?: string | null;
+  hasCap: boolean;
+  isClosed: boolean;
+  isOverdue: boolean;
+  statusLabel: string;
+  latestProgress?: number | null;
+  latestFulfillmentStatus?: string | null;
+  sentAt?: string | null;
+};
+
+export async function fetchExternalDnpDashboardCapList() {
+  const response = await apiFetch<{ data: ExternalDnpDashboardCapItem[] }>(
+    '/api/dashboard/external-dnp-cap-list'
+  );
+  return response.data;
+}
+
 export async function fetchExternalDnpCapSessions(params: {
   scope: SelfAssessmentScope;
   month?: string;
