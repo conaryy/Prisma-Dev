@@ -443,7 +443,7 @@ export function Sidebar({
               )}
             >
               <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-400">
-                Dashboard KKS Terpadu
+                Dashboard KKS
               </div>
               <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                 {profileName}

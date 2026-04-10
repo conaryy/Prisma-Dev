@@ -195,10 +195,7 @@ export function Login() {
                     <span className="text-[#1e3a8a]">A</span>
                   </h1>
                 </div>
-              </div>
-              <p className="text-base text-slate-500 dark:text-slate-300">
-                Masuk untuk membuka portal pengguna atau portal admin Prima sesuai akses akun Anda.
-              </p>
+              </div>  
             </div>
 
             <form

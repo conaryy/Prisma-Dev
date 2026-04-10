@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Sun,
   UserCircle,
+  type LucideIcon,
 } from 'lucide-react';
 import Lottie, { type LottieRefCurrentProps } from 'lottie-react';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,10 @@ import { cn } from '@/lib/utils';
 import { getAuthPortalUrl } from '@/lib/authPortal';
 import {
   canAccessAdminPortal,
+  canAccessK2sDashboard,
+  canAccessK3,
+  canAccessKeamanan,
+  canAccessLogbook,
   canAccessExternalDnp,
   canManageAdminModule,
 } from '@/lib/permissions';
@@ -61,6 +66,15 @@ function getKeamananPortalUrl() {
   const env = (import.meta as { env?: Record<string, string> }).env ?? {};
   return normalizeBaseUrl(env.VITE_KEAMANAN_BASE_URL || 'http://localhost:5177');
 }
+
+type PortalShortcut = {
+  key: string;
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  buttonClassName: string;
+  ringClassName: string;
+};
 
 const MENU_LOTTIE_FALLBACK_END = Math.max(
   0,
@@ -161,10 +175,83 @@ export function Topbar({
   }>();
   const canAccessAdminMenu = canManageAdminModule(authUser);
   const canAccessCentralAdminPortal = canAccessAdminPortal(authUser);
+  const canAccessK2sPortal = canAccessK2sDashboard(authUser);
+  const canAccessLogbookPortal = canAccessLogbook(authUser);
+  const canAccessK3Portal = canAccessK3(authUser);
+  const canAccessKeamananPortal = canAccessKeamanan(authUser);
   const canAccessExternalDnpMenu = canAccessExternalDnp(authUser);
   const { instansi } = useAppData();
   const profileName =
     authUser?.name?.trim() || instansi?.name?.trim() || 'Pengguna';
+
+  const portalItems = useMemo<PortalShortcut[]>(
+    () =>
+      [
+        canAccessK2sPortal
+          ? {
+              key: 'dashboard',
+              label: 'Dashboard',
+              href: getAuthPortalUrl(
+                canAccessCentralAdminPortal ? '/portal-admin' : '/portal-user',
+                { includeToken: true }
+              ),
+              icon: LayoutDashboard,
+              buttonClassName: 'bg-gradient-to-br from-sky-500 to-blue-500',
+              ringClassName: 'focus-visible:ring-blue-200',
+            }
+          : null,
+        canAccessKeamananPortal
+          ? {
+              key: 'keamanan',
+              label: 'Keamanan',
+              href: getKeamananPortalUrl(),
+              icon: ShieldCheck,
+              buttonClassName: 'bg-gradient-to-br from-blue-500 to-sky-400',
+              ringClassName: 'focus-visible:ring-blue-200',
+            }
+          : null,
+        canAccessK3Portal
+          ? {
+              key: 'k3',
+              label: 'K3',
+              href: getK3PortalUrl(),
+              icon: ClipboardCheck,
+              buttonClassName: 'bg-gradient-to-br from-emerald-500 to-teal-400',
+              ringClassName: 'focus-visible:ring-emerald-200',
+            }
+          : null,
+        canAccessLogbookPortal
+          ? {
+              key: 'logbook',
+              label: 'Logbook',
+              href: getLogbookPortalUrl(),
+              icon: BookOpen,
+              buttonClassName: 'bg-gradient-to-br from-violet-500 to-indigo-400',
+              ringClassName: 'focus-visible:ring-violet-200',
+            }
+          : null,
+      ].filter((item): item is PortalShortcut => item !== null),
+    [
+      canAccessCentralAdminPortal,
+      canAccessK2sPortal,
+      canAccessKeamananPortal,
+      canAccessK3Portal,
+      canAccessLogbookPortal,
+    ]
+  );
+
+  const portalGridClassName = useMemo(() => {
+    if (portalItems.length >= 4) {
+      return 'grid-cols-4';
+    }
+    if (portalItems.length === 3) {
+      return 'grid-cols-3';
+    }
+    if (portalItems.length === 2) {
+      return 'grid-cols-2';
+    }
+    return 'grid-cols-1';
+  }, [portalItems.length]);
 
   const menuItems = useMemo(
     () =>
@@ -453,75 +540,43 @@ export function Topbar({
               <DropdownMenuContent
                 align="end"
                 sideOffset={8}
-                className="max-w-[calc(100vw-2rem)] rounded-2xl border border-white/70 bg-white/90 p-3 shadow-[0_16px_40px_rgba(15,23,42,0.12)] dark:border-[#2f56ab]/80 dark:bg-[#11307c]/90 dark:shadow-[0_16px_40px_rgba(3,8,28,0.55)]"
+                className="w-auto min-w-0 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/70 bg-white/90 p-3 shadow-[0_16px_40px_rgba(15,23,42,0.12)] dark:border-[#2f56ab]/80 dark:bg-[#11307c]/90 dark:shadow-[0_16px_40px_rgba(3,8,28,0.55)]"
               >
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <div className="flex flex-col items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-blue-200/70">
-                    <button
-                      type="button"
-                      className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-blue-500 text-white shadow-sm transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-                      aria-label="Dashboard"
-                      title="Dashboard"
-                      onClick={() => {
-                        setIsPortalOpen(false);
-                        window.location.assign(
-                          getAuthPortalUrl(
-                            canAccessCentralAdminPortal ? '/portal-admin' : '/portal-user',
-                            { includeToken: true }
-                          )
-                        );
-                      }}
-                    >
-                      <LayoutDashboard className="h-5 w-5" />
-                    </button>
-                    Dashboard
+                {portalItems.length > 0 ? (
+                  <div className={cn('grid justify-items-center gap-3', portalGridClassName)}>
+                    {portalItems.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <div
+                          key={item.key}
+                          className="flex flex-col items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-blue-200/70"
+                        >
+                          <button
+                            type="button"
+                            className={cn(
+                              'flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-sm transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2',
+                              item.buttonClassName,
+                              item.ringClassName
+                            )}
+                            aria-label={item.label}
+                            title={item.label}
+                            onClick={() => {
+                              setIsPortalOpen(false);
+                              window.location.assign(item.href);
+                            }}
+                          >
+                            <Icon className="h-5 w-5" />
+                          </button>
+                          {item.label}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="flex flex-col items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-blue-200/70">
-                    <button
-                      type="button"
-                      className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-sky-400 text-white shadow-sm transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-                      aria-label="Keamanan"
-                      title="Keamanan"
-                      onClick={() => {
-                        setIsPortalOpen(false);
-                        window.location.assign(getKeamananPortalUrl());
-                      }}
-                    >
-                      <ShieldCheck className="h-5 w-5" />
-                    </button>
-                    Keamanan
+                ) : (
+                  <div className="px-2 py-1 text-xs font-medium text-slate-500 dark:text-blue-200/70">
+                    Tidak ada portal yang tersedia.
                   </div>
-                  <div className="flex flex-col items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-blue-200/70">
-                    <button
-                      type="button"
-                      className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-400 text-white shadow-sm transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
-                      aria-label="K3"
-                      title="K3"
-                      onClick={() => {
-                        setIsPortalOpen(false);
-                        window.location.assign(getK3PortalUrl());
-                      }}
-                    >
-                      <ClipboardCheck className="h-5 w-5" />
-                    </button>
-                    K3
-                  </div>
-                  <div className="flex flex-col items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-blue-200/70">
-                    <button
-                      type="button"
-                      className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-400 text-white shadow-sm transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200"
-                      aria-label="Logbook"
-                      title="Logbook"
-                      onClick={() => {
-                        setIsPortalOpen(false);
-                        window.location.assign(getLogbookPortalUrl());
-                      }}
-                    >
-                      <BookOpen className="h-5 w-5" />
-                    </button>
-                    Logbook
-                  </div>
-                </div>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

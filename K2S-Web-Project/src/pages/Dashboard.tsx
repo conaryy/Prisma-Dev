@@ -406,6 +406,9 @@ const CHART_SERIES_3D_COLORS: Record<string, { front: string; top: string; side:
       ];
     })
   );
+const CHART_TOOLTIP_CURSOR = {
+  fill: 'var(--chart-tooltip-cursor)',
+} as const;
 
 const MAP_KCP_MARKER_LOTTIE_END = Math.max(
   0,
@@ -1615,7 +1618,7 @@ export function Dashboard() {
       />
 
       {hasExternalDnpMapAccess === true ? (
-        <section className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm [--chart-grid:#e2e8f0] [--chart-axis:#94a3b8] [--chart-tooltip-bg:#ffffff] [--chart-tooltip-border:#e2e8f0] [--chart-tooltip-label:#94a3b8] [--chart-tooltip-text:#64748b] [--chart-tooltip-value:#334155] [--chart-series-organisasi:#ec4899] [--chart-series-prosedur:#2563eb] [--chart-series-fasilitas:#1e293b] [--chart-series-personel:#0f766e] [--chart-series-dokumen:#f97316] dark:border-[#355791]/70 dark:bg-[#0b1736] dark:[--chart-grid:#334155] dark:[--chart-axis:#cbd5e1] dark:[--chart-tooltip-bg:#102754] dark:[--chart-tooltip-border:#365f9f] dark:[--chart-tooltip-label:#9fb7e6] dark:[--chart-tooltip-text:#dbeafe] dark:[--chart-tooltip-value:#eff6ff] dark:[--chart-series-organisasi:#fbcfe8] dark:[--chart-series-prosedur:#9ccfff] dark:[--chart-series-fasilitas:#bcdbff] dark:[--chart-series-personel:#7dd3fc] dark:[--chart-series-dokumen:#fdba74]">
+        <section className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm [--chart-grid:#e2e8f0] [--chart-axis:#94a3b8] [--chart-tooltip-bg:#ffffff] [--chart-tooltip-border:#e2e8f0] [--chart-tooltip-label:#94a3b8] [--chart-tooltip-text:#64748b] [--chart-tooltip-value:#334155] [--chart-tooltip-cursor:rgba(148,163,184,0.14)] [--chart-series-organisasi:#ec4899] [--chart-series-prosedur:#2563eb] [--chart-series-fasilitas:#1e293b] [--chart-series-personel:#0f766e] [--chart-series-dokumen:#f97316] dark:border-[#355791]/70 dark:bg-[#0b1736] dark:[--chart-grid:#334155] dark:[--chart-axis:#cbd5e1] dark:[--chart-tooltip-bg:#102754] dark:[--chart-tooltip-border:#365f9f] dark:[--chart-tooltip-label:#9fb7e6] dark:[--chart-tooltip-text:#dbeafe] dark:[--chart-tooltip-value:#eff6ff] dark:[--chart-tooltip-cursor:rgba(125,211,252,0.14)] dark:[--chart-series-organisasi:#fbcfe8] dark:[--chart-series-prosedur:#9ccfff] dark:[--chart-series-fasilitas:#bcdbff] dark:[--chart-series-personel:#7dd3fc] dark:[--chart-series-dokumen:#fdba74]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4 dark:border-[#365891]/80">
             <div>
               <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">Temuan per Kategori</h2>
@@ -1663,7 +1666,7 @@ export function Dashboard() {
                       width={32}
                       allowDecimals={false}
                     />
-                    <Tooltip content={<ChartTooltip />} />
+                    <Tooltip content={<ChartTooltip />} cursor={CHART_TOOLTIP_CURSOR} />
                     {mapCategorySeries.map((category) => (
                       <Bar
                         key={category}
@@ -1721,7 +1724,7 @@ export function Dashboard() {
           </div>
         </section>
       ) : (
-        <section className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm [--chart-audit:#1e293b] [--chart-inspeksi:#ec4899] [--chart-surveillance:#3b82f6] [--chart-grid:#e2e8f0] [--chart-axis:#94a3b8] [--chart-dot-fill:#ffffff] [--chart-tooltip-bg:#ffffff] [--chart-tooltip-border:#e2e8f0] [--chart-tooltip-label:#94a3b8] [--chart-tooltip-text:#64748b] [--chart-tooltip-value:#334155] dark:border-[#355791]/70 dark:bg-[#0b1736] dark:[--chart-audit:#bcdbff] dark:[--chart-inspeksi:#fbcfe8] dark:[--chart-surveillance:#9ccfff] dark:[--chart-grid:#334155] dark:[--chart-axis:#cbd5e1] dark:[--chart-dot-fill:#0b1736] dark:[--chart-tooltip-bg:#102754] dark:[--chart-tooltip-border:#365f9f] dark:[--chart-tooltip-label:#9fb7e6] dark:[--chart-tooltip-text:#dbeafe] dark:[--chart-tooltip-value:#eff6ff]">
+        <section className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm [--chart-audit:#1e293b] [--chart-inspeksi:#ec4899] [--chart-surveillance:#3b82f6] [--chart-grid:#e2e8f0] [--chart-axis:#94a3b8] [--chart-dot-fill:#ffffff] [--chart-tooltip-bg:#ffffff] [--chart-tooltip-border:#e2e8f0] [--chart-tooltip-label:#94a3b8] [--chart-tooltip-text:#64748b] [--chart-tooltip-value:#334155] [--chart-tooltip-cursor:rgba(148,163,184,0.14)] dark:border-[#355791]/70 dark:bg-[#0b1736] dark:[--chart-audit:#bcdbff] dark:[--chart-inspeksi:#fbcfe8] dark:[--chart-surveillance:#9ccfff] dark:[--chart-grid:#334155] dark:[--chart-axis:#cbd5e1] dark:[--chart-dot-fill:#0b1736] dark:[--chart-tooltip-bg:#102754] dark:[--chart-tooltip-border:#365f9f] dark:[--chart-tooltip-label:#9fb7e6] dark:[--chart-tooltip-text:#dbeafe] dark:[--chart-tooltip-value:#eff6ff] dark:[--chart-tooltip-cursor:rgba(125,211,252,0.14)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4 dark:border-[#365891]/80">
             <div className="flex flex-wrap items-center gap-4">
               <div>
@@ -1807,7 +1810,7 @@ export function Dashboard() {
                     width={32}
                     allowDecimals={false}
                   />
-                  <Tooltip content={<ChartTooltip />} />
+                  <Tooltip content={<ChartTooltip />} cursor={CHART_TOOLTIP_CURSOR} />
                   <Bar dataKey="audit" name="Audit" fill="var(--chart-audit)" radius={[8, 8, 0, 0]} />
                   <Bar dataKey="inspeksi" name="Inspeksi" fill="var(--chart-inspeksi)" radius={[8, 8, 0, 0]} />
                   <Bar dataKey="surveillance" name="Surveillance" fill="var(--chart-surveillance)" radius={[8, 8, 0, 0]} />

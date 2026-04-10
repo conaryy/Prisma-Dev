@@ -491,11 +491,6 @@ export function ExternalDnpExportDocument() {
         </header>
 
         <div className="space-y-5 px-6 py-6">
-          {!canManageExternalDnpData && (
-            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              Mode lihat saja. User non-admin hanya bisa melihat dan generate dokumen dari data instansi External DNP yang diizinkan admin.
-            </div>
-          )}
           {captchaUrl && canManageExternalDnpData && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-4">

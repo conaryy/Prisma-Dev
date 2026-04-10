@@ -11,6 +11,17 @@ use Illuminate\Support\Str;
 
 class SsoUserSynchronizer
 {
+    private const PERMISSION_KEYS = [
+        'can_access_admin_portal',
+        'can_manage_users',
+        'can_manage_admin_module',
+        'can_access_k2s_dashboard',
+        'can_access_logbook',
+        'can_access_k3',
+        'can_access_keamanan',
+        'can_access_external_dnp',
+    ];
+
     private ?bool $supportsExternalDnpInstansiAccessColumn = null;
 
     /**
@@ -37,6 +48,7 @@ class SsoUserSynchronizer
         $localRole = $this->mapLocalRole($roles);
         $canAccessExternalDnp = $this->hasExternalDnpAccess($roles);
         $externalDnpInstansiAccess = $this->extractExternalDnpInstansiAccess($claims);
+        $permissions = $this->extractPermissions($claims, $localRole, $canAccessExternalDnp);
 
         return DB::transaction(function () use (
             $subject,
@@ -46,7 +58,8 @@ class SsoUserSynchronizer
             $phone,
             $localRole,
             $canAccessExternalDnp,
-            $externalDnpInstansiAccess
+            $externalDnpInstansiAccess,
+            $permissions
         ) {
             $query = User::query();
             if ($subject !== '') {
@@ -92,6 +105,9 @@ class SsoUserSynchronizer
 
             $user->role = $localRole;
             $user->can_access_external_dnp = $canAccessExternalDnp;
+            if ($permissions !== null) {
+                $user->permissions = $permissions;
+            }
             if ($this->supportsExternalDnpInstansiAccessColumn()) {
                 $user->external_dnp_instansi_access = $canAccessExternalDnp
                     ? ($localRole === 'Admin' ? [] : $externalDnpInstansiAccess)
@@ -221,6 +237,35 @@ class SsoUserSynchronizer
         }
 
         return ExternalDnpInstansiAccess::normalizeKeys($raw);
+    }
+
+    /**
+     * @param  array<string, mixed>  $claims
+     * @return array<string, bool>|null
+     */
+    private function extractPermissions(array $claims, string $role, bool $canAccessExternalDnp): ?array
+    {
+        $rawPermissions = Arr::get($claims, 'permissions');
+        if (!is_array($rawPermissions)) {
+            return null;
+        }
+
+        $permissions = [];
+        foreach (self::PERMISSION_KEYS as $key) {
+            if (array_key_exists($key, $rawPermissions)) {
+                $permissions[$key] = (bool) $rawPermissions[$key];
+            }
+        }
+
+        $permissions['can_access_external_dnp'] = $canAccessExternalDnp;
+
+        if (strtolower($role) !== 'admin') {
+            $permissions['can_access_admin_portal'] = false;
+            $permissions['can_manage_users'] = false;
+            $permissions['can_manage_admin_module'] = false;
+        }
+
+        return $permissions;
     }
 
     private function supportsExternalDnpInstansiAccessColumn(): bool

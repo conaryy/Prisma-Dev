@@ -31,6 +31,18 @@ function getPermissions(user: AuthUserLike | null | undefined) {
   return user.permissions as Record<string, unknown>;
 }
 
+function getPermissionFlag(
+  user: AuthUserLike | null | undefined,
+  key: keyof PermissionMap,
+  fallback: boolean
+) {
+  const permissions = getPermissions(user);
+  if (isBoolean(permissions[key])) {
+    return permissions[key];
+  }
+  return fallback;
+}
+
 export function isAdminRole(user: AuthUserLike | null | undefined) {
   return getRole(user) === 'admin';
 }
@@ -49,6 +61,22 @@ export function canManageAdminModule(user: AuthUserLike | null | undefined) {
     return permissions.can_manage_admin_module;
   }
   return isAdminRole(user);
+}
+
+export function canAccessK2sDashboard(user: AuthUserLike | null | undefined) {
+  return getPermissionFlag(user, 'can_access_k2s_dashboard', true);
+}
+
+export function canAccessLogbook(user: AuthUserLike | null | undefined) {
+  return getPermissionFlag(user, 'can_access_logbook', true);
+}
+
+export function canAccessK3(user: AuthUserLike | null | undefined) {
+  return getPermissionFlag(user, 'can_access_k3', isAdminRole(user));
+}
+
+export function canAccessKeamanan(user: AuthUserLike | null | undefined) {
+  return getPermissionFlag(user, 'can_access_keamanan', isAdminRole(user));
 }
 
 export function canAccessExternalDnp(user: AuthUserLike | null | undefined) {

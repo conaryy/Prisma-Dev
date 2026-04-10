@@ -340,10 +340,10 @@ export function Cap() {
     const status = row.statusLabel;
     const className =
       status === 'Closed'
-        ? 'bg-emerald-100 text-emerald-700'
+        ? 'border border-emerald-200/80 bg-emerald-100 text-emerald-700 shadow-sm dark:border-emerald-900/80 dark:bg-emerald-950/80 dark:text-emerald-200 dark:shadow-none'
         : status === 'Open'
-        ? 'bg-blue-100 text-blue-700'
-        : 'bg-amber-100 text-amber-700';
+        ? 'border border-sky-200/80 bg-sky-100 text-sky-700 shadow-sm dark:border-sky-900/80 dark:bg-sky-950/80 dark:text-sky-200 dark:shadow-none'
+        : 'border border-amber-200/80 bg-amber-100 text-amber-700 shadow-sm dark:border-amber-900/80 dark:bg-amber-950/80 dark:text-amber-200 dark:shadow-none';
 
     return (
       <div className="space-y-1">
@@ -351,7 +351,7 @@ export function Cap() {
           {status}
         </span>
         {row.hasCap && row.latestProgress !== null && (
-          <div className="text-[11px] text-slate-500">
+          <div className="text-[11px] text-slate-500 dark:text-slate-300">
             Progress {row.latestProgress}%
           </div>
         )}
@@ -463,12 +463,6 @@ export function Cap() {
           </Button>
         </div>
       </div>
-
-      {isExternalDnpSource && (
-        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-4 py-3 text-sm text-slate-600 shadow-sm">
-          Data di halaman ini mengikuti card dashboard dan bersumber dari menu External DNP.
-        </div>
-      )}
 
       {openCapTable ? (
         <DataTable

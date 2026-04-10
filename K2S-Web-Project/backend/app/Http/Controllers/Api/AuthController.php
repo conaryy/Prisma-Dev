@@ -8,6 +8,28 @@ use Illuminate\Support\Facades\Hash;
 
 class AuthController extends ApiController
 {
+    private const ADMIN_DEFAULT_PERMISSIONS = [
+        'can_access_admin_portal' => true,
+        'can_manage_users' => true,
+        'can_manage_admin_module' => true,
+        'can_access_k2s_dashboard' => true,
+        'can_access_logbook' => true,
+        'can_access_k3' => true,
+        'can_access_keamanan' => true,
+        'can_access_external_dnp' => true,
+    ];
+
+    private const VIEWER_DEFAULT_PERMISSIONS = [
+        'can_access_admin_portal' => false,
+        'can_manage_users' => false,
+        'can_manage_admin_module' => false,
+        'can_access_k2s_dashboard' => true,
+        'can_access_logbook' => true,
+        'can_access_k3' => false,
+        'can_access_keamanan' => false,
+        'can_access_external_dnp' => false,
+    ];
+
     public function login(Request $request)
     {
         $mode = (string) config('sso.mode', 'local');
@@ -124,18 +146,17 @@ class AuthController extends ApiController
             $storedPermissions = $user->permissions;
         }
 
-        $defaults = [
-            'can_access_admin_portal' => $isAdmin,
-            'can_manage_users' => $isAdmin,
-            'can_manage_admin_module' => $isAdmin,
-            'can_access_external_dnp' => (bool) ($user->can_access_external_dnp ?? false),
-            'can_access_k2s_dashboard' => true,
-            'can_access_logbook' => true,
-            'can_access_k3' => true,
-            'can_access_keamanan' => true,
-        ];
+        $defaults = $isAdmin
+            ? self::ADMIN_DEFAULT_PERMISSIONS
+            : self::VIEWER_DEFAULT_PERMISSIONS;
 
         $permissions = array_replace($defaults, $storedPermissions);
+        $permissions['can_access_external_dnp'] = (bool) (
+            $storedPermissions['can_access_external_dnp']
+            ?? $user->can_access_external_dnp
+            ?? $permissions['can_access_external_dnp']
+            ?? false
+        );
 
         if (!$isAdmin) {
             // Viewer tetap tidak boleh memegang hak admin module.
@@ -143,8 +164,6 @@ class AuthController extends ApiController
             $permissions['can_manage_users'] = false;
             $permissions['can_manage_admin_module'] = false;
         }
-
-        $permissions['can_access_external_dnp'] = (bool) ($permissions['can_access_external_dnp'] ?? false);
 
         return [
             'is_admin' => $isAdmin,
