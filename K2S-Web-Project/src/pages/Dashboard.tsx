@@ -16,11 +16,10 @@ import { apiFetch, getAuthUser } from '@/lib/api';
 import { downloadFromSignedUrl } from '@/lib/download';
 import { toast } from '@/hooks/use-toast';
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
+  LabelList,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -56,6 +55,22 @@ type UserOption = {
 };
 
 type RgbColor = [number, number, number];
+
+type ThreeDBarShapeProps = {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  fill?: string;
+  payload?: Record<string, unknown>;
+};
+
+type ThreeDBarLabelProps = {
+  x?: number | string;
+  y?: number | string;
+  width?: number | string;
+  value?: number | string;
+};
 
 type MapKcpMarker = {
   key: string;
@@ -306,6 +321,9 @@ const blendRgb = (color: RgbColor, target: number, amount: number): RgbColor => 
   Number(clampChannel(color[2] + (target - color[2]) * amount).toFixed(6)),
 ];
 
+const rgbToCss = (color: RgbColor, alpha = 1) =>
+  `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${alpha})`;
+
 const buildMarkerAnimation = (color: string) => {
   const animation = JSON.parse(JSON.stringify(locationMapAnimation)) as typeof locationMapAnimation;
   const base = hexToRgb(color);
@@ -348,27 +366,46 @@ const buildMarkerAnimation = (color: string) => {
 const MAP_KCP_MARKER_IDLE_ANIMATION = buildMarkerAnimation(MAP_KCP_MARKER_IDLE_COLOR);
 
 const MAP_KCP_MARKER_ACTIVE_ANIMATION = buildMarkerAnimation(MAP_KCP_MARKER_ACTIVE_COLOR);
+const CATEGORY_DISPLAY_LABELS: Record<string, string> = {
+  Operasi: 'Operasi',
+  Organisasi: 'Operasi',
+  Prosedur: 'Prosedur',
+  Fasilitas: 'Fasilitas',
+  Personel: 'Personel',
+  Dokumen: 'Dokumen',
+};
+const CATEGORY_SERIES_ORDER = ['Organisasi', 'Operasi', 'Prosedur', 'Fasilitas', 'Personel', 'Dokumen'] as const;
+const CHART_SERIES_BASE_HEX: Record<string, string> = {
+  Operasi: '#ec4899',
+  Organisasi: '#ec4899',
+  Prosedur: '#2563eb',
+  Fasilitas: '#1e293b',
+  Personel: '#0f766e',
+  Dokumen: '#f97316',
+};
 const CHART_SERIES_COLORS: Record<string, string> = {
-  Organisasi: 'var(--chart-series-organisasi)',
-  Prosedur: 'var(--chart-series-prosedur)',
-  Fasilitas: 'var(--chart-series-fasilitas)',
-  Personel: 'var(--chart-series-personel)',
-  Dokumen: 'var(--chart-series-dokumen)',
+  Operasi: CHART_SERIES_BASE_HEX.Operasi,
+  Organisasi: CHART_SERIES_BASE_HEX.Organisasi,
+  Prosedur: CHART_SERIES_BASE_HEX.Prosedur,
+  Fasilitas: CHART_SERIES_BASE_HEX.Fasilitas,
+  Personel: CHART_SERIES_BASE_HEX.Personel,
+  Dokumen: CHART_SERIES_BASE_HEX.Dokumen,
 };
-const CHART_SERIES_SHADOWS: Record<string, string> = {
-  Organisasi: 'rgba(236, 72, 153, 0.18)',
-  Prosedur: 'rgba(37, 99, 235, 0.18)',
-  Fasilitas: 'rgba(30, 41, 59, 0.18)',
-  Personel: 'rgba(15, 118, 110, 0.18)',
-  Dokumen: 'rgba(249, 115, 22, 0.18)',
-};
-const CHART_SERIES_GRADIENTS: Record<string, [string, string]> = {
-  Organisasi: ['rgba(236, 72, 153, 0.24)', 'rgba(236, 72, 153, 0.02)'],
-  Prosedur: ['rgba(37, 99, 235, 0.24)', 'rgba(37, 99, 235, 0.02)'],
-  Fasilitas: ['rgba(30, 41, 59, 0.24)', 'rgba(30, 41, 59, 0.02)'],
-  Personel: ['rgba(15, 118, 110, 0.24)', 'rgba(15, 118, 110, 0.02)'],
-  Dokumen: ['rgba(249, 115, 22, 0.24)', 'rgba(249, 115, 22, 0.02)'],
-};
+const CHART_SERIES_3D_COLORS: Record<string, { front: string; top: string; side: string; glow: string }> =
+  Object.fromEntries(
+    Object.entries(CHART_SERIES_BASE_HEX).map(([category, hex]) => {
+      const base = hexToRgb(hex);
+      return [
+        category,
+        {
+          front: rgbToCss(base),
+          top: rgbToCss(blendRgb(base, 1, 0.34)),
+          side: rgbToCss(blendRgb(base, 0, 0.2)),
+          glow: rgbToCss(blendRgb(base, 1, 0.12), 0.24),
+        },
+      ];
+    })
+  );
 
 const MAP_KCP_MARKER_LOTTIE_END = Math.max(
   0,
@@ -392,6 +429,96 @@ const formatMapSummaryTimestamp = (value: string | null) => {
 
 const resolveMapScopeDisplayValue = (count: number, isAvailable: boolean) =>
   isAvailable ? String(count) : 'N/A';
+
+const getCategoryDisplayLabel = (category: string) => CATEGORY_DISPLAY_LABELS[category] ?? category;
+
+function ThreeDBarShape({
+  x = 0,
+  y = 0,
+  width = 0,
+  height = 0,
+  payload,
+}: ThreeDBarShapeProps) {
+  if (width <= 0 || height <= 0) return null;
+
+  const rawCategory = String(payload?.__barKey ?? '');
+  const palette =
+    CHART_SERIES_3D_COLORS[rawCategory] ?? CHART_SERIES_3D_COLORS.Prosedur;
+  const depth = Math.min(7, Math.max(4, width * 0.22));
+  const topLift = Math.min(depth, Math.max(3, height * 0.08));
+  const frontWidth = Math.max(width - depth, width * 0.72);
+  const frontX = x;
+  const sideX = frontX + frontWidth;
+  const capY = y + topLift;
+  const capHeight = Math.max(height - topLift, 10);
+  const bottomY = capY + capHeight;
+  const shadowHeight = Math.max(8, capHeight * 0.12);
+
+  return (
+    <g>
+      <ellipse
+        cx={frontX + frontWidth / 2 + depth * 0.55}
+        cy={bottomY + depth * 0.42}
+        rx={Math.max(frontWidth * 0.5 + depth * 0.22, 8)}
+        ry={shadowHeight}
+        fill={palette.glow}
+      />
+      <path
+        d={`M${frontX} ${capY} H${sideX} V${bottomY} H${frontX} Z`}
+        fill={palette.front}
+      />
+      <path
+        d={`M${frontX} ${capY} L${frontX + depth} ${y} H${sideX + depth} L${sideX} ${capY} Z`}
+        fill={palette.top}
+      />
+      <path
+        d={`M${sideX} ${capY} L${sideX + depth} ${y} V${bottomY - topLift} L${sideX} ${bottomY} Z`}
+        fill={palette.side}
+      />
+      <path
+        d={`M${frontX + 1} ${capY + 2} H${sideX - 2}`}
+        stroke="rgba(255,255,255,0.38)"
+        strokeWidth={1.4}
+        strokeLinecap="round"
+      />
+    </g>
+  );
+}
+
+function ThreeDBarLabel({
+  x = 0,
+  y = 0,
+  width = 0,
+  value,
+}: ThreeDBarLabelProps) {
+  const numericX = Number(x);
+  const numericY = Number(y);
+  const numericWidth = Number(width);
+
+  if (
+    value === null ||
+    value === undefined ||
+    Number.isNaN(numericX) ||
+    Number.isNaN(numericY) ||
+    Number.isNaN(numericWidth) ||
+    numericWidth <= 0
+  ) {
+    return null;
+  }
+
+  return (
+    <text
+      x={numericX + numericWidth / 2}
+      y={Math.max(numericY - 8, 10)}
+      textAnchor="middle"
+      fontSize={11}
+      fontWeight={700}
+      fill="var(--chart-tooltip-value)"
+    >
+      {value}
+    </text>
+  );
+}
 
 function ChartTooltip({
   active,
@@ -417,7 +544,7 @@ function ChartTooltip({
       {payload.map((item, index) => (
         <div key={`${item.name}-${index}`} className="flex items-center gap-1.5 text-xs">
           <span className="h-2 w-2 rounded-full" style={{ background: item.color }} />
-          <span style={{ color: 'var(--chart-tooltip-text)' }}>{item.name}:</span>
+          <span style={{ color: 'var(--chart-tooltip-text)' }}>{getCategoryDisplayLabel(item.name)}:</span>
           <span className="font-semibold" style={{ color: 'var(--chart-tooltip-value)' }}>
             {item.value}
           </span>
@@ -1322,14 +1449,28 @@ export function Dashboard() {
   const selectedMapMarker =
     MAP_KCP_MARKERS.find((marker) => marker.key === pinnedMapMarkerKey) ?? null;
   const openCapCount = summary.openCaps ?? summary.openSessions;
+  const mapCategorySeries = useMemo(() => {
+    if (!mapCategoryBreakdown) return [];
+
+    const remainingCategories = mapCategoryBreakdown.categories.filter(
+      (category) => !CATEGORY_SERIES_ORDER.includes(category as (typeof CATEGORY_SERIES_ORDER)[number])
+    );
+
+    return [
+      ...CATEGORY_SERIES_ORDER.filter((category) => mapCategoryBreakdown.categories.includes(category)),
+      ...remainingCategories,
+    ];
+  }, [mapCategoryBreakdown]);
   const mapCategoryTrendData = useMemo(() => {
     if (!mapCategoryBreakdown) return [];
 
     return mapCategoryBreakdown.items.map((item) => ({
       year: String(item.year),
-      ...item.counts,
+      ...Object.fromEntries(
+        mapCategorySeries.map((category) => [category, item.counts[category] ?? 0])
+      ),
     }));
-  }, [mapCategoryBreakdown]);
+  }, [mapCategoryBreakdown, mapCategorySeries]);
 
   return (
     <div className="space-y-6">
@@ -1500,24 +1641,13 @@ export function Dashboard() {
               </div>
             ) : mapCategoryBreakdown && mapCategoryBreakdown.items.length > 0 ? (
               <>
-                <ResponsiveContainer width="100%" height={240}>
-                  <AreaChart data={mapCategoryTrendData} margin={{ top: 8, right: 20, left: 0, bottom: 0 }}>
-                    <defs>
-                      {mapCategoryBreakdown.categories.map((category) => {
-                        const gradientId = `map-category-gradient-${category.toLowerCase()}`;
-                        const [startColor, endColor] = CHART_SERIES_GRADIENTS[category] ?? [
-                          'rgba(37, 99, 235, 0.24)',
-                          'rgba(37, 99, 235, 0.02)',
-                        ];
-
-                        return (
-                          <linearGradient key={gradientId} id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={startColor} />
-                            <stop offset="100%" stopColor={endColor} />
-                          </linearGradient>
-                        );
-                      })}
-                    </defs>
+                <ResponsiveContainer width="100%" height={316}>
+                  <BarChart
+                    data={mapCategoryTrendData}
+                    margin={{ top: 28, right: 22, left: 0, bottom: 0 }}
+                    barGap={10}
+                    barCategoryGap="16%"
+                  >
                     <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
                     <XAxis
                       dataKey="year"
@@ -1534,49 +1664,32 @@ export function Dashboard() {
                       allowDecimals={false}
                     />
                     <Tooltip content={<ChartTooltip />} />
-                    {mapCategoryBreakdown.categories.map((category) => {
-                      const gradientId = `map-category-gradient-${category.toLowerCase()}`;
-                      const strokeColor =
-                        CHART_SERIES_COLORS[category] ?? 'var(--chart-series-prosedur)';
-                      const shadowColor =
-                        CHART_SERIES_SHADOWS[category] ?? 'rgba(37, 99, 235, 0.18)';
-
-                      return (
-                        <Area
-                          key={category}
-                          type="monotone"
-                          dataKey={category}
-                          name={category}
-                          stroke={strokeColor}
-                          fill={`url(#${gradientId})`}
-                          strokeWidth={2.5}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          dot={{
-                            r: 3,
-                            strokeWidth: 1.5,
-                            fill: strokeColor,
-                            stroke: 'var(--chart-tooltip-bg)',
-                          }}
-                          activeDot={{
-                            r: 5,
-                            strokeWidth: 2,
-                            fill: strokeColor,
-                            stroke: 'var(--chart-tooltip-bg)',
-                          }}
-                          style={{
-                            filter: `drop-shadow(0px 6px 8px ${shadowColor})`,
-                          }}
-                          connectNulls
-                        />
-                      );
-                    })}
-                  </AreaChart>
+                    {mapCategorySeries.map((category) => (
+                      <Bar
+                        key={category}
+                        dataKey={category}
+                        name={getCategoryDisplayLabel(category)}
+                        fill={CHART_SERIES_COLORS[category] ?? CHART_SERIES_COLORS.Prosedur}
+                        shape={(props: ThreeDBarShapeProps) => (
+                          <ThreeDBarShape
+                            {...props}
+                            payload={{
+                              ...(props.payload as Record<string, unknown> | undefined),
+                              __barKey: category,
+                            }}
+                          />
+                        )}
+                        maxBarSize={26}
+                      >
+                        <LabelList content={(props: ThreeDBarLabelProps) => <ThreeDBarLabel {...props} />} />
+                      </Bar>
+                    ))}
+                  </BarChart>
                 </ResponsiveContainer>
 
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3 px-2 pb-2 text-xs text-slate-500 dark:text-slate-300">
                   <div className="flex flex-wrap items-center gap-4">
-                    {mapCategoryBreakdown.categories.map((category) => (
+                    {mapCategorySeries.map((category) => (
                       <span key={category} className="flex items-center gap-1.5">
                         <span
                           className="inline-block h-2.5 w-2.5 rounded-full"
@@ -1584,7 +1697,7 @@ export function Dashboard() {
                             background: CHART_SERIES_COLORS[category] ?? 'var(--chart-series-prosedur)',
                           }}
                         />
-                        {category}
+                        {getCategoryDisplayLabel(category)}
                       </span>
                     ))}
                   </div>
