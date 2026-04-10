@@ -78,12 +78,12 @@ export function Sidebar({
   const { instansi } = useAppData();
   const profileName =
     user?.name?.trim() || instansi?.name?.trim() || 'Pengguna';
+  const isDashboardCapActive = location.pathname === '/cap';
   const isInfoActive = location.pathname.startsWith('/informasi');
   const isInstansiActive = location.pathname.startsWith('/informasi/instansi');
   const isAuditPqActive = location.pathname.startsWith('/audit/protocol-question');
   const isAuditCapPath = location.pathname.startsWith('/audit/cap');
-  const isAuditCapActive =
-    isAuditCapPath || location.pathname.startsWith('/cap');
+  const isAuditCapActive = isAuditCapPath;
   const isAuditActive =
     location.pathname.startsWith('/audit') || isAuditCapActive;
   const isAuditResultActive =
@@ -98,8 +98,7 @@ export function Sidebar({
   const isAuditCapDraftActive =
     location.pathname === '/audit/cap/penyusunan';
   const isAuditCapFulfillmentActive =
-    location.pathname === '/audit/cap/pemenuhan' ||
-    location.pathname.startsWith('/cap');
+    location.pathname === '/audit/cap/pemenuhan';
   const isInspeksiPqActive = location.pathname.startsWith(
     '/inspeksi/protocol-question'
   );
@@ -468,7 +467,10 @@ export function Sidebar({
             Menu Utama
           </div>
 
-          <Link to="/dashboard" className={navClass(navItem('/dashboard'))}>
+          <Link
+            to="/dashboard"
+            className={navClass(navItem('/dashboard') || isDashboardCapActive)}
+          >
             <LayoutDashboard className={navIconClass} />
             <span className={labelClass('flex-1')}>Dashboard</span>
           </Link>

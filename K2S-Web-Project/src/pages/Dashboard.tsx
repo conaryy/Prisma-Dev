@@ -196,7 +196,7 @@ const MAP_KCP_MARKERS: MapKcpMarker[] = [
   {
     key: 'bawean',
     x: 980,
-    y: 195,
+    y: 225,
     color: '#ff4148',
     code: 'BXW',
     title: 'Unit Bawean',
@@ -701,8 +701,8 @@ const MapKcpSection = memo(function MapKcpSection({
   return (
     <>
       <section className="grid w-full gap-5 lg:grid-cols-[minmax(0,1.34fr)_minmax(500px,1.12fr)] lg:items-stretch">
-        <article className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm dark:border-[#355791]/70 dark:bg-[#0b1736]">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-[#365891]/80">
+        <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm dark:border-[#355791]/70 dark:bg-[#0b1736]">
+        <div className="shrink-0 flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-[#365891]/80">
           <div>
             <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">Wilayah Kerja Perum LPPNPI Cabang Surabaya</h2>
           </div>
@@ -741,16 +741,16 @@ const MapKcpSection = memo(function MapKcpSection({
           </DropdownMenu>
         </div>
 
-        <div className="px-4 py-4 sm:px-6 sm:py-5">
+        <div className="flex flex-1 items-center px-4 py-4 sm:px-6 sm:py-5">
           <div
-            className="flex justify-start"
+            className="flex w-full flex-1 items-center justify-center overflow-hidden"
             onMouseLeave={() => setHoveredMapMarkerKey(null)}
           >
-            <div className="relative inline-block max-w-full rounded-2xl bg-white">
+            <div className="relative inline-block w-full max-w-full origin-center transform-gpu rounded-2xl bg-white scale-[1.08] sm:scale-[1.12] lg:scale-[1.16]">
               <img
                 src={map22Image}
                 alt="Map KCP Jawa Timur"
-                className="block max-h-[320px] w-auto max-w-full object-contain brightness-[1.16] contrast-[1.06] saturate-[1.08] sm:max-h-[390px] lg:max-h-[430px] dark:brightness-[1.2] dark:contrast-105"
+                className="block h-auto w-full object-contain brightness-[1.16] contrast-[1.06] saturate-[1.08] dark:brightness-[1.2] dark:contrast-105"
                 loading="lazy"
               />
 
