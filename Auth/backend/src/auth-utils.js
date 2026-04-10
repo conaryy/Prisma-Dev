@@ -1,5 +1,6 @@
 import { config } from './config.js';
 import { parseJson } from './db.js';
+import { resolveExternalDnpInstansiAccess } from './external-dnp-instansi.js';
 import { DEFAULT_ADMIN_PERMISSIONS, buildEffectivePermissions } from './permissions.js';
 
 const ALLOWED_ROLES = new Set(['Admin', 'Viewer']);
@@ -113,8 +114,19 @@ export function getUserPermissions(user) {
   );
 }
 
+export function getUserExternalDnpInstansiAccess(user) {
+  const permissions = getUserPermissions(user);
+
+  return resolveExternalDnpInstansiAccess({
+    role: user.role,
+    permissions,
+    externalDnpInstansiAccess: parseJson(user.external_dnp_instansi_json || '[]', []),
+  });
+}
+
 export function toUserResponse(row) {
   const permissions = getUserPermissions(row);
+  const externalDnpInstansiAccess = getUserExternalDnpInstansiAccess(row);
   return {
     id: row.id,
     name: row.username,
@@ -124,6 +136,7 @@ export function toUserResponse(row) {
     role: row.role,
     status: row.status,
     can_access_external_dnp: Boolean(permissions.can_access_external_dnp),
+    external_dnp_instansi_access: externalDnpInstansiAccess,
     permissions,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -148,6 +161,7 @@ export function tokenResponse({ accessToken, idToken, refreshToken, scope, user 
       status: user.status,
       permissions: user.permissions,
       can_access_external_dnp: Boolean(user.permissions?.can_access_external_dnp),
+      external_dnp_instansi_access: user.external_dnp_instansi_access ?? [],
     },
   };
 }

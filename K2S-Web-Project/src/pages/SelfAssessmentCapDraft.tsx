@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import { getAuthUser } from '@/lib/api';
+import { canManageExternalDnp } from '@/lib/permissions';
 import {
   fetchSelfAssessmentCap,
   submitSelfAssessmentCap,
@@ -55,6 +57,8 @@ export function SelfAssessmentCapDraft({
   enableQuestionPagination = false,
   questionPageSize = 8,
 }: SelfAssessmentCapDraftProps) {
+  const authUser = getAuthUser<{ role?: string; permissions?: Record<string, unknown> }>();
+  const isReadOnlyExternalDnp = !allowSend && !canManageExternalDnp(authUser);
   const [items, setItems] = useState<CapItem[]>([]);
   const [searchText, setSearchText] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -126,7 +130,7 @@ export function SelfAssessmentCapDraft({
   }, [activeItem]);
 
   const handleSubmit = (action: 'draft' | 'send') => {
-    if (!activeItem) return;
+    if (!activeItem || isReadOnlyExternalDnp) return;
     if (!actionPlan.trim() || !targetDate) {
       toast({
         title: 'Data belum lengkap',
@@ -337,11 +341,17 @@ export function SelfAssessmentCapDraft({
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="text-sm font-semibold text-slate-700">Penyusunan CAP</div>
               <div className="mt-4 space-y-3">
+                {isReadOnlyExternalDnp && (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                    Mode lihat saja. User non-admin hanya bisa melihat CAP External DNP sesuai instansi yang diberikan admin.
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-semibold text-slate-600">Action Plan *</label>
                   <Textarea
                     rows={4}
                     value={actionPlan}
+                    disabled={isReadOnlyExternalDnp}
                     onChange={(event) => setActionPlan(event.target.value)}
                   />
                 </div>
@@ -350,28 +360,31 @@ export function SelfAssessmentCapDraft({
                   <Input
                     type="date"
                     value={targetDate}
+                    disabled={isReadOnlyExternalDnp}
                     onChange={(event) => setTargetDate(event.target.value)}
                   />
                 </div>
                 <div className="text-xs text-red-500">Kolom dengan tanda bintang wajib diisi.</div>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleSubmit('draft')}
-                    disabled={isSaving || !activeItem}
-                  >
-                    {allowSend ? 'Simpan Draft' : 'Simpan Draft (Lokal)'}
-                  </Button>
-                  {allowSend && (
+                {!isReadOnlyExternalDnp && (
+                  <div className="flex flex-wrap justify-end gap-2">
                     <Button
-                      className="bg-blue-500 text-white hover:bg-blue-600"
-                      onClick={() => handleSubmit('send')}
+                      variant="outline"
+                      onClick={() => handleSubmit('draft')}
                       disabled={isSaving || !activeItem}
                     >
-                      Kirim
+                      {allowSend ? 'Simpan Draft' : 'Simpan Draft (Lokal)'}
                     </Button>
-                  )}
-                </div>
+                    {allowSend && (
+                      <Button
+                        className="bg-blue-500 text-white hover:bg-blue-600"
+                        onClick={() => handleSubmit('send')}
+                        disabled={isSaving || !activeItem}
+                      >
+                        Kirim
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

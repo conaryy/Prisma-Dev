@@ -6,6 +6,7 @@ import { hashToken, randomToken, signAccessToken, signIdToken, verifyAccessToken
 import {
   extractClientCredentials,
   getClientById,
+  getUserExternalDnpInstansiAccess,
   getUserBySession,
   getUserPermissions,
   normalizeScope,
@@ -28,6 +29,7 @@ export function createOauthRouter(deps = {}) {
     verifyAccessToken,
     extractClientCredentials,
     getClientById,
+    getUserExternalDnpInstansiAccess,
     getUserBySession,
     getUserPermissions,
     normalizeScope,
@@ -164,6 +166,7 @@ export function createOauthRouter(deps = {}) {
         }
 
         const permissions = services.getUserPermissions(userRow);
+        const externalDnpInstansiAccess = services.getUserExternalDnpInstansiAccess(userRow);
         const accessToken = await services.signAccessToken(
           {
             sub: userRow.id,
@@ -173,6 +176,7 @@ export function createOauthRouter(deps = {}) {
             name: userRow.username,
             role: userRow.role,
             permissions,
+            external_dnp_instansi_access: externalDnpInstansiAccess,
             scope: codeRow.scope,
           },
           config.accessTokenTtlSeconds
@@ -185,6 +189,7 @@ export function createOauthRouter(deps = {}) {
             preferred_username: userRow.username,
             name: userRow.username,
             role: userRow.role,
+            external_dnp_instansi_access: externalDnpInstansiAccess,
           },
           config.accessTokenTtlSeconds
         );
@@ -216,6 +221,7 @@ export function createOauthRouter(deps = {}) {
             user: {
               ...userRow,
               permissions,
+              external_dnp_instansi_access: externalDnpInstansiAccess,
             },
           })
         );
@@ -245,6 +251,7 @@ export function createOauthRouter(deps = {}) {
         }
 
         const permissions = services.getUserPermissions(userRow);
+        const externalDnpInstansiAccess = services.getUserExternalDnpInstansiAccess(userRow);
         const accessToken = await services.signAccessToken(
           {
             sub: userRow.id,
@@ -254,6 +261,7 @@ export function createOauthRouter(deps = {}) {
             name: userRow.username,
             role: userRow.role,
             permissions,
+            external_dnp_instansi_access: externalDnpInstansiAccess,
             scope: tokenRow.scope,
           },
           config.accessTokenTtlSeconds
@@ -266,6 +274,7 @@ export function createOauthRouter(deps = {}) {
             preferred_username: userRow.username,
             name: userRow.username,
             role: userRow.role,
+            external_dnp_instansi_access: externalDnpInstansiAccess,
           },
           config.accessTokenTtlSeconds
         );
@@ -297,6 +306,7 @@ export function createOauthRouter(deps = {}) {
             user: {
               ...userRow,
               permissions,
+              external_dnp_instansi_access: externalDnpInstansiAccess,
             },
           })
         );
@@ -340,6 +350,7 @@ export function createOauthRouter(deps = {}) {
           name: payload.name,
           role: payload.role,
           permissions: payload.permissions,
+          external_dnp_instansi_access: payload.external_dnp_instansi_access ?? [],
         });
       } catch {
         res.status(401).json({ error: 'invalid_token' });

@@ -1,6 +1,10 @@
 import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { execQuery, parseJson, queryOne } from './db.js';
+import {
+  requiresExternalDnpInstansiAccess,
+  resolveExternalDnpInstansiAccess,
+} from './external-dnp-instansi.js';
 import { buildEffectivePermissions } from './permissions.js';
 import {
   ensureRole,
@@ -11,6 +15,30 @@ import {
   sanitizePhone,
   sanitizeText,
 } from './auth-utils.js';
+
+function buildExternalDnpInstansiAccess(role, permissions, rawValue) {
+  const externalDnpInstansiAccess = resolveExternalDnpInstansiAccess({
+    role,
+    permissions,
+    externalDnpInstansiAccess: rawValue,
+  });
+
+  if (
+    requiresExternalDnpInstansiAccess({ role, permissions })
+    && externalDnpInstansiAccess.length === 0
+  ) {
+    return {
+      ok: false,
+      status: 422,
+      error: 'Pilih minimal satu instansi untuk user External DNP.',
+    };
+  }
+
+  return {
+    ok: true,
+    data: externalDnpInstansiAccess,
+  };
+}
 
 export async function createManagedUser(payload) {
   const username = sanitizeText(payload.username);
@@ -52,12 +80,44 @@ export async function createManagedUser(payload) {
   const userId = nanoid();
   const now = nowMs();
   const permissions = buildEffectivePermissions(role, safePermissionsInput(payload.permissions));
+  const externalDnpInstansiAccess = buildExternalDnpInstansiAccess(
+    role,
+    permissions,
+    payload.external_dnp_instansi_access
+  );
+  if (!externalDnpInstansiAccess.ok) {
+    return externalDnpInstansiAccess;
+  }
   await execQuery(
     `
-      INSERT INTO users (id, username, email, phone, password_hash, role, permissions_json, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (
+        id,
+        username,
+        email,
+        phone,
+        password_hash,
+        role,
+        permissions_json,
+        external_dnp_instansi_json,
+        status,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-    [userId, username, email, phone, bcrypt.hashSync(password, 10), role, JSON.stringify(permissions), status, now, now]
+    [
+      userId,
+      username,
+      email,
+      phone,
+      bcrypt.hashSync(password, 10),
+      role,
+      JSON.stringify(permissions),
+      JSON.stringify(externalDnpInstansiAccess.data),
+      status,
+      now,
+      now,
+    ]
   );
 
   const created = await queryOne('SELECT * FROM users WHERE id = ? LIMIT 1', [userId]);
@@ -81,6 +141,18 @@ export async function updateManagedUser(userId, payload) {
       ? safePermissionsInput(payload.permissions)
       : parseJson(current.permissions_json || '{}', {});
   const nextPermissions = buildEffectivePermissions(nextRole, rawPermissions);
+  const rawExternalDnpInstansiAccess =
+    payload.external_dnp_instansi_access !== undefined
+      ? payload.external_dnp_instansi_access
+      : parseJson(current.external_dnp_instansi_json || '[]', []);
+  const nextExternalDnpInstansiAccess = buildExternalDnpInstansiAccess(
+    nextRole,
+    nextPermissions,
+    rawExternalDnpInstansiAccess
+  );
+  if (!nextExternalDnpInstansiAccess.ok) {
+    return nextExternalDnpInstansiAccess;
+  }
 
   if (!nextName || nextName.length < 2) {
     return { ok: false, status: 422, error: 'Nama minimal 2 karakter.' };
@@ -116,6 +188,7 @@ export async function updateManagedUser(userId, payload) {
         nextPhone,
         nextRole,
         JSON.stringify(nextPermissions),
+        JSON.stringify(nextExternalDnpInstansiAccess.data),
         nextStatus,
         nowMs(),
         bcrypt.hashSync(password, 10),
@@ -127,6 +200,7 @@ export async function updateManagedUser(userId, payload) {
         nextPhone,
         nextRole,
         JSON.stringify(nextPermissions),
+        JSON.stringify(nextExternalDnpInstansiAccess.data),
         nextStatus,
         nowMs(),
         userId,
@@ -136,12 +210,12 @@ export async function updateManagedUser(userId, payload) {
     shouldUpdatePassword
       ? `
           UPDATE users
-          SET username = ?, email = ?, phone = ?, role = ?, permissions_json = ?, status = ?, updated_at = ?, password_hash = ?
+          SET username = ?, email = ?, phone = ?, role = ?, permissions_json = ?, external_dnp_instansi_json = ?, status = ?, updated_at = ?, password_hash = ?
           WHERE id = ?
         `
       : `
           UPDATE users
-          SET username = ?, email = ?, phone = ?, role = ?, permissions_json = ?, status = ?, updated_at = ?
+          SET username = ?, email = ?, phone = ?, role = ?, permissions_json = ?, external_dnp_instansi_json = ?, status = ?, updated_at = ?
           WHERE id = ?
         `,
     params

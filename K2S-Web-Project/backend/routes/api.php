@@ -158,16 +158,19 @@ Route::middleware('auth.api')->group(function () {
         Route::get('external-dnp/export-document/items', [ExternalDnpExportDocumentController::class, 'items']);
         Route::post('external-dnp/export-document/generate', [ExternalDnpExportDocumentController::class, 'generate']);
         Route::get('external-dnp/export-document/download', [ExternalDnpExportDocumentController::class, 'download']);
-        Route::post('external-dnp/sync', [ExternalDnpCapController::class, 'sync']);
-        Route::post('external-dnp/sync/init', [ExternalDnpCapController::class, 'syncInit']);
-        Route::post('external-dnp/sync/start', [ExternalDnpCapController::class, 'syncStart']);
-        Route::post('external-dnp/sync/run', [ExternalDnpCapController::class, 'syncRun']);
-        Route::get('external-dnp/sync/status', [ExternalDnpCapController::class, 'syncStatus']);
-        Route::get('external-dnp/sync/jobs/{job}', [ExternalDnpCapController::class, 'syncJobStatus']);
-        Route::post('external-dnp/cap', [ExternalDnpCapController::class, 'store']);
-        Route::post('external-dnp/cap/{cap}/fulfillments', [ExternalDnpCapController::class, 'storeFulfillment']);
-        Route::delete('external-dnp/cap/fulfillment-files/{file}', [ExternalDnpCapController::class, 'destroyFulfillmentFile']);
-        Route::post('external-dnp/cap/{cap}/extensions', [ExternalDnpCapController::class, 'storeExtension']);
+
+        Route::middleware('admin')->group(function () {
+            Route::post('external-dnp/sync', [ExternalDnpCapController::class, 'sync']);
+            Route::post('external-dnp/sync/init', [ExternalDnpCapController::class, 'syncInit']);
+            Route::post('external-dnp/sync/start', [ExternalDnpCapController::class, 'syncStart']);
+            Route::post('external-dnp/sync/run', [ExternalDnpCapController::class, 'syncRun']);
+            Route::get('external-dnp/sync/status', [ExternalDnpCapController::class, 'syncStatus']);
+            Route::get('external-dnp/sync/jobs/{job}', [ExternalDnpCapController::class, 'syncJobStatus']);
+            Route::post('external-dnp/cap', [ExternalDnpCapController::class, 'store']);
+            Route::post('external-dnp/cap/{cap}/fulfillments', [ExternalDnpCapController::class, 'storeFulfillment']);
+            Route::delete('external-dnp/cap/fulfillment-files/{file}', [ExternalDnpCapController::class, 'destroyFulfillmentFile']);
+            Route::post('external-dnp/cap/{cap}/extensions', [ExternalDnpCapController::class, 'storeExtension']);
+        });
     });
     Route::get('self-assessment/evidence', [SelfAssessmentEvidenceController::class, 'index']);
     Route::post('self-assessment/evidence', [SelfAssessmentEvidenceController::class, 'store']);

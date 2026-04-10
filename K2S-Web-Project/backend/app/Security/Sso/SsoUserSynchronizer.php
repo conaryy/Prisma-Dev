@@ -3,12 +3,16 @@
 namespace App\Security\Sso;
 
 use App\Models\User;
+use App\Support\ExternalDnpInstansiAccess;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class SsoUserSynchronizer
 {
+    private ?bool $supportsExternalDnpInstansiAccessColumn = null;
+
     /**
      * @param  array<string, mixed>  $claims
      */
@@ -32,6 +36,7 @@ class SsoUserSynchronizer
         $roles = $this->extractRoles($claims);
         $localRole = $this->mapLocalRole($roles);
         $canAccessExternalDnp = $this->hasExternalDnpAccess($roles);
+        $externalDnpInstansiAccess = $this->extractExternalDnpInstansiAccess($claims);
 
         return DB::transaction(function () use (
             $subject,
@@ -40,7 +45,8 @@ class SsoUserSynchronizer
             $name,
             $phone,
             $localRole,
-            $canAccessExternalDnp
+            $canAccessExternalDnp,
+            $externalDnpInstansiAccess
         ) {
             $query = User::query();
             if ($subject !== '') {
@@ -86,6 +92,11 @@ class SsoUserSynchronizer
 
             $user->role = $localRole;
             $user->can_access_external_dnp = $canAccessExternalDnp;
+            if ($this->supportsExternalDnpInstansiAccessColumn()) {
+                $user->external_dnp_instansi_access = $canAccessExternalDnp
+                    ? ($localRole === 'Admin' ? [] : $externalDnpInstansiAccess)
+                    : [];
+            }
             $user->last_sso_login_at = now();
             $user->last_login_at = now();
             $user->save();
@@ -196,6 +207,26 @@ class SsoUserSynchronizer
         }
 
         return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $claims
+     * @return array<int, string>
+     */
+    private function extractExternalDnpInstansiAccess(array $claims): array
+    {
+        $raw = Arr::get($claims, 'external_dnp_instansi_access');
+        if (!is_array($raw)) {
+            $raw = Arr::get($claims, 'externalDnpInstansiAccess');
+        }
+
+        return ExternalDnpInstansiAccess::normalizeKeys($raw);
+    }
+
+    private function supportsExternalDnpInstansiAccessColumn(): bool
+    {
+        return $this->supportsExternalDnpInstansiAccessColumn
+            ??= Schema::hasColumn('users', 'external_dnp_instansi_access');
     }
 
     private function toString(mixed $value): string

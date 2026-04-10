@@ -17,6 +17,7 @@ use App\Models\SelfAssessmentSessionArea;
 use App\Models\SelfAssessmentSessionQuestionCategoryUser;
 use App\Models\SelfAssessmentSessionUser;
 use App\Models\User;
+use App\Support\ExternalDnpInstansiAccess;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -114,7 +115,7 @@ class DashboardController extends ApiController
             ]);
         }
 
-        $detailRows = $this->buildExternalDnpCapDetailRows();
+        $detailRows = $this->buildExternalDnpCapDetailRows($user);
         $totalFindings = $detailRows->count();
 
         $capStatuses = $detailRows
@@ -480,7 +481,7 @@ class DashboardController extends ApiController
         }
 
         return $this->respondData(
-            $this->buildExternalDnpCapDetailRows()->values()
+            $this->buildExternalDnpCapDetailRows($user)->values()
         );
     }
 
@@ -558,7 +559,13 @@ class DashboardController extends ApiController
                 'answer.sessionArea.session',
                 'fulfillments',
             ])
-            ->get()
+            ->get();
+
+        $payload = ExternalDnpInstansiAccess::filterCollectionForUser(
+            $payload,
+            $request->user(),
+            static fn (ExternalDnpCap $cap) => $cap->answer?->sessionArea?->session?->instansi_name
+        )
             ->map(function (ExternalDnpCap $cap) {
                 $session = $cap->answer?->sessionArea?->session;
                 if (!$session) {
@@ -618,6 +625,12 @@ class DashboardController extends ApiController
             ->with('sessionArea.session')
             ->get();
 
+        $submittedAnswers = ExternalDnpInstansiAccess::filterCollectionForUser(
+            $submittedAnswers,
+            $user,
+            static fn (ExternalDnpAnswer $answer) => $answer->sessionArea?->session?->instansi_name
+        );
+
         if ($submittedAnswers->isEmpty()) {
             return $this->respondData([
                 'hasAccess' => true,
@@ -668,6 +681,12 @@ class DashboardController extends ApiController
             })
             ->with(['review', 'sessionArea.session'])
             ->get();
+
+        $answers = ExternalDnpInstansiAccess::filterCollectionForUser(
+            $answers,
+            $user,
+            static fn (ExternalDnpAnswer $answer) => $answer->sessionArea?->session?->instansi_name
+        );
 
         $capsByAnswerId = ExternalDnpCap::query()
             ->whereIn('answer_id', $answers->pluck('id')->values())
@@ -746,6 +765,12 @@ class DashboardController extends ApiController
             })
             ->with(['review', 'sessionArea.session'])
             ->get();
+
+        $answers = ExternalDnpInstansiAccess::filterCollectionForUser(
+            $answers,
+            $user,
+            static fn (ExternalDnpAnswer $answer) => $answer->sessionArea?->session?->instansi_name
+        );
 
         if ($answers->isEmpty()) {
             return $this->respondData([
@@ -896,6 +921,12 @@ class DashboardController extends ApiController
             })
             ->with(['sessionArea.session', 'review'])
             ->get();
+
+        $answers = ExternalDnpInstansiAccess::filterCollectionForUser(
+            $answers,
+            $user,
+            static fn (ExternalDnpAnswer $answer) => $answer->sessionArea?->session?->instansi_name
+        );
 
         if ($answers->isEmpty()) {
             return $this->respondData([
@@ -2036,7 +2067,7 @@ class DashboardController extends ApiController
         return Carbon::createFromTimestamp(max($timestamps))->toDateTimeString();
     }
 
-    private function buildExternalDnpCapDetailRows()
+    private function buildExternalDnpCapDetailRows(?User $user = null)
     {
         $today = Carbon::today();
         $answers = ExternalDnpAnswer::query()
@@ -2050,6 +2081,12 @@ class DashboardController extends ApiController
             })
             ->with(['review', 'sessionArea.session'])
             ->get();
+
+        $answers = ExternalDnpInstansiAccess::filterCollectionForUser(
+            $answers,
+            $user,
+            static fn (ExternalDnpAnswer $answer) => $answer->sessionArea?->session?->instansi_name
+        );
 
         if ($answers->isEmpty()) {
             return collect();

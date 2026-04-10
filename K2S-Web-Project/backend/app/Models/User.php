@@ -28,6 +28,7 @@ class User extends Authenticatable
         'status',
         'can_access_external_dnp',
         'permissions',
+        'external_dnp_instansi_access',
         'sso_subject',
         'sso_provider',
         'last_sso_login_at',
@@ -63,6 +64,7 @@ class User extends Authenticatable
             'last_sso_login_at' => 'datetime',
             'can_access_external_dnp' => 'boolean',
             'permissions' => 'array',
+            'external_dnp_instansi_access' => 'array',
         ];
     }
 }

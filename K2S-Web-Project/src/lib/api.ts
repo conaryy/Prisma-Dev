@@ -64,7 +64,15 @@ function deriveUserFromToken(token: string) {
     email: payload.email,
     username: payload.preferred_username,
     name: payload.name ?? payload.preferred_username ?? payload.email ?? 'User',
-    role: isAdmin ? 'Admin' : 'Viewer',
+    role: typeof payload.role === 'string' ? payload.role : isAdmin ? 'Admin' : 'Viewer',
+    can_access_external_dnp: Boolean((payload as { permissions?: { can_access_external_dnp?: boolean } }).permissions?.can_access_external_dnp),
+    permissions:
+      payload.permissions && typeof payload.permissions === 'object'
+        ? payload.permissions
+        : undefined,
+    external_dnp_instansi_access: Array.isArray(payload.external_dnp_instansi_access)
+      ? payload.external_dnp_instansi_access
+      : [],
   };
 
   return fallbackUser;

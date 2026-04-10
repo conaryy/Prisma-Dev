@@ -1,4 +1,5 @@
 import { safePermissionsInput } from './auth-utils.js';
+import { safeExternalDnpInstansiInput } from './external-dnp-instansi.js';
 
 function normalizeObject(input) {
   return input && typeof input === 'object' ? input : {};
@@ -53,6 +54,7 @@ export function validateCreateUserPayload(input) {
       role: payload.role,
       status: payload.status,
       permissions: safePermissionsInput(payload.permissions),
+      external_dnp_instansi_access: safeExternalDnpInstansiInput(payload.external_dnp_instansi_access),
     },
   };
 }
@@ -78,6 +80,9 @@ export function validateUpdateUserPayload(input) {
       role: payload.role,
       status: payload.status,
       permissions: payload.permissions === undefined ? undefined : safePermissionsInput(payload.permissions),
+      external_dnp_instansi_access: payload.external_dnp_instansi_access === undefined
+        ? undefined
+        : safeExternalDnpInstansiInput(payload.external_dnp_instansi_access),
     },
   };
 }

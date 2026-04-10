@@ -14,6 +14,7 @@ use App\Models\ExternalDnpQuestion;
 use App\Models\ExternalDnpSession;
 use App\Models\ExternalDnpSessionArea;
 use App\Models\ExternalDnpSyncJob;
+use App\Support\ExternalDnpInstansiAccess;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -372,6 +373,9 @@ class ExternalDnpCapController extends ApiController
         if ($area->session?->scope !== $validated['scope']) {
             return response()->json(['error' => 'Invalid scope'], 422);
         }
+        if (!ExternalDnpInstansiAccess::canUserAccessInstansi($request->user(), $area->session?->instansi_name)) {
+            return response()->json(['error' => 'Tidak diizinkan mengakses instansi ini.'], 403);
+        }
 
         $answers = ExternalDnpAnswer::query()
             ->where('session_area_id', $area->id)
@@ -508,6 +512,12 @@ class ExternalDnpCapController extends ApiController
             ->orderByDesc('start_date')
             ->get();
 
+        $sessions = ExternalDnpInstansiAccess::filterCollectionForUser(
+            $sessions,
+            $request->user(),
+            static fn (ExternalDnpSession $session) => $session->instansi_name
+        );
+
         if ($sessions->isEmpty()) {
             return $this->respondData([]);
         }
@@ -573,7 +583,11 @@ class ExternalDnpCapController extends ApiController
 
         $answer = ExternalDnpAnswer::query()
             ->where('id', $validated['answerId'])
+            ->with('sessionArea.session')
             ->firstOrFail();
+        if (!ExternalDnpInstansiAccess::canUserAccessInstansi($request->user(), $answer->sessionArea?->session?->instansi_name)) {
+            return response()->json(['error' => 'Tidak diizinkan mengubah CAP instansi ini.'], 403);
+        }
 
         $cap = ExternalDnpCap::query()->firstOrNew([
             'answer_id' => $answer->id,
@@ -594,6 +608,11 @@ class ExternalDnpCapController extends ApiController
 
     public function storeFulfillment(Request $request, ExternalDnpCap $cap)
     {
+        $cap->loadMissing('answer.sessionArea.session');
+        if (!ExternalDnpInstansiAccess::canUserAccessInstansi($request->user(), $cap->answer?->sessionArea?->session?->instansi_name)) {
+            return response()->json(['error' => 'Tidak diizinkan mengubah pemenuhan CAP instansi ini.'], 403);
+        }
+
         $validated = $request->validate([
             'step' => ['required', 'integer', 'min:1'],
             'proposeAction' => ['required', 'string'],
@@ -673,6 +692,11 @@ class ExternalDnpCapController extends ApiController
 
     public function storeExtension(Request $request, ExternalDnpCap $cap)
     {
+        $cap->loadMissing('answer.sessionArea.session');
+        if (!ExternalDnpInstansiAccess::canUserAccessInstansi($request->user(), $cap->answer?->sessionArea?->session?->instansi_name)) {
+            return response()->json(['error' => 'Tidak diizinkan mengubah perpanjangan CAP instansi ini.'], 403);
+        }
+
         $validated = $request->validate([
             'dueDate' => ['required', 'date'],
             'file' => ['required', 'file', 'max:20480'],
@@ -696,6 +720,11 @@ class ExternalDnpCapController extends ApiController
 
     public function destroyFulfillmentFile(Request $request, ExternalDnpCapFulfillmentFile $file)
     {
+        $file->loadMissing('fulfillment.cap.answer.sessionArea.session');
+        if (!ExternalDnpInstansiAccess::canUserAccessInstansi($request->user(), $file->fulfillment?->cap?->answer?->sessionArea?->session?->instansi_name)) {
+            return response()->json(['error' => 'Tidak diizinkan menghapus file instansi ini.'], 403);
+        }
+
         $capUserId = $file->fulfillment?->cap?->user_id;
         if ($capUserId && $capUserId !== $request->user()->id) {
             return response()->json(['error' => 'Tidak diizinkan menghapus file ini.'], 403);

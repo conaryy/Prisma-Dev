@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'Viewer',
   permissions_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  external_dnp_instansi_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   status TEXT NOT NULL DEFAULT 'Active',
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL

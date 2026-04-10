@@ -12,7 +12,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from '@/hooks/use-toast';
+import { getAuthUser } from '@/lib/api';
 import { downloadApiFile } from '@/lib/download';
+import { canManageExternalDnp } from '@/lib/permissions';
 import {
   fetchExternalDnpSyncJobStatus,
   fetchExternalDnpExportDocumentItems,
@@ -43,6 +45,8 @@ function extractScheduleYear(schedule: string) {
 }
 
 export function ExternalDnpExportDocument() {
+  const authUser = getAuthUser<{ role?: string; permissions?: Record<string, unknown> }>();
+  const canManageExternalDnpData = canManageExternalDnp(authUser);
   const [scope, setScope] = useState<SelfAssessmentScope>('audit');
   const [items, setItems] = useState<ExternalDnpExportDocumentItem[]>([]);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
@@ -115,6 +119,10 @@ export function ExternalDnpExportDocument() {
   }, []);
 
   useEffect(() => {
+    if (!canManageExternalDnpData) {
+      return;
+    }
+
     if (syncQueue.length === 0) {
       return;
     }
@@ -196,7 +204,7 @@ export function ExternalDnpExportDocument() {
     return () => {
       stopped = true;
     };
-  }, [scope, syncQueue]);
+  }, [canManageExternalDnpData, scope, syncQueue]);
 
   const instansiOptions = useMemo(
     () =>
@@ -338,6 +346,10 @@ export function ExternalDnpExportDocument() {
   };
 
   const handleSyncInit = async () => {
+    if (!canManageExternalDnpData) {
+      return;
+    }
+
     setIsSyncSubmitting(true);
     try {
       const init = await initExternalDnpSync();
@@ -359,7 +371,7 @@ export function ExternalDnpExportDocument() {
   };
 
   const handleSyncRun = async () => {
-    if (!captchaSessionId || !captchaValue || !syncUsername || !syncPassword) {
+    if (!canManageExternalDnpData || !captchaSessionId || !captchaValue || !syncUsername || !syncPassword) {
       return;
     }
 
@@ -445,30 +457,32 @@ export function ExternalDnpExportDocument() {
                   </>
                 )}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 rounded-xl border-slate-200 px-4 text-slate-600 shadow-sm hover:border-blue-200 hover:bg-blue-50"
-                onClick={() => void handleSyncInit()}
-                disabled={isSyncSubmitting}
-              >
-                {isSyncSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Memuat
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Update Data
-                  </>
-                )}
-              </Button>
+              {canManageExternalDnpData && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-xl border-slate-200 px-4 text-slate-600 shadow-sm hover:border-blue-200 hover:bg-blue-50"
+                  onClick={() => void handleSyncInit()}
+                  disabled={isSyncSubmitting}
+                >
+                  {isSyncSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Memuat
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Update Data
+                    </>
+                  )}
+                </Button>
+              )}
               <span className="rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm">
                 {SCOPE_OPTIONS.find((option) => option.value === scope)?.label ?? scope}
               </span>
             </div>
-            {syncQueue.length > 0 && (
+            {canManageExternalDnpData && syncQueue.length > 0 && (
               <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                 {syncQueue.length} job update dalam antrean
               </div>
@@ -477,7 +491,12 @@ export function ExternalDnpExportDocument() {
         </header>
 
         <div className="space-y-5 px-6 py-6">
-          {captchaUrl && (
+          {!canManageExternalDnpData && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+              Mode lihat saja. User non-admin hanya bisa melihat dan generate dokumen dari data instansi External DNP yang diizinkan admin.
+            </div>
+          )}
+          {captchaUrl && canManageExternalDnpData && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="text-sm font-semibold text-slate-700">

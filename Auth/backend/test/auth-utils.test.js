@@ -1,18 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  getUserExternalDnpInstansiAccess,
   getUserPermissions,
   sanitizeRedirectTarget,
   toUserResponse,
 } from '../src/auth-utils.js';
+import { config } from '../src/config.js';
 
 test('sanitizeRedirectTarget allows relative paths for local flow', () => {
-  const result = sanitizeRedirectTarget('/portal-admin', 'http://localhost:4000/');
-  assert.equal(result, 'http://localhost:4000/portal-admin');
+  const fallback = new URL('/', config.baseUrl).toString();
+  const result = sanitizeRedirectTarget('/portal-admin', fallback);
+  assert.equal(result, new URL('/portal-admin', config.baseUrl).toString());
 });
 
 test('sanitizeRedirectTarget blocks unknown external origins', () => {
-  const fallback = 'http://localhost:4000/';
+  const fallback = new URL('/', config.baseUrl).toString();
   const result = sanitizeRedirectTarget('https://evil.example.com/phish', fallback);
   assert.equal(result, fallback);
 });
@@ -32,6 +35,18 @@ test('getUserPermissions enforces viewer restrictions', () => {
   assert.equal(permissions.can_access_logbook, true);
 });
 
+test('getUserExternalDnpInstansiAccess only keeps viewer scoped instansi', () => {
+  const access = getUserExternalDnpInstansiAccess({
+    role: 'Viewer',
+    permissions_json: {
+      can_access_external_dnp: true,
+    },
+    external_dnp_instansi_json: ['ngloram', 'unknown', 'surabaya'],
+  });
+
+  assert.deepEqual(access, ['ngloram', 'surabaya']);
+});
+
 test('toUserResponse returns merged permissions and external dnp flag', () => {
   const response = toUserResponse({
     id: 'user-1',
@@ -42,6 +57,7 @@ test('toUserResponse returns merged permissions and external dnp flag', () => {
     permissions_json: {
       can_access_external_dnp: true,
     },
+    external_dnp_instansi_json: ['ngloram'],
     created_at: 1,
     updated_at: 2,
   });
@@ -49,4 +65,5 @@ test('toUserResponse returns merged permissions and external dnp flag', () => {
   assert.equal(response.username, 'admin');
   assert.equal(response.can_access_external_dnp, true);
   assert.equal(response.permissions.can_manage_users, true);
+  assert.deepEqual(response.external_dnp_instansi_access, []);
 });

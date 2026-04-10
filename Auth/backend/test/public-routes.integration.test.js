@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { config } from '../src/config.js';
 import { createPublicRouter } from '../src/routes/public-routes.js';
 
 function createNoopRateLimiter() {
@@ -126,6 +127,7 @@ test('POST /auth/ui/login returns 401 for invalid credentials', async () => {
 });
 
 test('POST /auth/ui/login returns success payload and sets session cookie', async () => {
+  const loginUiOrigin = new URL(config.loginUiUrl).origin;
   const router = createPublicRouter({
     loginRateLimiter: createNoopRateLimiter(),
     authenticateLocalUser: async () => ({
@@ -147,12 +149,13 @@ test('POST /auth/ui/login returns success payload and sets session cookie', asyn
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.success, true);
-  assert.match(response.body.redirect_to, /\/portal-admin$/);
+  assert.equal(response.body.redirect_to, `${loginUiOrigin}/portal-user`);
   assert.equal(response.cookies[0].name, 'auth_sid');
   assert.equal(response.cookies[0].value, 'session-123');
 });
 
 test('POST /auth/login redirects to sanitized target after success', async () => {
+  const loginUiOrigin = new URL(config.loginUiUrl).origin;
   const router = createPublicRouter({
     loginRateLimiter: createNoopRateLimiter(),
     authenticateLocalUser: async () => ({
@@ -173,7 +176,7 @@ test('POST /auth/login redirects to sanitized target after success', async () =>
   });
 
   assert.equal(response.statusCode, 302);
-  assert.equal(response.redirectedTo, 'http://localhost:4000/');
+  assert.equal(response.redirectedTo, `${loginUiOrigin}/portal-user`);
 });
 
 test('GET /auth/logout redirects to allowed post-logout URI', async () => {

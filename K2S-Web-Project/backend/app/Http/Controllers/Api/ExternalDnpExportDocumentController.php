@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\ExternalDnpCap;
 use App\Models\ExternalDnpQuestion;
+use App\Support\ExternalDnpInstansiAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -24,7 +25,7 @@ class ExternalDnpExportDocumentController extends ApiController
         ]);
 
         return $this->respondData(
-            $this->queryExportItems($validated['scope'])->values()->all()
+            $this->queryExportItems($validated['scope'], $request->user())->values()->all()
         );
     }
 
@@ -41,7 +42,7 @@ class ExternalDnpExportDocumentController extends ApiController
             return response()->json(['error' => 'User tidak valid.'], 401);
         }
 
-        $availableItems = $this->queryExportItems($validated['scope']);
+        $availableItems = $this->queryExportItems($validated['scope'], $request->user());
         $selectedIds = collect($validated['itemIds'])
             ->map(fn ($id) => trim((string) $id))
             ->filter()
@@ -99,7 +100,7 @@ class ExternalDnpExportDocumentController extends ApiController
         );
     }
 
-    private function queryExportItems(string $scope): Collection
+    private function queryExportItems(string $scope, $user): Collection
     {
         $caps = ExternalDnpCap::query()
             ->whereHas('answer.sessionArea.session', function ($query) use ($scope) {
@@ -116,6 +117,12 @@ class ExternalDnpExportDocumentController extends ApiController
                 'fulfillments',
             ])
             ->get();
+
+        $caps = ExternalDnpInstansiAccess::filterCollectionForUser(
+            $caps,
+            $user,
+            static fn (ExternalDnpCap $cap) => $cap->answer?->sessionArea?->session?->instansi_name
+        );
 
         if ($caps->isEmpty()) {
             return collect();

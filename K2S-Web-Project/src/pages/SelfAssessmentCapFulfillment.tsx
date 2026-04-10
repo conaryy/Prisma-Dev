@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
-import { ApiError } from '@/lib/api';
+import { ApiError, getAuthUser } from '@/lib/api';
 import { resolveTime } from '@/lib/monitoringReview';
+import { canManageExternalDnp } from '@/lib/permissions';
 import {
   fetchSelfAssessmentCap,
   fetchSelfAssessmentSessions,
@@ -133,6 +134,7 @@ export function SelfAssessmentCapFulfillment({
   enableQuestionPagination = false,
   questionPageSize = 8,
 }: SelfAssessmentCapFulfillmentProps) {
+  const authUser = getAuthUser<{ role?: string; permissions?: Record<string, unknown> }>();
   const [items, setItems] = useState<CapItem[]>([]);
   const [searchText, setSearchText] = useState('');
   const [questionPage, setQuestionPage] = useState(1);
@@ -314,6 +316,7 @@ export function SelfAssessmentCapFulfillment({
   const canFulfill = requireCapReview ? hasCapReviewAvailable(activeItem) : true;
   const shouldShowReviewWarning = requireCapReview && !canFulfill;
   const isExternalDnpMode = !allowSend;
+  const isReadOnlyExternalDnp = isExternalDnpMode && !canManageExternalDnp(authUser);
 
   const resolveProgressValue = (item: CapItem) => {
     const latest = item.cap?.fulfillments?.reduce((current, candidate) => {
@@ -369,7 +372,7 @@ export function SelfAssessmentCapFulfillment({
   }, [activeId, activeItem]);
 
   const submitFulfillmentForm = (action: 'draft' | 'send', exportToExternal = false) => {
-    if (!activeItem?.cap) return;
+    if (!activeItem?.cap || isReadOnlyExternalDnp) return;
     if (requireCapReview && !canFulfill) {
       toast({
         title: 'Review CAP belum tersedia',
@@ -464,7 +467,7 @@ export function SelfAssessmentCapFulfillment({
   };
 
   const submitExtension = () => {
-    if (!activeItem?.cap) return;
+    if (!activeItem?.cap || isReadOnlyExternalDnp) return;
     if (requireCapReview && !canFulfill) {
       toast({
         title: 'Review CAP belum tersedia',
@@ -524,7 +527,7 @@ export function SelfAssessmentCapFulfillment({
   };
 
   const openSyncChallenge = useCallback(async () => {
-    if (!syncInit) return;
+    if (!syncInit || isReadOnlyExternalDnp) return;
     setIsReauthing(true);
     try {
       const init = await syncInit();
@@ -542,10 +545,10 @@ export function SelfAssessmentCapFulfillment({
     } finally {
       setIsReauthing(false);
     }
-  }, [syncInit]);
+  }, [isReadOnlyExternalDnp, syncInit]);
 
   const handleReauth = async () => {
-    if (!syncRun || !syncSessionId || !syncUsername || !syncPassword || !captchaValue) {
+    if (isReadOnlyExternalDnp || !syncRun || !syncSessionId || !syncUsername || !syncPassword || !captchaValue) {
       return;
     }
     setIsReauthing(true);
@@ -588,7 +591,7 @@ export function SelfAssessmentCapFulfillment({
   };
 
   useEffect(() => {
-    if (allowSend) return;
+    if (allowSend || isReadOnlyExternalDnp) return;
     if (!syncStatus) return;
     if (!currentInstansiName) {
       setIsSessionActiveForInstansi(false);
@@ -619,10 +622,10 @@ export function SelfAssessmentCapFulfillment({
     return () => {
       cancelled = true;
     };
-  }, [allowSend, currentInstansiName, syncStatus]);
+  }, [allowSend, currentInstansiName, isReadOnlyExternalDnp, syncStatus]);
 
   useEffect(() => {
-    if (allowSend) return;
+    if (allowSend || isReadOnlyExternalDnp) return;
     if (isSessionActiveForInstansi) return;
     if (!currentInstansiName) return;
     if (!syncInit) return;
@@ -632,6 +635,7 @@ export function SelfAssessmentCapFulfillment({
     allowSend,
     captchaUrl,
     currentInstansiName,
+    isReadOnlyExternalDnp,
     isSessionActiveForInstansi,
     openSyncChallenge,
     syncInit,
@@ -887,6 +891,11 @@ export function SelfAssessmentCapFulfillment({
               <div className="text-sm font-semibold text-slate-700">Pemenuhan CAP</div>
               {activeItem?.cap ? (
                 <div className="mt-4 space-y-3">
+                  {isReadOnlyExternalDnp && (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                      Mode lihat saja. User non-admin hanya bisa melihat pemenuhan CAP External DNP sesuai instansi yang diberikan admin.
+                    </div>
+                  )}
                   {shouldShowReviewWarning && (
                     <div className="rounded-xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-700">
                       Review CAP belum tersedia. Pemenuhan CAP baru bisa diisi setelah review CAP.
@@ -899,6 +908,7 @@ export function SelfAssessmentCapFulfillment({
                         type="number"
                         min={1}
                         value={step}
+                        disabled={isReadOnlyExternalDnp}
                         onChange={(event) => {
                           const nextValue = Number(event.target.value);
                           setStep(Number.isFinite(nextValue) && nextValue > 0 ? nextValue : 1);
@@ -910,6 +920,7 @@ export function SelfAssessmentCapFulfillment({
                       <Input
                         type="date"
                         value={completeDate}
+                        disabled={isReadOnlyExternalDnp}
                         onChange={(event) => setCompleteDate(event.target.value)}
                       />
                     </div>
@@ -919,7 +930,7 @@ export function SelfAssessmentCapFulfillment({
                     <Textarea
                       rows={3}
                       value={proposeAction}
-                      disabled={!canFulfill}
+                      disabled={!canFulfill || isReadOnlyExternalDnp}
                       onChange={(event) => setProposeAction(event.target.value)}
                     />
                   </div>
@@ -928,7 +939,7 @@ export function SelfAssessmentCapFulfillment({
                     <Textarea
                       rows={2}
                       value={actionOffice}
-                      disabled={!canFulfill}
+                      disabled={!canFulfill || isReadOnlyExternalDnp}
                       onChange={(event) => setActionOffice(event.target.value)}
                     />
                   </div>
@@ -937,7 +948,7 @@ export function SelfAssessmentCapFulfillment({
                     <Textarea
                       rows={2}
                       value={evidenceReference}
-                      disabled={!canFulfill}
+                      disabled={!canFulfill || isReadOnlyExternalDnp}
                       onChange={(event) => setEvidenceReference(event.target.value)}
                     />
                   </div>
@@ -947,7 +958,7 @@ export function SelfAssessmentCapFulfillment({
                       <select
                         className="h-10 w-full rounded-xl border border-input bg-white/80 px-3 text-sm text-slate-700 shadow-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-200"
                         value={progress}
-                        disabled={!canFulfill}
+                        disabled={!canFulfill || isReadOnlyExternalDnp}
                         onChange={(event) => setProgress(Number(event.target.value))}
                       >
                         {[0, 25, 50, 75, 100].map((value) => (
@@ -980,7 +991,7 @@ export function SelfAssessmentCapFulfillment({
                           });
                           event.target.value = '';
                         }}
-                        disabled={!canFulfill}
+                        disabled={!canFulfill || isReadOnlyExternalDnp}
                       />
                     </div>
                   </div>
@@ -1007,7 +1018,7 @@ export function SelfAssessmentCapFulfillment({
                                     )
                                   )
                                 }
-                                disabled={isSaving}
+                                disabled={isSaving || isReadOnlyExternalDnp}
                               >
                                 Hapus
                               </Button>
@@ -1036,7 +1047,11 @@ export function SelfAssessmentCapFulfillment({
                                 </a>
                               ) : (
                                 <span
-                                  title={`${file.name} (login instansi diperlukan)`}
+                                  title={
+                                    isReadOnlyExternalDnp
+                                      ? `${file.name} (akses file DNP membutuhkan sesi admin aktif)`
+                                      : `${file.name} (login instansi diperlukan)`
+                                  }
                                   className="block truncate text-xs text-slate-500"
                                 >
                                   {file.name}
@@ -1045,7 +1060,7 @@ export function SelfAssessmentCapFulfillment({
                             </div>
                             {!isSessionActiveForInstansi && (
                               <span className="shrink-0 text-[10px] font-semibold text-amber-700">
-                                Login instansi dulu
+                                {isReadOnlyExternalDnp ? 'Sesi admin diperlukan' : 'Login instansi dulu'}
                               </span>
                             )}
                           </div>
@@ -1072,7 +1087,7 @@ export function SelfAssessmentCapFulfillment({
                                 {file.name}
                               </a>
                             </div>
-                            {deleteFulfillmentFileHandler && (
+                            {deleteFulfillmentFileHandler && !isReadOnlyExternalDnp && (
                               <Button
                                 type="button"
                                 variant="outline"
@@ -1088,34 +1103,38 @@ export function SelfAssessmentCapFulfillment({
                       </div>
                     </div>
                   )}
-                  <div className="text-xs text-red-500">Kolom dengan tanda bintang wajib diisi.</div>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => submitFulfillmentForm('draft', false)}
-                      disabled={!canFulfill || isSaving}
-                    >
-                      {allowSend ? 'Draft' : 'Simpan Draft (Lokal)'}
-                    </Button>
-                    {!allowSend && (
-                      <Button
-                        className="bg-blue-500 text-white hover:bg-blue-600"
-                        onClick={() => submitFulfillmentForm('draft', true)}
-                        disabled={!canFulfill || isSaving || !isSessionActiveForInstansi}
-                      >
-                        Export DNP
-                      </Button>
-                    )}
-                    {allowSend && (
-                      <Button
-                        className="bg-blue-500 text-white hover:bg-blue-600"
-                        onClick={() => submitFulfillmentForm('send')}
-                        disabled={!canFulfill || isSaving}
-                      >
-                        Submit
-                      </Button>
-                    )}
-                  </div>
+                  {!isReadOnlyExternalDnp && (
+                    <>
+                      <div className="text-xs text-red-500">Kolom dengan tanda bintang wajib diisi.</div>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => submitFulfillmentForm('draft', false)}
+                          disabled={!canFulfill || isSaving}
+                        >
+                          {allowSend ? 'Draft' : 'Simpan Draft (Lokal)'}
+                        </Button>
+                        {!allowSend && (
+                          <Button
+                            className="bg-blue-500 text-white hover:bg-blue-600"
+                            onClick={() => submitFulfillmentForm('draft', true)}
+                            disabled={!canFulfill || isSaving || !isSessionActiveForInstansi}
+                          >
+                            Export DNP
+                          </Button>
+                        )}
+                        {allowSend && (
+                          <Button
+                            className="bg-blue-500 text-white hover:bg-blue-600"
+                            onClick={() => submitFulfillmentForm('send')}
+                            disabled={!canFulfill || isSaving}
+                          >
+                            Submit
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-end">
                     <div
                       className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
@@ -1132,7 +1151,7 @@ export function SelfAssessmentCapFulfillment({
                       {monitoringSessionLabel || 'Status monitoring belum tersedia.'}
                     </div>
                   </div>
-                  {!allowSend && (
+                  {!allowSend && !isReadOnlyExternalDnp && (
                     <div className="flex justify-end">
                       {isSessionActiveForInstansi && activeSessionCreatedBy ? (
                         <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-900/30 dark:text-emerald-300">
@@ -1149,7 +1168,7 @@ export function SelfAssessmentCapFulfillment({
                       )}
                     </div>
                   )}
-                  {!allowSend && !isSessionActiveForInstansi && (
+                  {!allowSend && !isReadOnlyExternalDnp && !isSessionActiveForInstansi && (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="text-xs font-semibold text-slate-700">
@@ -1235,13 +1254,18 @@ export function SelfAssessmentCapFulfillment({
               <div className="text-sm font-semibold text-slate-700">Permohonan Perpanjangan</div>
               {activeItem?.cap ? (
                 <div className="mt-4 space-y-3">
+                  {isReadOnlyExternalDnp && (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                      Mode lihat saja. User non-admin tidak bisa mengirim perpanjangan CAP External DNP.
+                    </div>
+                  )}
                   <div className="grid gap-3 md:grid-cols-2">
                     <div>
                       <label className="text-xs font-semibold text-slate-600">Due Date *</label>
                       <Input
                         type="date"
                         value={extensionDueDate}
-                        disabled={!canFulfill}
+                        disabled={!canFulfill || isReadOnlyExternalDnp}
                         onChange={(event) => setExtensionDueDate(event.target.value)}
                       />
                     </div>
@@ -1252,19 +1276,21 @@ export function SelfAssessmentCapFulfillment({
                         onChange={(event) =>
                           setExtensionFile(event.target.files?.[0] ?? null)
                         }
-                        disabled={!canFulfill}
+                        disabled={!canFulfill || isReadOnlyExternalDnp}
                       />
                     </div>
                   </div>
-                  <div className="flex justify-end">
-                    <Button
-                      className="bg-blue-500 text-white hover:bg-blue-600"
-                      onClick={submitExtension}
-                      disabled={!canFulfill || isSubmittingExtension}
-                    >
-                      Submit
-                    </Button>
-                  </div>
+                  {!isReadOnlyExternalDnp && (
+                    <div className="flex justify-end">
+                      <Button
+                        className="bg-blue-500 text-white hover:bg-blue-600"
+                        onClick={submitExtension}
+                        disabled={!canFulfill || isSubmittingExtension}
+                      >
+                        Submit
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="mt-3 text-sm text-slate-500">

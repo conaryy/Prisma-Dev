@@ -12,6 +12,7 @@ export type PermissionMap = {
 type AuthUserLike = {
   role?: string;
   can_access_external_dnp?: boolean;
+  external_dnp_instansi_access?: string[] | null;
   permissions?: Partial<PermissionMap> | Record<string, unknown> | null;
 };
 
@@ -61,3 +62,6 @@ export function canAccessExternalDnp(user: AuthUserLike | null | undefined) {
   return true;
 }
 
+export function canManageExternalDnp(user: AuthUserLike | null | undefined) {
+  return isAdminRole(user);
+}

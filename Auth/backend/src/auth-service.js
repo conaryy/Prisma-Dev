@@ -1,4 +1,5 @@
 export {
+  getUserExternalDnpInstansiAccess,
   ensureRole,
   ensureStatus,
   getUserPermissions,

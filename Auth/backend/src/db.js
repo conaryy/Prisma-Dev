@@ -55,6 +55,7 @@ export async function initDb() {
   const schemaSql = fs.readFileSync(pgSchemaPath, 'utf8');
   await pool.query(schemaSql);
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT');
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS external_dnp_instansi_json JSONB NOT NULL DEFAULT '[]'::jsonb");
 }
 
 export async function seedDefaults() {

@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { formatDateRangeIndonesian } from '@/lib/date';
+import { getAuthUser } from '@/lib/api';
+import { canManageExternalDnp } from '@/lib/permissions';
 import {
   Table,
   TableBody,
@@ -120,6 +122,8 @@ export function SelfAssessmentCapSessionList({
 }: SelfAssessmentCapSessionListProps) {
   const navigate = useNavigate();
   const showInstansi = basePath === 'external-dnp';
+  const authUser = getAuthUser<{ role?: string; permissions?: Record<string, unknown> }>();
+  const canManageExternalDnpData = canManageExternalDnp(authUser);
   const [items, setItems] = useState<SessionItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -462,6 +466,7 @@ export function SelfAssessmentCapSessionList({
   const selectedMonth =
     MONTH_OPTIONS.find((option) => option.value === month) ?? MONTH_OPTIONS[0];
   const badgeLabel = `${selectedMonth.shortLabel} ${year}`;
+  const canShowSyncControls = !showInstansi || canManageExternalDnpData;
 
   return (
     <div className="space-y-6">
@@ -482,7 +487,7 @@ export function SelfAssessmentCapSessionList({
           </div>
           <div className="flex flex-col items-end gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              {(onSync || (syncInit && (syncStart || syncRun))) && (
+              {(onSync || (syncInit && (syncStart || syncRun))) && canShowSyncControls && (
                 <Button
                   type="button"
                   variant="outline"
@@ -517,7 +522,12 @@ export function SelfAssessmentCapSessionList({
         </header>
 
         <div className="space-y-5 px-6 py-6">
-          {captchaUrl && (
+          {showInstansi && !canManageExternalDnpData && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+              Mode lihat saja. User non-admin hanya menerima update External DNP dari admin untuk instansi yang diizinkan.
+            </div>
+          )}
+          {captchaUrl && canShowSyncControls && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="text-sm font-semibold text-slate-700">

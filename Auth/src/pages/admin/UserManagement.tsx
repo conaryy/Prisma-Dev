@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { KeyRound, Trash2, UserPlus, Users } from 'lucide-react';
+import { KeyRound, Pencil, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { apiFetch, ApiError } from '@/lib/api';
+import {
+  EXTERNAL_DNP_INSTANSI_OPTIONS,
+  formatExternalDnpInstansiAccess,
+} from '@/lib/externalDnpInstansi';
 
 type PermissionState = {
   can_access_admin_portal: boolean;
@@ -26,6 +30,19 @@ type UserItem = {
   role: 'Admin' | 'Viewer';
   status: 'Active' | 'Disabled';
   permissions: PermissionState;
+  external_dnp_instansi_access: string[];
+};
+
+type UserFormState = {
+  name: string;
+  username: string;
+  email: string;
+  phone: string;
+  password: string;
+  role: 'Admin' | 'Viewer';
+  status: 'Active' | 'Disabled';
+  permissions: PermissionState;
+  externalDnpInstansiAccess: string[];
 };
 
 const PERMISSION_LABELS: Array<{ key: keyof PermissionState; label: string }> = [
@@ -53,6 +70,31 @@ function defaultPermissions(role: 'Admin' | 'Viewer'): PermissionState {
   };
 }
 
+function createInitialForm(role: 'Admin' | 'Viewer' = 'Viewer'): UserFormState {
+  return {
+    name: '',
+    username: '',
+    email: '',
+    phone: '',
+    password: '',
+    role,
+    status: 'Active',
+    permissions: defaultPermissions(role),
+    externalDnpInstansiAccess: [],
+  };
+}
+
+function normalizeExternalDnpSelection(form: UserFormState): UserFormState {
+  if (form.role === 'Admin' || !form.permissions.can_access_external_dnp) {
+    return {
+      ...form,
+      externalDnpInstansiAccess: [],
+    };
+  }
+
+  return form;
+}
+
 export function UserManagement() {
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(() =>
@@ -65,28 +107,42 @@ export function UserManagement() {
   const [resetTarget, setResetTarget] = useState<UserItem | null>(null);
   const [resetPassword, setResetPassword] = useState('');
   const [selfUserId, setSelfUserId] = useState<string | null>(null);
+  const [editTargetId, setEditTargetId] = useState<string | null>(null);
+  const [form, setForm] = useState<UserFormState>(createInitialForm());
 
-  const [form, setForm] = useState({
-    name: '',
-    username: '',
-    email: '',
-    phone: '',
-    password: '',
-    role: 'Viewer' as 'Admin' | 'Viewer',
-    status: 'Active' as 'Active' | 'Disabled',
-    permissions: defaultPermissions('Viewer'),
-  });
+  const isEditing = editTargetId !== null;
+  const requiresExternalDnpInstansiSelection =
+    form.role !== 'Admin' && form.permissions.can_access_external_dnp;
 
   const canSubmit = useMemo(() => {
     const phone = form.phone.trim();
+    const isPasswordValid = isEditing
+      ? form.password.length === 0 || form.password.length >= 8
+      : form.password.length >= 8;
+
     return (
       form.name.trim().length >= 2 &&
       form.username.trim().length >= 3 &&
       form.email.trim().length > 0 &&
       (phone.length === 0 || /^62\d{7,15}$/.test(phone)) &&
-      form.password.length >= 8
+      isPasswordValid &&
+      (!requiresExternalDnpInstansiSelection || form.externalDnpInstansiAccess.length > 0)
     );
-  }, [form.name, form.username, form.email, form.phone, form.password]);
+  }, [
+    form.email,
+    form.externalDnpInstansiAccess.length,
+    form.name,
+    form.password.length,
+    form.phone,
+    form.username,
+    isEditing,
+    requiresExternalDnpInstansiSelection,
+  ]);
+
+  const resetForm = () => {
+    setEditTargetId(null);
+    setForm(createInitialForm());
+  };
 
   const loadUsers = async () => {
     setLoading(true);
@@ -132,51 +188,91 @@ export function UserManagement() {
   }, []);
 
   const onRoleChange = (role: 'Admin' | 'Viewer') => {
-    setForm((prev) => ({ ...prev, role, permissions: defaultPermissions(role) }));
+    setForm((prev) =>
+      normalizeExternalDnpSelection({
+        ...prev,
+        role,
+        permissions: defaultPermissions(role),
+      })
+    );
   };
 
-  const onCreate = async (event: React.FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSubmit) return;
     setIsSubmitting(true);
     setError(null);
+
+    const payload = {
+      name: form.name.trim(),
+      username: form.username.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim() || null,
+      password: form.password || undefined,
+      role: form.role,
+      status: form.status,
+      permissions: form.permissions,
+      external_dnp_instansi_access:
+        requiresExternalDnpInstansiSelection ? form.externalDnpInstansiAccess : [],
+    };
+
     try {
-      await apiFetch('/api/admin/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: form.name.trim(),
-          username: form.username.trim(),
-          email: form.email.trim(),
-          phone: form.phone.trim() || null,
-          password: form.password,
-          role: form.role,
-          status: form.status,
-          permissions: form.permissions,
-        }),
-      });
-      setForm({
-        name: '',
-        username: '',
-        email: '',
-        phone: '',
-        password: '',
-        role: 'Viewer',
-        status: 'Active',
-        permissions: defaultPermissions('Viewer'),
-      });
+      if (isEditing && editTargetId) {
+        await apiFetch(`/api/admin/users/${editTargetId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiFetch('/api/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      resetForm();
       await loadUsers();
     } catch (err) {
-      setError((err as Error).message || 'Gagal menambah user.');
+      setError((err as Error).message || 'Gagal menyimpan user.');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const onEdit = (user: UserItem) => {
+    setEditTargetId(user.id);
+    setForm({
+      name: user.name || user.username,
+      username: user.username,
+      email: user.email || '',
+      phone: user.phone || '',
+      password: '',
+      role: user.role,
+      status: user.status,
+      permissions: user.permissions,
+      externalDnpInstansiAccess: user.external_dnp_instansi_access ?? [],
+    });
+    setError(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const toggleExternalDnpInstansi = (key: string, checked: boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      externalDnpInstansiAccess: checked
+        ? Array.from(new Set([...prev.externalDnpInstansiAccess, key]))
+        : prev.externalDnpInstansiAccess.filter((value) => value !== key),
+    }));
   };
 
   const onDelete = async (user: UserItem) => {
     if (!window.confirm(`Hapus user "${user.username}"?`)) return;
     try {
       await apiFetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+      if (editTargetId === user.id) {
+        resetForm();
+      }
       await loadUsers();
     } catch (err) {
       setError((err as Error).message || 'Gagal menghapus user.');
@@ -250,7 +346,7 @@ export function UserManagement() {
                 className="truncate text-sm font-semibold sm:text-base"
                 style={{ color: isDark ? '#e2e8f0' : '#1e293b' }}
               >
-                Kelola User 
+                Kelola User
               </div>
             </div>
           </div>
@@ -259,13 +355,18 @@ export function UserManagement() {
           </Button>
         </header>
 
-        <form onSubmit={onCreate} className="space-y-4 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm transition-colors duration-300 dark:border-[#3158bb66] dark:bg-[#0a1538]/85 dark:shadow-none">
+        <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm transition-colors duration-300 dark:border-[#3158bb66] dark:bg-[#0a1538]/85 dark:shadow-none">
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
             <Input placeholder="Nama lengkap" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
             <Input placeholder="Username" value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} />
             <Input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
             <Input inputMode="tel" pattern="62[0-9]{7,15}" placeholder="WhatsApp 62..." value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
-            <Input type="password" placeholder="Password min 8 karakter" value={form.password} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} />
+            <Input
+              type="password"
+              placeholder={isEditing ? 'Kosongkan jika tidak diubah' : 'Password min 8 karakter'}
+              value={form.password}
+              onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+            />
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
@@ -299,13 +400,15 @@ export function UserManagement() {
                 <Checkbox
                   checked={Boolean(form.permissions[item.key])}
                   onCheckedChange={(checked) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      permissions: {
-                        ...prev.permissions,
-                        [item.key]: checked === true,
-                      },
-                    }))
+                    setForm((prev) =>
+                      normalizeExternalDnpSelection({
+                        ...prev,
+                        permissions: {
+                          ...prev.permissions,
+                          [item.key]: checked === true,
+                        },
+                      })
+                    )
                   }
                 />
                 <span>{item.label}</span>
@@ -313,10 +416,53 @@ export function UserManagement() {
             ))}
           </div>
 
-          <Button type="submit" disabled={!canSubmit || isSubmitting} className="gap-2">
-            <UserPlus className="h-4 w-4" />
-            {isSubmitting ? 'Menyimpan...' : 'Tambah User'}
-          </Button>
+          {form.permissions.can_access_external_dnp && (
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-white/70 p-4 dark:border-[#3158bb66] dark:bg-transparent">
+              <div className="space-y-1">
+                <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  Akses Instansi External DNP
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-300">
+                  {form.role === 'Admin'
+                    ? 'User Admin otomatis bisa melihat semua instansi dan tetap boleh update data External DNP.'
+                    : 'Pilih instansi yang boleh dilihat user ini di menu External DNP. User non-admin hanya bisa melihat data instansi yang dipilih dan tidak bisa update data DNP.'}
+                </div>
+              </div>
+
+              {form.role === 'Viewer' ? (
+                <div className="space-y-3">
+                  <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+                    {EXTERNAL_DNP_INSTANSI_OPTIONS.map((option) => (
+                      <label key={option.key} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-sm text-slate-700 transition-colors duration-300 dark:border-[#3158bb66] dark:bg-transparent dark:text-slate-100">
+                        <Checkbox
+                          checked={form.externalDnpInstansiAccess.includes(option.key)}
+                          onCheckedChange={(checked) => toggleExternalDnpInstansi(option.key, checked === true)}
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {requiresExternalDnpInstansiSelection && form.externalDnpInstansiAccess.length === 0 && (
+                    <div className="text-xs text-red-500">
+                      Pilih minimal satu instansi untuk user External DNP.
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={!canSubmit || isSubmitting} className="gap-2">
+              <UserPlus className="h-4 w-4" />
+              {isSubmitting ? 'Menyimpan...' : isEditing ? 'Simpan Perubahan' : 'Tambah User'}
+            </Button>
+            {isEditing && (
+              <Button type="button" variant="outline" onClick={resetForm}>
+                Batal Edit
+              </Button>
+            )}
+          </div>
         </form>
 
         {error ? (
@@ -333,14 +479,15 @@ export function UserManagement() {
                 <th className="px-3 py-2">Role</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Service</th>
+                <th className="px-3 py-2">External DNP</th>
                 <th className="px-3 py-2 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={7}>Memuat data...</td></tr>
+                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={8}>Memuat data...</td></tr>
               ) : users.length === 0 ? (
-                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={7}>Belum ada user.</td></tr>
+                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={8}>Belum ada user.</td></tr>
               ) : (
                 users.map((user) => (
                   <tr key={user.id} className="border-t border-slate-200 transition-colors duration-300 dark:border-[#3158bb55]">
@@ -358,7 +505,17 @@ export function UserManagement() {
                       ].filter(Boolean).join(', ') || '-'}
                     </td>
                     <td className="px-3 py-2">
+                      {!user.permissions.can_access_external_dnp
+                        ? 'Tidak'
+                        : user.role === 'Admin'
+                        ? 'Semua instansi (admin)'
+                        : formatExternalDnpInstansiAccess(user.external_dnp_instansi_access) || '-'}
+                    </td>
+                    <td className="px-3 py-2">
                       <div className="flex justify-end gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => onEdit(user)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                         <Button type="button" variant="outline" size="sm" onClick={() => setResetTarget(user)}>
                           <KeyRound className="h-4 w-4" />
                         </Button>

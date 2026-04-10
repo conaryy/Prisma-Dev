@@ -31,12 +31,14 @@ test('validateCreateUserPayload normalizes permissions object', () => {
       can_manage_users: 1,
       unknown_flag: true,
     },
+    external_dnp_instansi_access: ['ngloram', 'UNKNOWN', 'ngloram'],
   });
 
   assert.equal(result.ok, true);
   assert.deepEqual(result.data.permissions, {
     can_manage_users: true,
   });
+  assert.deepEqual(result.data.external_dnp_instansi_access, ['ngloram']);
 });
 
 test('validateCreateUserPayload rejects empty email', () => {
@@ -71,6 +73,7 @@ test('validateUpdateUserPayload keeps undefined permissions untouched', () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.data.permissions, undefined);
+  assert.equal(result.data.external_dnp_instansi_access, undefined);
 });
 
 test('validateResetPasswordPayload rejects empty password', () => {
