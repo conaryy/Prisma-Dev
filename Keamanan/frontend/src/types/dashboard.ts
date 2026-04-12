@@ -57,11 +57,13 @@ export interface ChartData {
 }
 
 export interface FacilityItem {
+  id: string;
   name: string;
   zone: string;
   status: 'Optimal' | 'Perlu Servis' | 'Terjadwal';
   coverage: string;
   updatedAt: string;
+  photoUrl?: string | null;
 }
 
 export interface LicenseItem {
@@ -83,20 +85,26 @@ export interface LicenseItem {
   refreshmentPlan: string;
   recurrentExisting: string;
   recurrentPlan: string;
+  photoUrl?: string | null;
 }
 
 export interface TestItem {
   id: string;
   title: string;
-  category: 'Audit' | 'Inspeksi' | 'Test';
+  category: 'Audit' | 'Inspeksi' | 'Pengunjungan';
   owner: string;
+  location: string | null;
   inspector: string;
   date: string;
   score: string;
-  status: 'Belum Terlaksana' | 'Terlaksana' | 'Perlu Tindak Lanjut';
+  status: 'Terjadwal' | 'Terlaksana' | 'Perlu Tindak Lanjut';
   completedAt: string | null;
+  completedAtIso: string | null;
   completionNote: string | null;
   sourceDocument: string;
+  scheduleYear: number;
+  scheduleMonth: number | null;
+  scheduleWeek: number | null;
   evidenceFiles: TestEvidenceItem[];
 }
 
@@ -104,15 +112,18 @@ export interface TestEvidenceItem {
   id: string;
   name: string;
   url: string;
+  executionDateIso: string;
   uploadedAt: string;
 }
 
 export interface DocumentItem {
+  id: string;
   title: string;
   owner: string;
   version: string;
   updatedAt: string;
   status: 'Aktif' | 'Review' | 'Revisi';
+  url?: string;
 }
 
 export interface ActivityItem {

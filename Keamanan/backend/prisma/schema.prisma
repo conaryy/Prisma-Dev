@@ -29,6 +29,9 @@ model Personnel {
   refreshmentPlan     String?
   recurrentExisting   String?
   recurrentPlan       String?
+  photoFileName       String?
+  photoStorageName    String?         @unique
+  photoMimeType       String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -56,6 +59,22 @@ model TrainingHistory {
   personnelId String
   value       String
   personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+}
+
+model SecurityFacility {
+  id              String         @id @default(cuid())
+  slug            String         @unique
+  name            String
+  zone            String
+  status          FacilityStatus @default(TERJADWAL)
+  coveragePercent Int
+  photoFileName   String?
+  photoStorageName String?       @unique
+  photoMimeType   String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([status, updatedAt])
 }
 
 model SupervisionActivity {
@@ -88,17 +107,24 @@ model SupervisionEvidence {
   storageName  String              @unique
   mimeType     String?
   sizeBytes    Int
+  executionDate DateTime?
   uploadedAt   DateTime            @default(now())
 
   activity     SupervisionActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
 
-  @@index([activityId, uploadedAt])
+  @@index([activityId, executionDate, uploadedAt])
 }
 
 enum PersonnelStatus {
   VALID
   PERPANJANGAN
   PELATIHAN
+}
+
+enum FacilityStatus {
+  OPTIMAL
+  PERLU_SERVIS
+  TERJADWAL
 }
 
 enum SupervisionCategory {

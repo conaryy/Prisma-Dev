@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Fragment, useDeferredValue, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import Lottie from 'lottie-react';
 import successAnimation from '@/assets/Success.json';
 import {
@@ -14,9 +14,14 @@ import {
   UserIcon,
 } from '@/components/icons';
 import { Sidebar } from '@/components/Sidebar';
+import { SupervisionProgramSection } from '@/components/SupervisionProgramSection';
 import {
+  createFacility,
   createPersonnel,
   fetchDashboard,
+  uploadPersonnelPhoto,
+  updateSupervisionStatus,
+  uploadSupervisionEvidence,
 } from '@/lib/api';
 import type {
   ActivityItem,
@@ -44,6 +49,13 @@ type NewPersonnelInput = {
   licenseNumber: string;
   address: string;
 };
+type NewFacilityInput = {
+  name: string;
+  zone: string;
+  status: FacilityItem['status'];
+  coveragePercent: string;
+  photo: File | null;
+};
 type RouteState = {
   routeId: RouteId;
   personSlug: string | null;
@@ -56,6 +68,14 @@ type PortalLink = {
   target: PortalTarget;
   iconKind: PortalIconKind;
   badgeClassName: string;
+};
+type RouteHeroContent = {
+  eyebrow: string;
+  title: string;
+  subtitle?: string;
+  chips?: string[];
+  showMeta?: boolean;
+  showResultCount?: boolean;
 };
 type SupervisionStatusTag = 'Sudah' | 'Belum';
 type AuditSummaryCard = {
@@ -90,36 +110,61 @@ type TestingSummaryCard = {
   subtitle: string;
 };
 type SupervisionSummaryCard = AuditSummaryCard | InspectionSummaryCard | TestingSummaryCard;
-type TimelineStatus = 'pending' | 'done' | 'upcoming';
-type TimelineMarker = {
+type SupervisionHeatmapLevel = 0 | 1 | 2 | 3 | 4;
+type SupervisionHeatmapMarker = {
   monthIndex: number;
   slotIndex: number;
-  status: TimelineStatus;
+  level: SupervisionHeatmapLevel;
 };
-type TimelineMonthStatus = {
-  month: string;
-  status: TimelineStatus;
-};
-type TimelineGridRow = {
-  mode: 'grid';
-  label: string;
-  detail: string;
-  statuses: TimelineStatus[];
-};
-type TimelineRow = TimelineGridRow;
-type TimelineSectionData = {
+type SupervisionHeatmapCategory = 'Audit' | 'Inspeksi' | 'Pengunjungan';
+type SupervisionHeatmapRow = {
   id: string;
-  title: string;
-  frequency: string;
-  months: string[];
-  rows: TimelineRow[];
+  category?: SupervisionHeatmapCategory;
+  label: string;
+  cells: SupervisionHeatmapLevel[];
+  isSpacer?: boolean;
+  isGroup?: boolean;
+  isBranch?: boolean;
 };
+type SupervisionScheduleEntry = {
+  id: string;
+  category: SupervisionHeatmapCategory;
+  branch: SupervisionBranchFilter;
+  year: number;
+  monthIndex: number;
+  slotIndex: number;
+};
+type SupervisionScheduleDraft = {
+  category: SupervisionHeatmapCategory;
+  branch: SupervisionBranchFilter;
+  year: number;
+  monthIndex: number;
+  slotIndex: number;
+};
+const SUPERVISION_BRANCH_FILTERS = [
+  'Cabang Surabaya',
+  'KCP Banyuwangi',
+  'KCP Malang',
+  'KCP Sumenep',
+  'Penyedia Personel AVSEC',
+] as const;
+type SupervisionBranchFilter = (typeof SUPERVISION_BRANCH_FILTERS)[number];
+type SupervisionHeatmapFilter = 'Semua' | SupervisionHeatmapCategory | SupervisionBranchFilter;
 
 const DASHBOARD_THEME_KEY = 'keamanan-dashboard-theme';
-const SUPERVISION_ACTIVE_YEAR = 'Tahun 2026';
-const YEAR_TIMELINE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const SUPERVISION_YEAR_OPTIONS = Array.from({ length: 2030 - 2000 + 1 }, (_, index) => 2000 + index);
+const YEAR_TIMELINE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const TIMELINE_SLOT_LABELS = ['I', 'II', 'III', 'IV'] as const;
 const TIMELINE_SLOTS_PER_MONTH = 4;
 const TIMELINE_TOTAL_COLUMNS = YEAR_TIMELINE_MONTHS.length * TIMELINE_SLOTS_PER_MONTH;
+const HEATMAP_LEGEND_LEVELS: SupervisionHeatmapLevel[] = [1];
+const SUPERVISION_CATEGORY_FILTERS: SupervisionHeatmapCategory[] = ['Audit', 'Inspeksi', 'Pengunjungan'];
+const SUPERVISION_BRANCHES_BY_CATEGORY: Record<SupervisionHeatmapCategory, SupervisionBranchFilter[]> = {
+  Audit: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Malang', 'KCP Sumenep'],
+  Inspeksi: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Malang', 'KCP Sumenep', 'Penyedia Personel AVSEC'],
+  Pengunjungan: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'],
+};
+const BIMONTHLY_TEST_MONTHS = [1, 3, 5, 7, 9, 11] as const;
 const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
   {
     kind: 'audit',
@@ -146,7 +191,7 @@ const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
   {
     kind: 'testing',
     id: 'testing',
-    title: 'Pengujian',
+    title: 'Pengunjungan',
     frequency: 'Tiap 2 bulan',
     done: 3,
     total: 6,
@@ -155,80 +200,207 @@ const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
   },
 ];
 
-function buildTimelineStatuses(markers: TimelineMarker[]) {
-  const statuses = Array.from({ length: TIMELINE_TOTAL_COLUMNS }, () => 'pending' as TimelineStatus);
+function createInspectionEntries(
+  year: number,
+  plan: Array<[SupervisionBranchFilter, number, number]>
+): SupervisionScheduleEntry[] {
+  return plan.map(([branch, monthIndex, slotIndex]) => ({
+    id: `inspection-${year}-${branch}-${monthIndex}-${slotIndex}`,
+    category: 'Inspeksi',
+    branch,
+    year,
+    monthIndex,
+    slotIndex,
+  }));
+}
 
-  markers.forEach(({ monthIndex, slotIndex, status }) => {
+function createTestingEntries(year: number): SupervisionScheduleEntry[] {
+  return SUPERVISION_BRANCHES_BY_CATEGORY.Pengunjungan.flatMap((branch) =>
+    BIMONTHLY_TEST_MONTHS.map((monthIndex) => ({
+      id: `testing-${year}-${branch}-${monthIndex}`,
+      category: 'Pengunjungan' as const,
+      branch,
+      year,
+      monthIndex,
+      slotIndex: 0,
+    }))
+  );
+}
+
+const BASE_SUPERVISION_SCHEDULE_ENTRIES: SupervisionScheduleEntry[] = [
+  {
+    id: 'audit-2026-surabaya',
+    category: 'Audit',
+    branch: 'Cabang Surabaya',
+    year: 2026,
+    monthIndex: 6,
+    slotIndex: 1,
+  },
+  ...createInspectionEntries(2025, [
+    ['Cabang Surabaya', 0, 1],
+    ['KCP Banyuwangi', 2, 1],
+    ['KCP Malang', 4, 1],
+    ['KCP Sumenep', 7, 1],
+    ['Penyedia Personel AVSEC', 10, 1],
+  ]),
+  ...createInspectionEntries(2026, [
+    ['Cabang Surabaya', 2, 1],
+    ['KCP Banyuwangi', 4, 1],
+    ['KCP Malang', 6, 1],
+    ['KCP Sumenep', 8, 1],
+    ['Penyedia Personel AVSEC', 10, 1],
+  ]),
+  ...createInspectionEntries(2027, [
+    ['Cabang Surabaya', 1, 1],
+    ['KCP Banyuwangi', 3, 1],
+    ['KCP Malang', 5, 1],
+    ['KCP Sumenep', 7, 1],
+    ['Penyedia Personel AVSEC', 9, 1],
+  ]),
+  ...createTestingEntries(2025),
+  ...createTestingEntries(2026),
+  ...createTestingEntries(2027),
+];
+
+function buildSupervisionHeatmapCells(markers: SupervisionHeatmapMarker[]) {
+  const cells = Array.from({ length: TIMELINE_TOTAL_COLUMNS }, () => 0 as SupervisionHeatmapLevel);
+
+  markers.forEach(({ monthIndex, slotIndex, level }) => {
     const normalizedMonthIndex = Math.max(0, Math.min(YEAR_TIMELINE_MONTHS.length - 1, monthIndex));
     const normalizedSlotIndex = Math.max(0, Math.min(TIMELINE_SLOTS_PER_MONTH - 1, slotIndex));
     const targetIndex = normalizedMonthIndex * TIMELINE_SLOTS_PER_MONTH + normalizedSlotIndex;
-    statuses[targetIndex] = status;
+    cells[targetIndex] = Math.max(cells[targetIndex], level) as SupervisionHeatmapLevel;
   });
 
-  return statuses;
+  return cells;
 }
 
-const SUPERVISION_TIMELINE_SECTIONS: TimelineSectionData[] = [
+const SUPERVISION_HEATMAP_ROWS: SupervisionHeatmapRow[] = [
   {
-    id: 'timeline-audit',
-    title: 'Audit',
-    frequency: '1 kali / 2 tahun',
-    months: YEAR_TIMELINE_MONTHS,
-    rows: [
-      {
-        mode: 'grid',
-        label: 'Audit Internal',
-        detail: '2026 kosong, audit berikutnya menunggu siklus 2 tahunan.',
-        statuses: buildTimelineStatuses([]),
-      },
-    ],
+    id: 'heatmap-audit-group',
+    category: 'Audit',
+    label: 'Audit',
+    cells: buildSupervisionHeatmapCells([]),
+    isGroup: true,
   },
   {
-    id: 'timeline-inspection',
-    title: 'Inspeksi',
-    frequency: '1 kali / tahun',
-    months: YEAR_TIMELINE_MONTHS,
-    rows: [
-      {
-        mode: 'grid',
-        label: 'Surabaya',
-        detail: 'Sudah terlaksana',
-        statuses: buildTimelineStatuses([{ monthIndex: 2, slotIndex: 1, status: 'done' }]),
-      },
-      {
-        mode: 'grid',
-        label: 'Banyuwangi',
-        detail: 'Terjadwal Jul 2026',
-        statuses: buildTimelineStatuses([{ monthIndex: 6, slotIndex: 2, status: 'upcoming' }]),
-      },
-      {
-        mode: 'grid',
-        label: 'Malang',
-        detail: 'Target Okt 2026',
-        statuses: buildTimelineStatuses([{ monthIndex: 9, slotIndex: 1, status: 'upcoming' }]),
-      },
-    ],
+    id: 'heatmap-audit-surabaya',
+    category: 'Audit',
+    label: 'Cabang Surabaya',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 6, slotIndex: 1, level: 4 }]),
+    isBranch: true,
   },
   {
-    id: 'timeline-testing',
-    title: 'Pengujian',
-    frequency: '1 kali / 2 bulan',
-    months: YEAR_TIMELINE_MONTHS,
-    rows: [
-      {
-        mode: 'grid',
-        label: 'Rencana 2026',
-        detail: '3 dari 6 periode selesai',
-        statuses: buildTimelineStatuses([
-          { monthIndex: 0, slotIndex: 1, status: 'done' },
-          { monthIndex: 2, slotIndex: 1, status: 'pending' },
-          { monthIndex: 4, slotIndex: 1, status: 'done' },
-          { monthIndex: 6, slotIndex: 1, status: 'upcoming' },
-          { monthIndex: 8, slotIndex: 1, status: 'done' },
-          { monthIndex: 10, slotIndex: 1, status: 'upcoming' },
-        ]),
-      },
-    ],
+    id: 'heatmap-audit-banyuwangi',
+    category: 'Audit',
+    label: 'KCP Banyuwangi',
+    cells: buildSupervisionHeatmapCells([]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-audit-malang',
+    category: 'Audit',
+    label: 'KCP Malang',
+    cells: buildSupervisionHeatmapCells([]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-audit-sumenep',
+    category: 'Audit',
+    label: 'KCP Sumenep',
+    cells: buildSupervisionHeatmapCells([]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-inspection-group',
+    category: 'Inspeksi',
+    label: 'Inspeksi',
+    cells: buildSupervisionHeatmapCells([]),
+    isGroup: true,
+  },
+  {
+    id: 'heatmap-inspection-surabaya',
+    category: 'Inspeksi',
+    label: 'Cabang Surabaya',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 2, slotIndex: 1, level: 4 }]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-inspection-banyuwangi',
+    category: 'Inspeksi',
+    label: 'KCP Banyuwangi',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 4, slotIndex: 1, level: 4 }]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-inspection-malang',
+    category: 'Inspeksi',
+    label: 'KCP Malang',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 6, slotIndex: 1, level: 4 }]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-inspection-sumenep',
+    category: 'Inspeksi',
+    label: 'KCP Sumenep',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 8, slotIndex: 1, level: 4 }]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-inspection-avsec',
+    category: 'Inspeksi',
+    label: 'Penyedia Personel AVSEC',
+    cells: buildSupervisionHeatmapCells([{ monthIndex: 10, slotIndex: 1, level: 4 }]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-testing-group',
+    category: 'Pengunjungan',
+    label: 'Pengunjungan',
+    cells: buildSupervisionHeatmapCells([]),
+    isGroup: true,
+  },
+  {
+    id: 'heatmap-testing-surabaya',
+    category: 'Pengunjungan',
+    label: 'Cabang Surabaya',
+    cells: buildSupervisionHeatmapCells([
+      { monthIndex: 1, slotIndex: 0, level: 4 },
+      { monthIndex: 3, slotIndex: 0, level: 4 },
+      { monthIndex: 5, slotIndex: 0, level: 4 },
+      { monthIndex: 7, slotIndex: 0, level: 4 },
+      { monthIndex: 9, slotIndex: 0, level: 4 },
+      { monthIndex: 11, slotIndex: 0, level: 4 },
+    ]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-testing-banyuwangi',
+    category: 'Pengunjungan',
+    label: 'KCP Banyuwangi',
+    cells: buildSupervisionHeatmapCells([
+      { monthIndex: 1, slotIndex: 0, level: 4 },
+      { monthIndex: 3, slotIndex: 0, level: 4 },
+      { monthIndex: 5, slotIndex: 0, level: 4 },
+      { monthIndex: 7, slotIndex: 0, level: 4 },
+      { monthIndex: 9, slotIndex: 0, level: 4 },
+      { monthIndex: 11, slotIndex: 0, level: 4 },
+    ]),
+    isBranch: true,
+  },
+  {
+    id: 'heatmap-testing-sumenep',
+    category: 'Pengunjungan',
+    label: 'KCP Sumenep',
+    cells: buildSupervisionHeatmapCells([
+      { monthIndex: 1, slotIndex: 0, level: 4 },
+      { monthIndex: 3, slotIndex: 0, level: 4 },
+      { monthIndex: 5, slotIndex: 0, level: 4 },
+      { monthIndex: 7, slotIndex: 0, level: 4 },
+      { monthIndex: 9, slotIndex: 0, level: 4 },
+      { monthIndex: 11, slotIndex: 0, level: 4 },
+    ]),
+    isBranch: true,
   },
 ];
 const ROUTE_PATHS = {
@@ -546,37 +718,12 @@ function buildPersonnelMetrics(items: LicenseItem[]): MetricCard[] {
   ];
 }
 
-function buildDocumentMetrics(items: DocumentItem[]): MetricCard[] {
-  const counts = countByStatus(items);
-
-  return [
-    {
-      label: 'Dokumen Terkontrol',
-      value: String(items.length),
-      delta: `${counts.Aktif ?? 0} aktif`,
-      description: 'Dokumen keamanan yang dikelola pada repository versi operasional saat ini.',
-    },
-    {
-      label: 'Dalam Review',
-      value: String(counts.Review ?? 0),
-      delta: 'Menunggu approval',
-      description: 'Dokumen yang sedang menjalani telaah unit, approval, atau verifikasi terakhir.',
-    },
-    {
-      label: 'Perlu Revisi',
-      value: String(counts.Revisi ?? 0),
-      delta: 'Update prioritas',
-      description: 'Dokumen yang harus diperbarui agar selaras dengan data operasi terbaru.',
-    },
-  ];
-}
-
 function getStatusTone(status: string) {
   if (['Optimal', 'Valid', 'Aktif', 'Terlaksana'].includes(status)) {
     return 'good';
   }
 
-  if (['Pelatihan', 'Review', 'Belum Terlaksana'].includes(status)) {
+  if (['Pelatihan', 'Review', 'Terjadwal'].includes(status)) {
     return 'neutral';
   }
 
@@ -590,28 +737,30 @@ function getRouteHero(
   visibleLicenses: LicenseItem[],
   visibleTests: TestItem[],
   visibleDocuments: DocumentItem[]
-) {
+): RouteHeroContent {
   switch (routeId) {
     case 'fasilitas-keamanan':
       return {
         eyebrow: 'Fasilitas Keamanan',
         title: 'Status perangkat lapangan keamanan.',
         subtitle: `Pantau ${visibleFacilities.length} fasilitas berupa CCTV, access gate, X-Ray, dan perimeter secara terpisah.`,
-        chips: ['CCTV', 'Access Gate', 'X-Ray', 'Perimeter'],
+        chips: [],
+        showResultCount: false,
       };
     case 'personil-keamanan':
       return {
         eyebrow: 'Personil Keamanan',
         title: 'Roster personel dan kesiapan shift.',
-        subtitle: `Data ${visibleLicenses.length} personel keamanan untuk memastikan coverage lisensi dan kesiapan operasional.`,
-        chips: ['Roster', 'Shift', 'Kesiapan'],
+        subtitle: '',
+        chips: [],
+        showMeta: false,
       };
     case 'tes-keamanan':
       return {
         eyebrow: 'Program Pengawasan Keamanan',
         title: 'Agenda pengawasan dan tindak lanjut operasional.',
-        subtitle: `Kelola ${visibleTests.length} agenda audit, inspeksi, dan test lengkap dengan evidence dan status pelaksanaan.`,
-        chips: ['Audit', 'Inspeksi', 'Test'],
+        subtitle: `Kelola ${visibleTests.length} agenda audit, inspeksi, dan pengunjungan lengkap dengan evidence dan status pelaksanaan.`,
+        chips: ['Audit', 'Inspeksi', 'Pengunjungan'],
       };
     case 'dokumen':
       return {
@@ -635,6 +784,15 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`status-badge is-${getStatusTone(status)}`}>{status}</span>;
 }
 
+function getPersonInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
 function EmptyRows({ copy }: { copy: string }) {
   return <div className="empty-inline">{copy}</div>;
 }
@@ -648,7 +806,7 @@ function getSupervisionCategoryBadgeClass(category: TestItem['category']) {
     return 'summary-category is-inspeksi';
   }
 
-  return 'summary-category is-tes';
+  return 'summary-category is-pengunjungan';
 }
 
 function PortalLinkIcon({ kind, className }: { kind: PortalIconKind; className?: string }) {
@@ -926,10 +1084,55 @@ export default function App() {
     });
   }
 
-  async function handleAddPerson(input: NewPersonnelInput) {
-    await createPersonnel(input);
+  async function refreshDashboardData() {
     const nextDashboard = await fetchDashboard();
     setDashboard(nextDashboard);
+    return nextDashboard;
+  }
+
+  async function handleAddPerson(input: NewPersonnelInput) {
+    await createPersonnel(input);
+    await refreshDashboardData();
+  }
+
+  async function handleUploadPersonnelPhoto(slug: string, photo: File) {
+    await uploadPersonnelPhoto(slug, photo);
+    await refreshDashboardData();
+  }
+
+  async function handleAddFacility(input: NewFacilityInput) {
+    await createFacility({
+      name: input.name,
+      zone: input.zone,
+      status: input.status,
+      coveragePercent: Number.parseInt(input.coveragePercent, 10),
+      photo: input.photo,
+    });
+    await refreshDashboardData();
+  }
+
+  async function handleUpdateSupervisionActivity(input: {
+    activityId: string;
+    status: 'Terlaksana' | 'Perlu Tindak Lanjut';
+    completedAt?: string | null;
+    completionNote?: string | null;
+    inspectorNames?: string[] | null;
+  }) {
+    await updateSupervisionStatus(input.activityId, {
+      status: input.status,
+      completedAt: input.completedAt,
+      completionNote: input.completionNote,
+      inspectorNames: input.inspectorNames,
+    });
+    await refreshDashboardData();
+  }
+
+  async function handleUploadSupervisionActivityEvidence(activityId: string, files: File[]) {
+    for (const file of files) {
+      await uploadSupervisionEvidence(activityId, file);
+    }
+
+    await refreshDashboardData();
   }
 
   if (isLoading) {
@@ -1031,8 +1234,6 @@ export default function App() {
   );
 
   const facilityMetrics = buildFacilityMetrics(dashboard.facilities);
-  const personnelMetrics = buildPersonnelMetrics(dashboard.licenses);
-  const documentMetrics = buildDocumentMetrics(dashboard.documents);
   const topbarTitle =
     activeId === 'dashboard'
       ? 'Dashboard'
@@ -1182,16 +1383,15 @@ export default function App() {
           <DashboardPage
             dashboard={dashboard}
             generatedAt={generatedAt}
-            visibleMetrics={visibleMetrics}
+            searchQuery={deferredSearch}
             visibleFacilities={visibleFacilities}
+            visibleLicenses={visibleLicenses}
             visibleTests={visibleTests}
             visibleDocuments={visibleDocuments}
-            visibleActivities={visibleActivities}
-            visibleSpotlight={visibleSpotlight}
           />
         ) : activeId === 'personil-keamanan' && selectedPerson ? (
           <PersonnelDetailHero person={selectedPerson} onBack={() => handleSelect('personil-keamanan')} />
-        ) : activeId === 'tes-keamanan' ? null : (
+        ) : activeId === 'tes-keamanan' || activeId === 'personil-keamanan' || activeId === 'dokumen' ? null : (
           <RouteHero
             eyebrow={routeHero.eyebrow}
             title={routeHero.title}
@@ -1199,6 +1399,8 @@ export default function App() {
             generatedAt={generatedAt}
             chips={routeHero.chips}
             resultCount={resultCount}
+            showMeta={routeHero.showMeta}
+            showResultCount={routeHero.showResultCount}
           />
         )}
 
@@ -1209,51 +1411,41 @@ export default function App() {
                 <MetricCard key={metric.label} metric={metric} />
               ))}
             </section>
-            <FacilitiesSection facilities={visibleFacilities} />
+            <FacilitiesSection facilities={visibleFacilities} onAddFacility={handleAddFacility} />
           </>
         ) : null}
 
         {activeId === 'personil-keamanan' && !selectedPerson ? (
-          <>
-            <section className="metrics-grid">
-              {personnelMetrics.map((metric) => (
-              <MetricCard key={metric.label} metric={metric} />
-              ))}
-            </section>
-            <PersonnelSection
-              eyebrow="Personil Keamanan"
-              title="Roster personel dan lisensi"
-              subtitle="Pastikan ketersediaan lisensi kritis dan coverage setiap shift operasional."
-              licenses={visibleLicenses}
-              onAddPerson={handleAddPerson}
-              onSelectPerson={handleSelectPerson}
-            />
-          </>
+          <PersonnelSection
+            eyebrow="Personil Keamanan"
+            title="Roster personel dan lisensi"
+            subtitle="Pastikan ketersediaan lisensi kritis dan coverage setiap shift operasional."
+            licenses={visibleLicenses}
+            onAddPerson={handleAddPerson}
+            onSelectPerson={handleSelectPerson}
+          />
         ) : null}
 
         {activeId === 'personil-keamanan' && selectedPerson ? (
           <PersonnelDetailPage
             person={selectedPerson}
             certificates={selectedCertificates}
+            onUploadPhoto={(file) => handleUploadPersonnelPhoto(selectedPerson.slug, file)}
             onUploadCertificate={(file) => handleCertificateUpload(selectedPerson.slug, file)}
             onDeleteCertificate={(certificateId) => handleCertificateDelete(selectedPerson.slug, certificateId)}
           />
         ) : null}
 
         {activeId === 'tes-keamanan' ? (
-          <TestsSection />
+          <SupervisionProgramSection
+            tests={dashboard.tests}
+            searchQuery={deferredSearch}
+            onUpdateActivity={handleUpdateSupervisionActivity}
+            onUploadEvidence={handleUploadSupervisionActivityEvidence}
+          />
         ) : null}
 
-        {activeId === 'dokumen' ? (
-          <>
-            <section className="metrics-grid">
-              {documentMetrics.map((metric) => (
-                <MetricCard key={metric.label} metric={metric} />
-              ))}
-            </section>
-            <DocumentsSection documents={visibleDocuments} />
-          </>
-        ) : null}
+        {activeId === 'dokumen' ? <DocumentsSection documents={visibleDocuments} generatedAt={generatedAt} /> : null}
       </main>
     </div>
   );
@@ -1262,266 +1454,293 @@ export default function App() {
 function DashboardPage({
   dashboard,
   generatedAt,
-  visibleMetrics,
+  searchQuery,
   visibleFacilities,
+  visibleLicenses,
   visibleTests,
   visibleDocuments,
-  visibleActivities,
-  visibleSpotlight,
 }: {
   dashboard: DashboardData;
   generatedAt: string;
-  visibleMetrics: MetricCard[];
+  searchQuery: string;
   visibleFacilities: FacilityItem[];
+  visibleLicenses: LicenseItem[];
   visibleTests: TestItem[];
   visibleDocuments: DocumentItem[];
-  visibleActivities: ActivityItem[];
-  visibleSpotlight: SpotlightItem[];
 }) {
-  const [activeCategory, setActiveCategory] = useState<'Semua' | 'Fasilitas' | 'Tes' | 'Dokumen'>('Semua');
-  const [showStatistics, setShowStatistics] = useState(true);
-  const overviewRows = [
-    ...visibleFacilities.map((item) => ({
-      id: `facility-${item.name}`,
-      category: 'Fasilitas',
-      label: item.name,
-      context: item.zone,
-      detail: `Coverage ${item.coverage}`,
-      status: item.status,
-      updatedAt: item.updatedAt,
-    })),
-    ...visibleTests.map((item) => ({
-      id: `test-${item.title}`,
-      category: 'Tes',
-      label: `${item.category} - ${item.title}`,
-      context: item.owner,
-      detail: `${item.date} · ${item.score}`,
-      status: item.status,
-      updatedAt: item.completedAt ?? item.date,
-    })),
-    ...visibleDocuments.map((item) => ({
-      id: `document-${item.title}`,
-      category: 'Dokumen',
-      label: item.title,
-      context: item.owner,
-      detail: item.version,
-      status: item.status,
-      updatedAt: item.updatedAt,
-    })),
-  ];
-  const visibleRows =
-    activeCategory === 'Semua' ? overviewRows : overviewRows.filter((row) => row.category === activeCategory);
-  const categoryFilters = ['Semua', 'Fasilitas', 'Tes', 'Dokumen'] as const;
-  const quickActions = dashboard.quickActions.slice(-2);
+  const facilityOptimalCount = visibleFacilities.filter((item) => item.status === 'Optimal').length;
+  const facilityNeedsServiceCount = visibleFacilities.filter((item) => item.status === 'Perlu Servis').length;
+  const facilityScheduledCount = visibleFacilities.filter((item) => item.status === 'Terjadwal').length;
+
+  const validPersonnelCount = visibleLicenses.filter((item) => item.status === 'Valid').length;
+  const renewalPersonnelCount = visibleLicenses.filter((item) => item.status === 'Perpanjangan').length;
+  const trainingPersonnelCount = visibleLicenses.filter((item) => item.status === 'Pelatihan').length;
+
+  const completedSupervisionCount = visibleTests.filter((item) => item.status === 'Terlaksana').length;
+  const scheduledSupervisionCount = visibleTests.filter((item) => item.status === 'Terjadwal').length;
+  const followUpSupervisionCount = visibleTests.filter((item) => item.status === 'Perlu Tindak Lanjut').length;
+  const evidenceUploadCount = visibleTests.reduce((total, item) => total + item.evidenceFiles.length, 0);
+
+  const activeDocumentCount = visibleDocuments.filter((item) => item.status === 'Aktif').length;
+  const reviewDocumentCount = visibleDocuments.filter((item) => item.status === 'Review').length;
+  const revisionDocumentCount = visibleDocuments.filter((item) => item.status === 'Revisi').length;
+  const evidenceDocumentCount = visibleDocuments.filter((item) => item.version === 'Evidence Upload').length;
+
+  const facilityPreview = visibleFacilities.slice(0, 3);
+  const personnelPreview = visibleLicenses.slice(0, 3);
+  const supervisionPreview = visibleTests.slice(0, 3);
+  const documentPreview = visibleDocuments.slice(0, 3);
+  const isSearching = searchQuery.trim().length > 0;
+  const totalOverviewItems =
+    visibleFacilities.length + visibleLicenses.length + visibleTests.length + visibleDocuments.length;
 
   return (
     <>
-      <section className="panel dashboard-header-panel">
+      <section className="panel dashboard-overview-hero">
         <div className="dashboard-header-copy">
           <div>
             <p className="eyebrow">Dashboard</p>
-            <h2 className="dashboard-page-title">Ringkasan operasional keamanan</h2>
+            <h2 className="dashboard-page-title">Perum LPPNPI Cabang Surabaya</h2>
             <p className="panel-copy">
-              {dashboard.hero.subtitle}
+              Pantau kondisi terbaru fasilitas keamanan, personil keamanan, program pengawasan keamanan, dan dokumen
+              dari satu halaman ringkas sebelum masuk ke fitur detailnya.
             </p>
           </div>
           <div className="dashboard-header-meta">
             <span className="data-chip">Sinkron {generatedAt}</span>
-            <span className="data-chip">{overviewRows.length} item operasional</span>
-            <span className="data-chip">{dashboard.organization.branch}</span>
+            <span className="data-chip">4 fitur utama</span>
           </div>
         </div>
+        {isSearching ? (
+          <div className="dashboard-search-note">
+            Menampilkan overview yang cocok dengan pencarian <strong>{searchQuery}</strong>.
+          </div>
+        ) : null}
       </section>
 
-      <section className="panel dashboard-toolbar-panel">
-        <div className="dashboard-toolbar">
-          <div className="dashboard-toolbar-group">
-            <button type="button" className="dashboard-toolbar-button is-active">
-              Table View
-            </button>
-            {categoryFilters.map((filter) => (
-              <button
-                key={filter}
-                type="button"
-                className={`dashboard-toolbar-button ${activeCategory === filter ? 'is-active' : ''}`}
-                onClick={() => setActiveCategory(filter)}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
-
-          <div className="dashboard-toolbar-group dashboard-toolbar-group--end">
-            <div className="dashboard-toolbar-toggle-row">
-              <span className="dashboard-toggle-label">Statistik</span>
-              <button
-                type="button"
-                className={`dashboard-toggle ${showStatistics ? 'is-on' : ''}`}
-                onClick={() => setShowStatistics((current) => !current)}
-                aria-pressed={showStatistics}
-              >
-                <span className="dashboard-toggle-thumb" />
-              </button>
-            </div>
-
-            <div className="dashboard-toolbar-actions">
-              {quickActions.map((action) => (
-                <button
-                  key={action.label}
-                  type="button"
-                  className={`dashboard-toolbar-button ${action.variant === 'primary' ? 'is-primary' : ''}`}
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {showStatistics ? (
-        <section className="dashboard-stat-grid">
-          {visibleMetrics.map((metric) => (
-            <MetricCard key={metric.label} metric={metric} />
-          ))}
-        </section>
-      ) : null}
-
-      <section className="panel dashboard-table-panel">
-        <div className="panel-head panel-head--table">
-          <button type="button" className="dashboard-toolbar-button is-active">
-            Operasional Hari Ini
-          </button>
-          <div>
-            <p className="eyebrow">Daftar Utama</p>
-            <h2 className="panel-title">Tabel monitoring keamanan</h2>
-            <p className="panel-copy">Fasilitas, tes, dan dokumen prioritas ditampilkan dalam satu tabel utama.</p>
-          </div>
-          <div className="dashboard-inline-meta">
-            <span className="data-chip">{dashboard.alert.title}</span>
-            <span className="data-chip">{dashboard.alert.message}</span>
-          </div>
-        </div>
-
-        <div className="table-shell dashboard-table-desktop">
-          {visibleRows.length ? (
-            <table className="data-table dashboard-summary-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Kategori</th>
-                  <th>Area / PIC</th>
-                  <th>Detail</th>
-                  <th>Status</th>
-                  <th>Pembaruan</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <strong>{row.label}</strong>
-                    </td>
-                    <td>
-                      <span className={`summary-category is-${row.category.toLowerCase()}`}>
-                        <span className="summary-category-dot" />
-                        {row.category}
-                      </span>
-                    </td>
-                    <td>{row.context}</td>
-                    <td>{row.detail}</td>
-                    <td>
-                      <StatusBadge status={row.status} />
-                    </td>
-                    <td>{row.updatedAt}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <EmptyRows copy="Tidak ada ringkasan operasional yang cocok dengan pencarian." />
-          )}
-        </div>
-
-        <div className="dashboard-summary-mobile-list">
-          {visibleRows.length ? (
-            visibleRows.map((row) => (
-              <article key={row.id} className="dashboard-summary-mobile-card">
-                <div className="dashboard-summary-mobile-top">
-                  <span className={`summary-category is-${row.category.toLowerCase()}`}>
-                    <span className="summary-category-dot" />
-                    {row.category}
-                  </span>
-                  <StatusBadge status={row.status} />
-                </div>
-
-                <div className="dashboard-summary-mobile-copy">
-                  <strong>{row.label}</strong>
-                  <p>{row.detail}</p>
-                </div>
-
-                <dl className="dashboard-summary-mobile-meta">
-                  <div>
-                    <dt>Area / PIC</dt>
-                    <dd>{row.context}</dd>
-                  </div>
-                  <div>
-                    <dt>Pembaruan</dt>
-                    <dd>{row.updatedAt}</dd>
-                  </div>
-                </dl>
-              </article>
-            ))
-          ) : (
-            <EmptyRows copy="Tidak ada ringkasan operasional yang cocok dengan pencarian." />
-          )}
-        </div>
-      </section>
-
-      <section className="dashboard-secondary-grid">
-        <article className="panel dashboard-feed-panel">
-          <div className="panel-head">
+      <section className="dashboard-feature-grid">
+        <article className="panel dashboard-module-card">
+          <div className="dashboard-module-head">
             <div>
-              <p className="eyebrow">Aktivitas</p>
-              <h2 className="panel-title">Update terakhir</h2>
+              <p className="eyebrow">Fasilitas Keamanan</p>
+              <h3 className="dashboard-module-title">Kondisi alat lapangan</h3>
+            </div>
+            <span className="data-chip">{visibleFacilities.length} alat</span>
+          </div>
+
+          <div className="dashboard-module-highlight">
+            <strong>{facilityOptimalCount}</strong>
+            <span>alat dalam status optimal</span>
+            <p>
+              {facilityNeedsServiceCount > 0
+                ? `${facilityNeedsServiceCount} alat perlu servis dan ${facilityScheduledCount} masih terjadwal untuk penanganan.`
+                : 'Belum ada alat yang masuk status perlu servis pada data yang sedang ditampilkan.'}
+            </p>
+          </div>
+
+          <div className="dashboard-module-stat-grid">
+            <div className="dashboard-module-stat">
+              <span>Optimal</span>
+              <strong>{facilityOptimalCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Perlu Servis</span>
+              <strong>{facilityNeedsServiceCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Terjadwal</span>
+              <strong>{facilityScheduledCount}</strong>
             </div>
           </div>
 
-          <div className="dashboard-feed-list">
-            {visibleActivities.length ? (
-              visibleActivities.slice(0, 4).map((item) => (
-                <div key={item.title} className="dashboard-feed-item">
-                  <strong>{item.title}</strong>
-                  <p>{item.detail}</p>
-                  <small>{item.timestamp}</small>
+          <div className="dashboard-module-list">
+            {facilityPreview.length ? (
+              facilityPreview.map((item) => (
+                <div key={item.id} className="dashboard-module-item">
+                  <div className="dashboard-module-item-copy">
+                    <strong>
+                      {item.photoUrl ? (
+                        <a href={item.photoUrl} target="_blank" rel="noreferrer" className="facility-name-link">
+                          {item.name}
+                        </a>
+                      ) : (
+                        item.name
+                      )}
+                    </strong>
+                    <p>
+                      {item.zone} · Coverage {item.coverage}
+                    </p>
+                  </div>
+                  <div className="dashboard-module-item-meta">
+                    <StatusBadge status={item.status} />
+                  </div>
                 </div>
               ))
             ) : (
-              <EmptyRows copy="Tidak ada aktivitas yang cocok dengan pencarian." />
+              <EmptyRows copy="Belum ada fasilitas yang cocok dengan pencarian." />
             )}
           </div>
         </article>
 
-        <article className="panel dashboard-feed-panel">
-          <div className="panel-head">
+        <article className="panel dashboard-module-card">
+          <div className="dashboard-module-head">
             <div>
-              <p className="eyebrow">Prioritas</p>
-              <h2 className="panel-title">Snapshot singkat</h2>
+              <p className="eyebrow">Personil Keamanan</p>
+              <h3 className="dashboard-module-title">Status lisensi personel</h3>
+            </div>
+            <span className="data-chip">{visibleLicenses.length} personel</span>
+          </div>
+
+          <div className="dashboard-module-highlight">
+            <strong>{validPersonnelCount}</strong>
+            <span>personel dengan lisensi valid</span>
+            <p>
+              {renewalPersonnelCount + trainingPersonnelCount > 0
+                ? `${renewalPersonnelCount} perlu perpanjangan dan ${trainingPersonnelCount} masuk status pelatihan.`
+                : 'Tidak ada personel yang sedang menunggu perpanjangan atau pelatihan pada data ini.'}
+            </p>
+          </div>
+
+          <div className="dashboard-module-stat-grid">
+            <div className="dashboard-module-stat">
+              <span>Valid</span>
+              <strong>{validPersonnelCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Perpanjangan</span>
+              <strong>{renewalPersonnelCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Pelatihan</span>
+              <strong>{trainingPersonnelCount}</strong>
             </div>
           </div>
 
-          <div className="dashboard-spotlight-list">
-            {visibleSpotlight.slice(0, 3).map((item) => (
-              <div key={item.label} className="dashboard-spotlight-item">
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-                <p>{item.note}</p>
-              </div>
-            ))}
-            <div className="dashboard-priority-note">
-              <span className="eyebrow">Catatan Prioritas</span>
-              <strong>{dashboard.alert.hint}</strong>
+          <div className="dashboard-module-list">
+            {personnelPreview.length ? (
+              personnelPreview.map((item) => (
+                <div key={item.slug} className="dashboard-module-item">
+                  <div className="dashboard-module-item-copy">
+                    <strong>{item.name}</strong>
+                    <p>{item.location}</p>
+                  </div>
+                  <div className="dashboard-module-item-meta">
+                    <StatusBadge status={item.status} />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <EmptyRows copy="Belum ada personel yang cocok dengan pencarian." />
+            )}
+          </div>
+        </article>
+
+        <article className="panel dashboard-module-card">
+          <div className="dashboard-module-head">
+            <div>
+              <p className="eyebrow">Program Pengawasan</p>
+              <h3 className="dashboard-module-title">Pelaksanaan agenda keamanan</h3>
             </div>
+            <span className="data-chip">{visibleTests.length} agenda</span>
+          </div>
+
+          <div className="dashboard-module-highlight">
+            <strong>{completedSupervisionCount}</strong>
+            <span>agenda sudah terlaksana</span>
+            <p>
+              {scheduledSupervisionCount} masih terjadwal, {followUpSupervisionCount} perlu tindak lanjut, dan{' '}
+              {evidenceUploadCount} file evidence sudah terhubung.
+            </p>
+          </div>
+
+          <div className="dashboard-module-stat-grid">
+            <div className="dashboard-module-stat">
+              <span>Terlaksana</span>
+              <strong>{completedSupervisionCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Terjadwal</span>
+              <strong>{scheduledSupervisionCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Tindak Lanjut</span>
+              <strong>{followUpSupervisionCount}</strong>
+            </div>
+          </div>
+
+          <div className="dashboard-module-list">
+            {supervisionPreview.length ? (
+              supervisionPreview.map((item) => (
+                <div key={item.id} className="dashboard-module-item">
+                  <div className="dashboard-module-item-copy">
+                    <strong>{item.title}</strong>
+                    <p>
+                      {item.location ?? item.owner} · {item.completedAt ?? item.date}
+                    </p>
+                  </div>
+                  <div className="dashboard-module-item-meta">
+                    <span className={getSupervisionCategoryBadgeClass(item.category)}>{item.category}</span>
+                    <StatusBadge status={item.status} />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <EmptyRows copy="Belum ada agenda pengawasan yang cocok dengan pencarian." />
+            )}
+          </div>
+        </article>
+
+        <article className="panel dashboard-module-card">
+          <div className="dashboard-module-head">
+            <div>
+              <p className="eyebrow">Dokumen</p>
+              <h3 className="dashboard-module-title">Kontrol arsip dan evidence</h3>
+            </div>
+            <span className="data-chip">{visibleDocuments.length} dokumen</span>
+          </div>
+
+          <div className="dashboard-module-highlight">
+            <strong>{activeDocumentCount}</strong>
+            <span>dokumen berstatus aktif</span>
+            <p>
+              {evidenceDocumentCount} dokumen berasal dari upload evidence, {reviewDocumentCount} review, dan{' '}
+              {revisionDocumentCount} revisi.
+            </p>
+          </div>
+
+          <div className="dashboard-module-stat-grid">
+            <div className="dashboard-module-stat">
+              <span>Aktif</span>
+              <strong>{activeDocumentCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Review</span>
+              <strong>{reviewDocumentCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Revisi</span>
+              <strong>{revisionDocumentCount}</strong>
+            </div>
+          </div>
+
+          <div className="dashboard-module-list">
+            {documentPreview.length ? (
+              documentPreview.map((item) => (
+                <div key={item.id} className="dashboard-module-item">
+                  <div className="dashboard-module-item-copy">
+                    <strong>{item.title}</strong>
+                    <p>
+                      {item.owner} · {item.version}
+                    </p>
+                  </div>
+                  <div className="dashboard-module-item-meta">
+                    <StatusBadge status={item.status} />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <EmptyRows copy="Belum ada dokumen yang cocok dengan pencarian." />
+            )}
           </div>
         </article>
       </section>
@@ -1536,13 +1755,17 @@ function RouteHero({
   generatedAt,
   chips,
   resultCount,
+  showMeta = true,
+  showResultCount = true,
 }: {
   eyebrow: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   generatedAt: string;
-  chips: string[];
+  chips?: string[];
   resultCount: number;
+  showMeta?: boolean;
+  showResultCount?: boolean;
 }) {
   return (
     <section className="hero">
@@ -1551,17 +1774,19 @@ function RouteHero({
         <div>
           <p className="eyebrow">{eyebrow}</p>
           <h2 className="hero-title">{title}</h2>
-          <p className="hero-copy">{subtitle}</p>
+          {subtitle ? <p className="hero-copy">{subtitle}</p> : null}
         </div>
-        <div className="hero-actions">
-          <span className="data-chip">Sinkron {generatedAt}</span>
-          <span className="data-chip">{resultCount} hasil cocok</span>
-          {chips.slice(0, 2).map((chip) => (
-            <span key={chip} className="data-chip">
-              {chip}
-            </span>
-          ))}
-        </div>
+        {showMeta ? (
+          <div className="hero-actions">
+            <span className="data-chip">Sinkron {generatedAt}</span>
+            {showResultCount !== false ? <span className="data-chip">{resultCount} hasil cocok</span> : null}
+            {(chips ?? []).slice(0, 2).map((chip) => (
+              <span key={chip} className="data-chip">
+                {chip}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -1617,7 +1842,121 @@ function ActivityPanel({
   );
 }
 
-function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
+function FacilitiesSection({
+  facilities,
+  onAddFacility,
+}: {
+  facilities: FacilityItem[];
+  onAddFacility: (input: NewFacilityInput) => Promise<void>;
+}) {
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [photoPreview, setPhotoPreview] = useState('');
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const [formState, setFormState] = useState<NewFacilityInput>({
+    name: '',
+    zone: '',
+    status: 'Optimal',
+    coveragePercent: '',
+    photo: null,
+  });
+
+  useEffect(() => {
+    if (!formState.photo) {
+      setPhotoPreview('');
+      return;
+    }
+
+    const nextPreview = URL.createObjectURL(formState.photo);
+    setPhotoPreview(nextPreview);
+
+    return () => {
+      URL.revokeObjectURL(nextPreview);
+    };
+  }, [formState.photo]);
+
+  function handleFormChange<Key extends keyof NewFacilityInput>(key: Key, value: NewFacilityInput[Key]) {
+    setFormState((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
+  function closeModal() {
+    setIsAddOpen(false);
+    setIsSubmitting(false);
+    setSubmitError('');
+    setFormState({
+      name: '',
+      zone: '',
+      status: 'Optimal',
+      coveragePercent: '',
+      photo: null,
+    });
+    if (photoInputRef.current) {
+      photoInputRef.current.value = '';
+    }
+  }
+
+  function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) {
+      return;
+    }
+
+    setSubmitError('');
+    setFormState((current) => ({
+      ...current,
+      photo: file,
+    }));
+  }
+
+  function handleRemovePhoto() {
+    setFormState((current) => ({
+      ...current,
+      photo: null,
+    }));
+    if (photoInputRef.current) {
+      photoInputRef.current.value = '';
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const name = formState.name.trim();
+    const zone = formState.zone.trim();
+    const coveragePercent = Number.parseInt(formState.coveragePercent, 10);
+
+    if (!name || !zone) {
+      setSubmitError('Nama alat dan zona wajib diisi.');
+      return;
+    }
+
+    if (!Number.isFinite(coveragePercent) || Number.isNaN(coveragePercent) || coveragePercent < 0 || coveragePercent > 100) {
+      setSubmitError('Coverage harus diisi angka 0 sampai 100.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setSubmitError('');
+      await onAddFacility({
+        name,
+        zone,
+        status: formState.status,
+        coveragePercent: String(coveragePercent),
+        photo: formState.photo,
+      });
+      closeModal();
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Gagal menambahkan alat keamanan.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <section className="section-grid">
       <article className="panel">
@@ -1627,11 +1966,23 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
             <h2 className="panel-title">Status perangkat lapangan</h2>
             <p className="panel-copy">Pantau cakupan perangkat dan jadwal servis dari satu tabel.</p>
           </div>
+          <div className="panel-head-actions">
+            <button type="button" className="action-pill is-primary" onClick={() => setIsAddOpen(true)}>
+              Tambah Alat
+            </button>
+          </div>
         </div>
 
         <div className="table-shell records-table-desktop">
           {facilities.length ? (
-            <table className="data-table">
+            <table className="data-table facility-table">
+              <colgroup>
+                <col className="facility-table-col facility-table-col--name" />
+                <col className="facility-table-col facility-table-col--zone" />
+                <col className="facility-table-col facility-table-col--status" />
+                <col className="facility-table-col facility-table-col--coverage" />
+                <col className="facility-table-col facility-table-col--updated" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Fasilitas</th>
@@ -1643,8 +1994,16 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
               </thead>
               <tbody>
                 {facilities.map((item) => (
-                  <tr key={item.name}>
-                    <td>{item.name}</td>
+                  <tr key={item.id}>
+                    <td>
+                      {item.photoUrl ? (
+                        <a href={item.photoUrl} target="_blank" rel="noreferrer" className="facility-name-link">
+                          {item.name}
+                        </a>
+                      ) : (
+                        <span className="facility-name-text">{item.name}</span>
+                      )}
+                    </td>
                     <td>{item.zone}</td>
                     <td>
                       <StatusBadge status={item.status} />
@@ -1663,10 +2022,18 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
         <div className="records-mobile-list">
           {facilities.length ? (
             facilities.map((item) => (
-              <article key={item.name} className="records-mobile-card">
+              <article key={item.id} className="records-mobile-card">
                 <div className="records-mobile-top">
                   <div className="records-mobile-copy">
-                    <strong>{item.name}</strong>
+                    <strong>
+                      {item.photoUrl ? (
+                        <a href={item.photoUrl} target="_blank" rel="noreferrer" className="facility-name-link">
+                          {item.name}
+                        </a>
+                      ) : (
+                        item.name
+                      )}
+                    </strong>
                     <p>{item.zone}</p>
                   </div>
                   <StatusBadge status={item.status} />
@@ -1708,6 +2075,126 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
           />
         </div>
       </article>
+
+      {isAddOpen ? (
+        <div className="personnel-modal-overlay" onClick={closeModal}>
+          <div
+            className="personnel-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="facility-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">Tambah Fasilitas</p>
+                <h2 id="facility-modal-title" className="panel-title">
+                  Tambah Alat Keamanan
+                </h2>
+                <p className="panel-copy">Isi data alat agar langsung masuk ke tabel fasilitas keamanan.</p>
+              </div>
+              <button type="button" className="action-pill is-ghost" onClick={closeModal}>
+                Tutup
+              </button>
+            </div>
+
+            <form className="personnel-form" onSubmit={handleSubmit}>
+              <div className="personnel-form-grid">
+                <label className="personnel-field">
+                  <span>Nama Alat</span>
+                  <input
+                    className="personnel-form-input"
+                    type="text"
+                    value={formState.name}
+                    onChange={(event) => handleFormChange('name', event.target.value)}
+                    placeholder="Contoh: CCTV Corridor Timur"
+                    required
+                  />
+                </label>
+
+                <label className="personnel-field">
+                  <span>Zona</span>
+                  <input
+                    className="personnel-form-input"
+                    type="text"
+                    value={formState.zone}
+                    onChange={(event) => handleFormChange('zone', event.target.value)}
+                    placeholder="Contoh: Zona Airside"
+                    required
+                  />
+                </label>
+
+                <label className="personnel-field">
+                  <span>Status</span>
+                  <select
+                    className="personnel-form-input"
+                    value={formState.status}
+                    onChange={(event) => handleFormChange('status', event.target.value as FacilityItem['status'])}
+                  >
+                    <option value="Optimal">Optimal</option>
+                    <option value="Perlu Servis">Perlu Servis</option>
+                    <option value="Terjadwal">Terjadwal</option>
+                  </select>
+                </label>
+
+                <label className="personnel-field">
+                  <span>Coverage (%)</span>
+                  <input
+                    className="personnel-form-input"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={formState.coveragePercent}
+                    onChange={(event) => handleFormChange('coveragePercent', event.target.value)}
+                    placeholder="0 - 100"
+                    required
+                  />
+                </label>
+
+                <div className="personnel-field personnel-field--full">
+                  <span>Foto Alat</span>
+                  <div className="photo-upload-card facility-photo-upload-card">
+                    <div className="photo-preview-frame facility-photo-preview-frame">
+                      {photoPreview ? (
+                        <img src={photoPreview} alt="Preview foto alat keamanan" className="photo-preview-image" />
+                      ) : (
+                        <div className="photo-preview-placeholder">
+                          <strong>+</strong>
+                          <span>Belum ada foto alat dipilih</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="facility-photo-actions">
+                      <label className="photo-upload-button">
+                        Pilih Foto
+                        <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoChange} />
+                      </label>
+                      {formState.photo ? (
+                        <button type="button" className="action-pill is-ghost" onClick={handleRemovePhoto}>
+                          Hapus Foto
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {submitError ? <div className="personnel-form-error">{submitError}</div> : null}
+
+              <div className="personnel-form-actions">
+                <button type="button" className="action-pill is-ghost" onClick={closeModal} disabled={isSubmitting}>
+                  Batal
+                </button>
+                <button type="submit" className="action-pill is-primary" disabled={isSubmitting}>
+                  {isSubmitting ? 'Menyimpan...' : 'Simpan Alat'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -2035,21 +2522,30 @@ function PersonnelDetailHero({
 function PersonnelDetailPage({
   person,
   certificates,
+  onUploadPhoto,
   onUploadCertificate,
   onDeleteCertificate,
 }: {
   person: LicenseItem;
   certificates: CertificateUpload[];
+  onUploadPhoto: (file: File) => Promise<void>;
   onUploadCertificate: (file: File) => void;
   onDeleteCertificate: (certificateId: string) => void;
 }) {
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(person.photoUrl ?? null);
+  const [photoError, setPhotoError] = useState('');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<{
     key: number;
     title: string;
     message: string;
   } | null>(null);
   const uploadSuccessTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setPhotoPreview(person.photoUrl ?? null);
+    setPhotoError('');
+  }, [person.photoUrl, person.slug]);
 
   useEffect(() => {
     return () => {
@@ -2076,18 +2572,36 @@ function PersonnelDetailPage({
     }, 2200);
   }
 
-  function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
+  async function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setPhotoPreview(typeof reader.result === 'string' ? reader.result : null);
+    const nextPreview = await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+
+    if (nextPreview) {
+      setPhotoPreview(nextPreview);
+    }
+
+    setPhotoError('');
+    setIsUploadingPhoto(true);
+
+    try {
+      await onUploadPhoto(file);
       triggerUploadSuccess('Upload foto berhasil', 'Foto personel sudah diperbarui.');
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      setPhotoPreview(person.photoUrl ?? null);
+      setPhotoError(error instanceof Error ? error.message : 'Gagal mengunggah foto personel.');
+    } finally {
+      setIsUploadingPhoto(false);
+      event.target.value = '';
+    }
   }
 
   function handleCertificateChange(event: ChangeEvent<HTMLInputElement>) {
@@ -2101,12 +2615,7 @@ function PersonnelDetailPage({
     event.target.value = '';
   }
 
-  const initials = person.name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
+  const initials = getPersonInitials(person.name);
 
   return (
     <>
@@ -2133,9 +2642,11 @@ function PersonnelDetailPage({
                 )}
               </div>
 
+              {photoError ? <div className="personnel-form-error">{photoError}</div> : null}
+
               <label className="photo-upload-button">
-                Pilih Foto
-                <input type="file" accept="image/*" onChange={handlePhotoChange} />
+                {isUploadingPhoto ? 'Mengunggah...' : 'Pilih Foto'}
+                <input type="file" accept="image/*" onChange={handlePhotoChange} disabled={isUploadingPhoto} />
               </label>
             </div>
           </article>
@@ -2362,65 +2873,210 @@ function getSupervisionCardAccent(kind: SupervisionSummaryCard['kind']) {
   return 'from-sky-500 via-blue-500 to-cyan-400';
 }
 
-function getTimelineCellStyles(status: TimelineStatus) {
-  if (status === 'done') {
-    return 'bg-emerald-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.28)]';
+function getSupervisionHeatmapTone(level: SupervisionHeatmapLevel) {
+  if (level > 0) {
+    return 'bg-blue-600';
   }
 
-  if (status === 'upcoming') {
-    return 'bg-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]';
-  }
-
-  return 'border border-slate-200 bg-white';
-}
-
-function getMonthlyTimelineStatuses(statuses: TimelineStatus[]): TimelineMonthStatus[] {
-  return YEAR_TIMELINE_MONTHS.map((month, monthIndex) => {
-    const startIndex = monthIndex * TIMELINE_SLOTS_PER_MONTH;
-    const currentMonthStatuses = statuses.slice(startIndex, startIndex + TIMELINE_SLOTS_PER_MONTH);
-
-    if (currentMonthStatuses.includes('done')) {
-      return { month, status: 'done' };
-    }
-
-    if (currentMonthStatuses.includes('upcoming')) {
-      return { month, status: 'upcoming' };
-    }
-
-    return { month, status: 'pending' };
-  });
-}
-
-function getTimelineMonthCardStyles(status: TimelineStatus) {
-  if (status === 'done') {
-    return {
-      card: 'border-emerald-200 bg-emerald-50',
-      dot: 'bg-emerald-500',
-      label: 'text-emerald-700',
-      copy: 'Done',
-    };
-  }
-
-  if (status === 'upcoming') {
-    return {
-      card: 'border-slate-300 bg-slate-100',
-      dot: 'bg-slate-700',
-      label: 'text-slate-700',
-      copy: 'Upcoming',
-    };
-  }
-
-  return {
-    card: 'border-slate-200 bg-white',
-    dot: 'bg-slate-300',
-    label: 'text-slate-500',
-    copy: 'Belum',
-  };
+  return 'bg-slate-100';
 }
 
 function TestsSection() {
+  const [timelineFilter, setTimelineFilter] = useState<SupervisionHeatmapFilter>('Semua');
+  const [isTimelineFilterOpen, setIsTimelineFilterOpen] = useState(false);
+  const [openTimelineYearPicker, setOpenTimelineYearPicker] = useState<'from' | 'to' | null>(null);
+  const [isScheduleComposerOpen, setIsScheduleComposerOpen] = useState(false);
+  const [customScheduleEntries, setCustomScheduleEntries] = useState<SupervisionScheduleEntry[]>([]);
+  const [timelineYearRange, setTimelineYearRange] = useState({ from: 2026, to: 2026 });
+  const [scheduleDraft, setScheduleDraft] = useState<SupervisionScheduleDraft>({
+    category: 'Audit',
+    branch: 'Cabang Surabaya',
+    year: 2026,
+    monthIndex: 0,
+    slotIndex: 0,
+  });
+  const timelineFilterRef = useRef<HTMLDivElement | null>(null);
+  const timelineYearFilterRef = useRef<HTMLDivElement | null>(null);
+  const activeBranchOptions = SUPERVISION_BRANCHES_BY_CATEGORY[scheduleDraft.category];
+  const activeYearLabel =
+    timelineYearRange.from === timelineYearRange.to
+      ? `Tahun ${timelineYearRange.from}`
+      : `${timelineYearRange.from} - ${timelineYearRange.to}`;
+  const visibleScheduleEntries = [...BASE_SUPERVISION_SCHEDULE_ENTRIES, ...customScheduleEntries].filter(
+    (entry) => entry.year >= timelineYearRange.from && entry.year <= timelineYearRange.to,
+  );
+  const heatmapRows = SUPERVISION_HEATMAP_ROWS.map((row) => {
+    if (!row.isBranch || !row.category) {
+      return {
+        ...row,
+        cells: buildSupervisionHeatmapCells([]),
+      };
+    }
+
+    const matchingEntries = visibleScheduleEntries.filter(
+      (entry) => entry.category === row.category && entry.branch === row.label,
+    );
+
+    const nextCells = buildSupervisionHeatmapCells(
+      matchingEntries.map((entry) => ({
+        monthIndex: entry.monthIndex,
+        slotIndex: entry.slotIndex,
+        level: 4 as SupervisionHeatmapLevel,
+      })),
+    );
+
+    return {
+      ...row,
+      cells: nextCells,
+    };
+  });
+  const filteredHeatmapRows =
+    timelineFilter === 'Semua'
+      ? heatmapRows
+      : SUPERVISION_BRANCH_FILTERS.includes(timelineFilter as SupervisionBranchFilter)
+        ? (() => {
+            const matchingCategories = new Set(
+              heatmapRows.filter(
+                (row) => row.isBranch && row.label === timelineFilter && row.category,
+              ).map((row) => row.category as SupervisionHeatmapCategory),
+            );
+
+            return heatmapRows.filter((row) => {
+              if (row.isSpacer) return false;
+              if (row.isGroup && row.category) return matchingCategories.has(row.category);
+              return row.isBranch && row.label === timelineFilter;
+            });
+          })()
+        : heatmapRows.filter(
+            (row) => !row.isSpacer && row.category === timelineFilter,
+          );
+
+  useEffect(() => {
+    if (activeBranchOptions.includes(scheduleDraft.branch)) {
+      return;
+    }
+
+    setScheduleDraft((current) => ({
+      ...current,
+      branch: activeBranchOptions[0],
+    }));
+  }, [activeBranchOptions, scheduleDraft.branch]);
+
+  useEffect(() => {
+    if (!isTimelineFilterOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!timelineFilterRef.current?.contains(event.target as Node)) {
+        setIsTimelineFilterOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsTimelineFilterOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isTimelineFilterOpen]);
+
+  const handleTimelineFilterSelect = (value: SupervisionHeatmapFilter) => {
+    setTimelineFilter(value);
+    setIsTimelineFilterOpen(false);
+  };
+
+  const handleTimelineYearSelect = (key: 'from' | 'to', value: number) => {
+    handleTimelineYearChange(key, value);
+    setOpenTimelineYearPicker(null);
+  };
+
+  const handleTimelineYearChange = (key: 'from' | 'to', value: number) => {
+    setTimelineYearRange((current) => {
+      if (key === 'from') {
+        return {
+          from: value,
+          to: Math.max(value, current.to),
+        };
+      }
+
+      return {
+        from: Math.min(current.from, value),
+        to: value,
+      };
+    });
+  };
+
+  useEffect(() => {
+    if (!openTimelineYearPicker) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!timelineYearFilterRef.current?.contains(event.target as Node)) {
+        setOpenTimelineYearPicker(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenTimelineYearPicker(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [openTimelineYearPicker]);
+
+  const handleAddSchedule = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const nextEntry = {
+      id:
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      category: scheduleDraft.category,
+      branch: scheduleDraft.branch,
+      year: scheduleDraft.year,
+      monthIndex: scheduleDraft.monthIndex,
+      slotIndex: scheduleDraft.slotIndex,
+    } satisfies SupervisionScheduleEntry;
+
+    setCustomScheduleEntries((current) => {
+      const alreadyExists = current.some(
+        (entry) =>
+          entry.category === nextEntry.category &&
+          entry.branch === nextEntry.branch &&
+          entry.year === nextEntry.year &&
+          entry.monthIndex === nextEntry.monthIndex &&
+          entry.slotIndex === nextEntry.slotIndex,
+      );
+
+      if (alreadyExists) {
+        return current;
+      }
+
+      return [...current, nextEntry];
+    });
+    setTimelineFilter('Semua');
+    setIsScheduleComposerOpen(false);
+  };
+
   return (
-    <section className="mx-auto flex min-w-0 w-full max-w-6xl flex-col gap-4 sm:gap-5 md:gap-6">
+    <section className="flex min-w-0 w-full max-w-none flex-col gap-4 sm:gap-5 md:gap-6">
       <div className="rounded-[26px] border border-slate-200/80 bg-white/95 px-4 py-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:rounded-[30px] sm:px-6 sm:py-6 md:px-8 md:py-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 max-w-3xl">
@@ -2437,7 +3093,7 @@ function TestsSection() {
           </div>
 
           <div className="inline-flex w-fit items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(15,23,42,0.18)]">
-            {SUPERVISION_ACTIVE_YEAR}
+            {activeYearLabel}
           </div>
         </div>
       </div>
@@ -2445,6 +3101,10 @@ function TestsSection() {
       <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
         {SUPERVISION_SUMMARY_CARDS.map((card) => {
           const accent = getSupervisionCardAccent(card.kind);
+          const inspectionCompletedCount =
+            card.kind === 'inspection' ? card.locations.filter((location) => location.status === 'Sudah').length : 0;
+          const inspectionPendingCount =
+            card.kind === 'inspection' ? card.locations.length - inspectionCompletedCount : 0;
 
           return (
             <article
@@ -2479,61 +3139,64 @@ function TestsSection() {
 
                 {card.kind === 'audit' ? (
                   <>
-                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Status Utama
-                      </p>
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <span className={`h-3 w-3 rounded-full ${getSupervisionStatusStyles(card.status).dot}`} />
-                        <strong className="text-3xl font-semibold tracking-[-0.04em] text-slate-900">
-                          {card.status}
+                    <p className="text-sm leading-6 text-slate-500">{card.description}</p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Status</p>
+                        <div className="mt-3 flex items-center gap-2">
+                          <span className={`h-2.5 w-2.5 rounded-full ${getSupervisionStatusStyles(card.status).dot}`} />
+                          <strong className="text-lg font-semibold tracking-[-0.03em] text-slate-900">{card.status}</strong>
+                        </div>
+                      </div>
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Next</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {card.nextSchedule}
                         </strong>
                       </div>
-                    </div>
-
-                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Next Schedule
-                      </p>
-                      <strong className="text-xl font-semibold tracking-[-0.03em] text-slate-900">
-                        {card.nextSchedule}
-                      </strong>
-                      <p className="text-sm leading-6 text-slate-500">{card.description}</p>
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Cycle</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          2 Tahun
+                        </strong>
+                      </div>
                     </div>
                   </>
                 ) : null}
 
                 {card.kind === 'inspection' ? (
                   <>
-                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Status Global
-                      </p>
-                      <strong className="mt-3 block text-3xl font-semibold tracking-[-0.04em] text-slate-900">
-                        {card.status}
-                      </strong>
-                      <p className="mt-2 text-sm leading-6 text-slate-500">{card.description}</p>
+                    <p className="text-sm leading-6 text-slate-500">{card.description}</p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Status</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {card.status}
+                        </strong>
+                      </div>
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Cabang</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {card.locations.length}
+                        </strong>
+                      </div>
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Belum</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {inspectionPendingCount}
+                        </strong>
+                      </div>
                     </div>
 
-                    <div className="space-y-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Preview Lokasi
-                      </p>
-
+                    <div className="flex flex-wrap gap-2">
                       {card.locations.map((location) => (
-                        <div key={location.name} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={`h-2.5 w-2.5 rounded-full ${getSupervisionStatusStyles(location.status).dot}`}
-                            />
-                            <span className="text-sm font-medium text-slate-700">{location.name}</span>
-                          </div>
-                          <span
-                            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${getSupervisionStatusStyles(location.status).badge}`}
-                          >
-                            {location.status}
-                          </span>
-                        </div>
+                        <span
+                          key={location.name}
+                          className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${getSupervisionStatusStyles(location.status).badge}`}
+                        >
+                          <span className={`h-2 w-2 rounded-full ${getSupervisionStatusStyles(location.status).dot}`} />
+                          {location.name}
+                        </span>
                       ))}
                     </div>
                   </>
@@ -2541,32 +3204,40 @@ function TestsSection() {
 
                 {card.kind === 'testing' ? (
                   <>
-                    <div className="rounded-[24px] bg-slate-50 px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Progress
-                      </p>
-                      <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-                        <strong className="text-3xl font-semibold tracking-[-0.04em] text-slate-900">
+                    <p className="text-sm leading-6 text-slate-500">{card.subtitle}</p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Progress</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
                           {card.done} / {card.total}
                         </strong>
-                        <span className="text-sm font-medium text-slate-500">done</span>
                       </div>
-
-                      <div className="mt-4 h-2.5 rounded-full bg-slate-200">
-                        <div
-                          className="h-2.5 rounded-full bg-gradient-to-r from-sky-500 to-cyan-400"
-                          style={{ width: `${Math.round((card.done / card.total) * 100)}%` }}
-                        />
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Batch</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {card.total}
+                        </strong>
+                      </div>
+                      <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Next</p>
+                        <strong className="mt-3 block text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                          {card.nextSchedule}
+                        </strong>
                       </div>
                     </div>
 
-                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-4 sm:rounded-3xl sm:px-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Pelaksanaan Rutin
-                      </p>
-                      <p className="text-sm leading-6 text-slate-500">{card.subtitle}</p>
-                      <div className="inline-flex w-fit items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 ring-1 ring-inset ring-sky-200">
-                        Agenda berikutnya {card.nextSchedule}
+                    <div className="space-y-3 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                      <div className="flex flex-wrap items-end justify-between gap-3">
+                        <span className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Progress Bar</span>
+                        <span className="text-sm font-medium text-slate-500">
+                          {Math.round((card.done / card.total) * 100)}%
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-200">
+                        <div
+                          className="h-2 rounded-full bg-blue-600"
+                          style={{ width: `${Math.round((card.done / card.total) * 100)}%` }}
+                        />
                       </div>
                     </div>
                   </>
@@ -2579,173 +3250,456 @@ function TestsSection() {
 
       <article className="overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:rounded-[32px]">
         <div className="border-b border-slate-200/80 px-4 py-5 sm:px-6 sm:py-6 md:px-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-4">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
                 Timeline / Calendar View
               </p>
               <h3 className="mt-3 text-[1.7rem] font-semibold tracking-[-0.04em] text-slate-900 sm:text-2xl md:text-[2rem]">
-                Monitoring timeline pelaksanaan per kategori
+                Monitoring Timeline
               </h3>
               <p className="mt-3 text-sm leading-7 text-slate-500 md:text-base">
-                Tampilan horizontal untuk melihat agenda yang sudah selesai, belum berjalan, dan
-                yang akan datang dalam satu panel monitoring.
+                Tampilan heatmap tahunan untuk melihat persebaran pelaksanaan Audit, Inspeksi,
+                dan Pengujian dalam satu panel monitoring.
               </p>
-            </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <div ref={timelineFilterRef} className="relative w-full max-w-[278px] sm:max-w-[290px]">
+                  <button
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded={isTimelineFilterOpen}
+                    aria-label="Filter timeline pengawasan"
+                    onClick={() => {
+                      setOpenTimelineYearPicker(null);
+                      setIsTimelineFilterOpen((current) => !current);
+                    }}
+                    className="flex h-12 w-full items-center justify-between rounded-[18px] border border-slate-200 bg-white px-4 text-left text-base font-medium text-slate-800 shadow-[0_10px_24px_rgba(15,23,42,0.06)] outline-none transition hover:border-slate-300 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)] focus:border-slate-300 focus:shadow-[0_14px_28px_rgba(15,23,42,0.1)]"
+                  >
+                    <span className="truncate whitespace-nowrap">{timelineFilter}</span>
+                    <ChevronDownIcon
+                      className={`h-4.5 w-4.5 shrink-0 text-slate-500 transition-transform duration-200 ${
+                        isTimelineFilterOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
 
-            <div className="flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
-                <span className="h-2.5 w-2.5 rounded-sm border border-slate-300 bg-white" />
-                Belum
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
-                <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
-                Done
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-inset ring-slate-200">
-                <span className="h-2.5 w-2.5 rounded-sm bg-slate-800" />
-                Upcoming
-              </span>
+                  {isTimelineFilterOpen ? (
+                    <div
+                      role="listbox"
+                      aria-label="Daftar filter timeline pengawasan"
+                      className="absolute left-0 top-full z-20 mt-3 w-full rounded-[24px] border border-slate-200 bg-white p-2 shadow-[0_24px_55px_rgba(15,23,42,0.16)]"
+                    >
+                      <div className="space-y-1">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={timelineFilter === 'Semua'}
+                          onClick={() => handleTimelineFilterSelect('Semua')}
+                          className={`flex w-full items-center justify-between rounded-[18px] px-3.5 py-2.5 text-left text-[15px] font-medium transition ${
+                            timelineFilter === 'Semua'
+                              ? 'bg-slate-900 text-white'
+                              : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className="truncate whitespace-nowrap">Semua</span>
+                          {timelineFilter === 'Semua' ? <span className="h-2.5 w-2.5 rounded-full bg-orange-500" /> : null}
+                        </button>
+                      </div>
+
+                      <div className="mt-3 px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Kategori
+                      </div>
+                      <div className="space-y-1">
+                        {SUPERVISION_CATEGORY_FILTERS.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            role="option"
+                            aria-selected={timelineFilter === option}
+                            onClick={() => handleTimelineFilterSelect(option)}
+                            className={`flex w-full items-center justify-between rounded-[18px] px-3.5 py-2.5 text-left text-[15px] font-medium transition ${
+                              timelineFilter === option
+                                ? 'bg-slate-900 text-white'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span className="truncate whitespace-nowrap">{option}</span>
+                            {timelineFilter === option ? <span className="h-2.5 w-2.5 rounded-full bg-orange-500" /> : null}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mt-3 px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Cabang
+                      </div>
+                      <div className="space-y-1">
+                        {SUPERVISION_BRANCH_FILTERS.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            role="option"
+                            aria-selected={timelineFilter === option}
+                            onClick={() => handleTimelineFilterSelect(option)}
+                            className={`flex w-full items-center justify-between rounded-[18px] px-3.5 py-2.5 text-left text-[15px] font-medium transition ${
+                              timelineFilter === option
+                                ? 'bg-slate-900 text-white'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span className="truncate whitespace-nowrap">{option}</span>
+                            {timelineFilter === option ? <span className="h-2.5 w-2.5 rounded-full bg-orange-500" /> : null}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div
+                  ref={timelineYearFilterRef}
+                  className="relative flex flex-wrap items-center gap-2 rounded-[18px] border border-slate-200 bg-white px-2.5 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                >
+                  <div className="relative">
+                    <button
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={openTimelineYearPicker === 'from'}
+                      aria-label="Pilih tahun awal"
+                      onClick={() => {
+                        setIsTimelineFilterOpen(false);
+                        setOpenTimelineYearPicker((current) =>
+                          current === 'from' ? null : 'from',
+                        );
+                      }}
+                      className="flex h-10 min-w-[120px] items-center justify-between rounded-[14px] border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 transition hover:border-slate-300"
+                    >
+                      <span>{timelineYearRange.from}</span>
+                      <ChevronDownIcon
+                        className={`h-3.5 w-3.5 text-slate-400 transition-transform ${
+                          openTimelineYearPicker === 'from' ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {openTimelineYearPicker === 'from' ? (
+                      <div className="absolute left-0 top-full z-20 mt-2 w-[138px] rounded-[18px] border border-slate-200 bg-white p-2 shadow-[0_24px_55px_rgba(15,23,42,0.16)]">
+                        <div className="max-h-60 overflow-y-auto pr-1">
+                          <div className="space-y-1">
+                            {SUPERVISION_YEAR_OPTIONS.map((year) => (
+                              <button
+                                key={`picker-from-${year}`}
+                                type="button"
+                                role="option"
+                                aria-selected={timelineYearRange.from === year}
+                                onClick={() => handleTimelineYearSelect('from', year)}
+                                className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2 text-left text-sm font-medium transition ${
+                                  timelineYearRange.from === year
+                                    ? 'bg-slate-900 text-white'
+                                    : 'text-slate-700 hover:bg-slate-50'
+                                }`}
+                              >
+                                <span>{year}</span>
+                                {timelineYearRange.from === year ? (
+                                  <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+                                ) : null}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <span className="text-sm font-semibold text-slate-300">-</span>
+
+                  <div className="relative">
+                    <button
+                      type="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={openTimelineYearPicker === 'to'}
+                      aria-label="Pilih tahun akhir"
+                      onClick={() => {
+                        setIsTimelineFilterOpen(false);
+                        setOpenTimelineYearPicker((current) =>
+                          current === 'to' ? null : 'to',
+                        );
+                      }}
+                      className="flex h-10 min-w-[120px] items-center justify-between rounded-[14px] border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 transition hover:border-slate-300"
+                    >
+                      <span>{timelineYearRange.to}</span>
+                      <ChevronDownIcon
+                        className={`h-3.5 w-3.5 text-slate-400 transition-transform ${
+                          openTimelineYearPicker === 'to' ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {openTimelineYearPicker === 'to' ? (
+                      <div className="absolute right-0 top-full z-20 mt-2 w-[138px] rounded-[18px] border border-slate-200 bg-white p-2 shadow-[0_24px_55px_rgba(15,23,42,0.16)]">
+                        <div className="max-h-60 overflow-y-auto pr-1">
+                          <div className="space-y-1">
+                            {SUPERVISION_YEAR_OPTIONS.map((year) => (
+                              <button
+                                key={`picker-to-${year}`}
+                                type="button"
+                                role="option"
+                                aria-selected={timelineYearRange.to === year}
+                                onClick={() => handleTimelineYearSelect('to', year)}
+                                className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2 text-left text-sm font-medium transition ${
+                                  timelineYearRange.to === year
+                                    ? 'bg-slate-900 text-white'
+                                    : 'text-slate-700 hover:bg-slate-50'
+                                }`}
+                              >
+                                <span>{year}</span>
+                                {timelineYearRange.to === year ? (
+                                  <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+                                ) : null}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsScheduleComposerOpen((current) => !current)}
+                  className="inline-flex h-12 items-center justify-center rounded-[18px] bg-slate-900 px-5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] transition hover:bg-slate-800"
+                >
+                  {isScheduleComposerOpen ? 'Tutup' : 'Tambah'}
+                </button>
+              </div>
+
+              {isScheduleComposerOpen ? (
+                <form
+                  className="mt-4 max-w-4xl rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_16px_36px_rgba(15,23,42,0.08)] sm:p-5"
+                  onSubmit={handleAddSchedule}
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Tambah Agenda Timeline
+                      </p>
+                      <h4 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-slate-900">
+                        Atur jadwal baru untuk heatmap monitoring
+                      </h4>
+                    </div>
+                    <span className="inline-flex w-fit items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
+                      {customScheduleEntries.length} jadwal tambahan
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Tahun</span>
+                      <select
+                        value={scheduleDraft.year}
+                        onChange={(event) =>
+                          setScheduleDraft((current) => ({
+                            ...current,
+                            year: Number(event.target.value),
+                          }))
+                        }
+                        className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
+                      >
+                        {SUPERVISION_YEAR_OPTIONS.map((year) => (
+                          <option key={`draft-year-${year}`} value={year}>
+                            {year}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Bulan</span>
+                      <select
+                        value={scheduleDraft.monthIndex}
+                        onChange={(event) =>
+                          setScheduleDraft((current) => ({
+                            ...current,
+                            monthIndex: Number(event.target.value),
+                          }))
+                        }
+                        className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
+                      >
+                        {YEAR_TIMELINE_MONTHS.map((month, index) => (
+                          <option key={month} value={index}>
+                            {month}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Periode</span>
+                      <select
+                        value={scheduleDraft.slotIndex}
+                        onChange={(event) =>
+                          setScheduleDraft((current) => ({
+                            ...current,
+                            slotIndex: Number(event.target.value),
+                          }))
+                        }
+                        className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
+                      >
+                        {TIMELINE_SLOT_LABELS.map((slot, index) => (
+                          <option key={slot} value={index}>
+                            Minggu {slot}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Scope</span>
+                      <select
+                        value={scheduleDraft.category}
+                        onChange={(event) =>
+                          setScheduleDraft((current) => {
+                            const nextCategory = event.target.value as SupervisionHeatmapCategory;
+                            return {
+                              ...current,
+                              category: nextCategory,
+                              branch: SUPERVISION_BRANCHES_BY_CATEGORY[nextCategory][0],
+                            };
+                          })
+                        }
+                        className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
+                      >
+                        {SUPERVISION_CATEGORY_FILTERS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Cabang</span>
+                      <select
+                        value={scheduleDraft.branch}
+                        onChange={(event) =>
+                          setScheduleDraft((current) => ({
+                            ...current,
+                            branch: event.target.value as SupervisionBranchFilter,
+                          }))
+                        }
+                        className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
+                      >
+                        {activeBranchOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsScheduleComposerOpen(false)}
+                      className="inline-flex h-11 items-center justify-center rounded-[16px] border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      className="inline-flex h-11 items-center justify-center rounded-[16px] bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(37,99,235,0.22)] transition hover:bg-blue-500"
+                    >
+                      Simpan Ke Timeline
+                    </button>
+                  </div>
+                </form>
+              ) : null}
             </div>
           </div>
         </div>
 
-        <div className="flex flex-col gap-4 px-4 py-5 sm:gap-5 sm:px-6 sm:py-6 md:px-8">
-          {SUPERVISION_TIMELINE_SECTIONS.map((section) => (
-            <div
-              key={section.id}
-              className="rounded-[22px] border border-slate-200 bg-slate-50/80 px-3.5 py-4 sm:rounded-[28px] sm:px-5 sm:py-5"
-            >
-              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
-                    {section.frequency}
-                  </p>
-                  <h4 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-900">
-                    {section.title}
-                  </h4>
-                </div>
-                <div className="inline-flex w-fit items-center rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
-                  {section.months.length} slot monitoring
-                </div>
-              </div>
-
-              <div className="space-y-3 md:hidden">
-                {section.rows.map((row) => {
-                  const monthlyStatuses = getMonthlyTimelineStatuses(row.statuses);
-                  const hasTimelineActivity = monthlyStatuses.some((item) => item.status !== 'pending');
-
-                  return (
-                    <article
-                      key={`${section.id}-${row.label}-mobile`}
-                      className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900">{row.label}</p>
-                        <p className="mt-1 text-xs leading-6 text-slate-500">{row.detail}</p>
-                      </div>
-
-                      {hasTimelineActivity ? (
-                        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                          {monthlyStatuses.map((item) => {
-                            const tone = getTimelineMonthCardStyles(item.status);
-
-                            return (
-                              <div
-                                key={`${row.label}-${item.month}-mobile`}
-                                className={`rounded-[16px] border px-3 py-2 ${tone.card}`}
-                              >
-                                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                  {item.month}
-                                </span>
-                                <div className="mt-2 flex items-center gap-2">
-                                  <span className={`h-2.5 w-2.5 rounded-full ${tone.dot}`} />
-                                  <span className={`text-xs font-semibold ${tone.label}`}>{tone.copy}</span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="mt-4 rounded-[18px] bg-slate-900 px-4 py-3 text-white shadow-[0_12px_28px_rgba(15,23,42,0.14)]">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">
-                            Catatan 2026
-                          </p>
-                          <p className="mt-2 text-sm leading-6 text-slate-100">
-                            Tidak ada slot pelaksanaan pada tahun ini karena agenda mengikuti siklus dua tahunan.
-                          </p>
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
-
-              <div className="hidden overflow-x-auto pb-1 md:block">
-                <div className="min-w-[880px] sm:min-w-[1040px] xl:min-w-[1360px]">
+        <div className="px-4 py-5 sm:px-6 sm:py-6 md:px-8">
+          <div className="timeline-heatmap-scroll">
+            <div className="timeline-heatmap-shell">
+              <div
+                className="timeline-heatmap-grid"
+                style={{ gridTemplateColumns: `var(--timeline-label-column) repeat(${TIMELINE_TOTAL_COLUMNS}, var(--timeline-cell-size))` }}
+              >
+                <div className="timeline-heatmap-sticky-spacer" />
+                {YEAR_TIMELINE_MONTHS.map((month) => (
                   <div
-                    className="grid items-center gap-x-1.5 gap-y-3 border-b border-slate-200 pb-3"
-                    style={{
-                      gridTemplateColumns: `minmax(140px, 180px) repeat(${TIMELINE_TOTAL_COLUMNS}, minmax(14px, 18px))`,
-                    }}
+                    key={`heatmap-month-${month}`}
+                    className="timeline-heatmap-month"
+                    style={{ gridColumn: `span ${TIMELINE_SLOTS_PER_MONTH} / span ${TIMELINE_SLOTS_PER_MONTH}` }}
                   >
-                    <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                      Lokasi / Agenda
+                    {month}
+                  </div>
+                ))}
+
+                {filteredHeatmapRows.map((row) => (
+                  <Fragment key={row.id}>
+                    <div
+                      className={`timeline-heatmap-label ${row.isSpacer ? 'is-spacer' : ''} ${
+                        row.isGroup ? 'is-group' : ''
+                      } ${row.isBranch ? 'is-branch' : ''}`}
+                    >
+                      {row.isBranch ? (
+                        <span className="timeline-heatmap-branch-inline">
+                          <span className="timeline-heatmap-branch-dash">-</span>
+                          <span>{row.label}</span>
+                        </span>
+                      ) : (
+                        row.label
+                      )}
                     </div>
-                    {section.months.map((month) => (
-                      <div
-                        key={`${section.id}-${month}`}
-                        className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400"
-                        style={{ gridColumn: `span ${TIMELINE_SLOTS_PER_MONTH} / span ${TIMELINE_SLOTS_PER_MONTH}` }}
-                      >
-                        {month}
-                      </div>
+                    {row.cells.map((level, index) => (
+                      <span
+                        key={`${row.id}-${index}`}
+                        className={`timeline-heatmap-cell ${getSupervisionHeatmapTone(level)}`}
+                      />
                     ))}
-                  </div>
+                  </Fragment>
+                ))}
+              </div>
 
-                  <div className="mt-4 space-y-3">
-                    {section.rows.map((row) => (
-                      <div
-                        key={`${section.id}-${row.label}`}
-                        className="grid items-center gap-x-1.5 gap-y-3"
-                        style={{
-                          gridTemplateColumns: `minmax(140px, 180px) repeat(${TIMELINE_TOTAL_COLUMNS}, minmax(14px, 18px))`,
-                        }}
-                      >
-                        <div className="pr-3">
-                          <p className="text-sm font-semibold text-slate-800">{row.label}</p>
-                          <p className="mt-1 text-xs font-medium text-slate-500">{row.detail}</p>
-                        </div>
-
-                        {row.statuses.map((status, index) => (
-                          <div key={`${row.label}-${index}`} className="flex items-center justify-center">
-                            <span
-                              className={`h-[18px] w-[18px] rounded-[5px] ${getTimelineCellStyles(status)}`}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              <div className="timeline-heatmap-legend">
+                <span>Indikator Aktif</span>
+                {HEATMAP_LEGEND_LEVELS.map((level) => (
+                  <span
+                    key={`heatmap-legend-${level}`}
+                    className={`timeline-heatmap-cell ${getSupervisionHeatmapTone(level)}`}
+                  />
+                ))}
               </div>
             </div>
-          ))}
+          </div>
         </div>
       </article>
     </section>
   );
 }
 
-function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
+function DocumentsSection({
+  documents,
+  generatedAt,
+}: {
+  documents: DocumentItem[];
+  generatedAt: string;
+}) {
   return (
-    <section className="section-grid">
+    <section className="section-grid section-grid--single">
       <article className="panel">
         <div className="panel-head">
           <div>
             <p className="eyebrow">Dokumen</p>
             <h2 className="panel-title">Kontrol revisi dokumen keamanan</h2>
-            <p className="panel-copy">Dokumen aktif, review, dan revisi yang dipantau secara terpusat.</p>
+            <p className="panel-copy">
+              Dokumen aktif, review, revisi, dan hasil upload pelaksanaan pengawasan yang dipantau secara terpusat.
+            </p>
+          </div>
+          <div className="panel-head-actions">
+            <span className="data-chip">Sinkron {generatedAt}</span>
           </div>
         </div>
 
@@ -2758,19 +3712,23 @@ function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
                   <th>Pemilik</th>
                   <th>Versi</th>
                   <th>Pembaruan</th>
-                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {documents.map((item) => (
-                  <tr key={item.title}>
-                    <td>{item.title}</td>
+                  <tr key={item.id}>
+                    <td>
+                      {item.url ? (
+                        <a href={item.url} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 underline-offset-4 hover:underline">
+                          {item.title}
+                        </a>
+                      ) : (
+                        item.title
+                      )}
+                    </td>
                     <td>{item.owner}</td>
                     <td>{item.version}</td>
                     <td>{item.updatedAt}</td>
-                    <td>
-                      <StatusBadge status={item.status} />
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -2783,13 +3741,18 @@ function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
         <div className="records-mobile-list">
           {documents.length ? (
             documents.map((item) => (
-              <article key={item.title} className="records-mobile-card">
-                <div className="records-mobile-top">
-                  <div className="records-mobile-copy">
+              <article key={item.id} className="records-mobile-card">
+                <div className="records-mobile-copy">
+                  {item.url ? (
+                    <strong>
+                      <a href={item.url} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
+                        {item.title}
+                      </a>
+                    </strong>
+                  ) : (
                     <strong>{item.title}</strong>
-                    <p>{item.owner}</p>
-                  </div>
-                  <StatusBadge status={item.status} />
+                  )}
+                  <p>{item.owner}</p>
                 </div>
 
                 <dl className="records-mobile-meta">
@@ -2807,21 +3770,6 @@ function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
           ) : (
             <EmptyRows copy="Tidak ada dokumen yang cocok dengan pencarian." />
           )}
-        </div>
-      </article>
-
-      <article className="panel panel-side">
-        <div className="panel-head">
-          <div>
-            <p className="eyebrow">Queue Review</p>
-            <h2 className="panel-title">Dokumen prioritas</h2>
-          </div>
-        </div>
-
-        <div className="mini-stat-list">
-          <MiniStat label="Aktif" value="02" note="SOP access gate dan checklist CCTV aman digunakan." />
-          <MiniStat label="Review" value="01" note="Prosedur escalation alarm menunggu approval akhir." />
-          <MiniStat label="Revisi" value="01" note="Matriks lisensi butuh pembaruan data April 2026." />
         </div>
       </article>
     </section>

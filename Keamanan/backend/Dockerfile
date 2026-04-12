@@ -2,6 +2,7 @@ FROM node:20-alpine AS backend-deps
 WORKDIR /app/backend
 RUN apk add --no-cache openssl
 COPY backend/package.json backend/package-lock.json* ./
+COPY backend/prisma ./prisma
 RUN npm ci --no-audit --no-fund
 
 FROM node:20-alpine AS frontend-deps
@@ -16,8 +17,6 @@ COPY backend ./backend
 COPY frontend ./frontend
 COPY --from=backend-deps /app/backend/node_modules ./backend/node_modules
 COPY --from=frontend-deps /app/frontend/node_modules ./frontend/node_modules
-WORKDIR /app/frontend
-RUN npm run build
 WORKDIR /app/backend
 RUN npm run prisma:generate
 RUN npm run build
