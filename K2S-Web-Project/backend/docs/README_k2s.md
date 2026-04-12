@@ -62,6 +62,15 @@ Jika deploy production terpusat, domain aktif saat ini:
 - Jalur compare/export ini sangat bergantung pada wrapper Python `backend/wrapping/app.py` yang mengadopsi mekanisme dari `folder_referensi/test5`.
 - Jika UI masih memunculkan error lama yang tidak sesuai kode terbaru, biasanya proses `wrapper` atau `backend` yang aktif belum direstart.
 
+## Known Limitations
+
+- Session login DNP hidup di memory wrapper Python; restart `wrapper` dapat membuat session export DNP tidak valid walau `session_id` masih tersimpan di cache Laravel.
+- Pairing pertanyaan lokal -> DNP sangat bergantung pada similarity isi pertanyaan; tetap butuh validasi admin sebelum export.
+- Import compare untuk area yang sama akan overwrite snapshot lama; ini hemat storage, tetapi berarti compare sebelumnya tidak disimpan sebagai histori terpisah.
+- Jalur export sangat sensitif terhadap struktur `draft_payload`, `plan_id`, `area_group_id`, `pq_id`, dan `data_id` dari DNP.
+- Export draft dan upload file evidence tetap bergantung pada perilaku endpoint DNP live; perubahan kecil di sisi DNP dapat mematahkan flow walau kode lokal tidak berubah.
+- Testing otomatis untuk jalur DNP live belum menyeluruh; verifikasi end-to-end tetap perlu dilakukan secara manual pada flow `init -> areas -> import -> pairing -> export`.
+
 ## Seeder dan Akun
 
 - Seeder hanya untuk development/internal setup.

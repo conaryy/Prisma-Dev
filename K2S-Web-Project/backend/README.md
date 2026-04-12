@@ -56,6 +56,14 @@ composer test
 - Import compare untuk area-user yang sama bersifat update/overwrite.
 - Jalur ini sensitif terhadap sinkronisasi Laravel backend dan `backend/wrapping`; jika proses lama masih berjalan, error yang muncul bisa berasal dari kode wrapper/backend yang belum ter-reload.
 
+## Known Limitations
+
+- Session DNP untuk export hidup di memory wrapper, bukan persistence storage.
+- Pairing pertanyaan masih memerlukan validasi admin walau sudah dibantu similarity persen.
+- Snapshot compare untuk area-user yang sama ditimpa saat import ulang.
+- Jalur export draft sangat bergantung pada struktur payload DNP yang diambil saat compare.
+- Jalur upload evidence ke DNP masih sensitif terhadap perubahan endpoint/live behavior di sisi DNP.
+
 ## Catatan Deploy
 
 - Deploy terpusat sekarang memakai `docker-compose.central.yml` dari root repo.

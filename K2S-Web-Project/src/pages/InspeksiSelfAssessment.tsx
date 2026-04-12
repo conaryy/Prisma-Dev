@@ -543,8 +543,6 @@ export function InspeksiSelfAssessment({
   const isSubmitted = submittedByQuestion[activeQuestion.key] ?? false;
   const isReviewLocked = reviewByQuestion[activeQuestion.key]?.isFinal ?? false;
   const isAnswerLocked = isSubmitted && !allowReply;
-  const hasActiveEvidence = evidenceList.length > 0;
-
   const isQuestionFilled = (questionKey: string) => {
     const state = assessmentByQuestion[questionKey];
     if (!state) return false;
@@ -737,13 +735,6 @@ export function InspeksiSelfAssessment({
       toast({
         title: 'Belum ada jawaban',
         description: 'Isi jawaban sebelum mengirim.',
-      });
-      return;
-    }
-    if (!hasActiveEvidence) {
-      toast({
-        title: 'Evidence wajib diunggah',
-        description: 'Upload minimal 1 file evidence sebelum mengirim PQ.',
       });
       return;
     }
@@ -1237,7 +1228,7 @@ export function InspeksiSelfAssessment({
                           <Button
                             className="bg-blue-500 text-white hover:bg-blue-600"
                             onClick={handleSendAssessment}
-                            disabled={isAnswerLocked || isSubmittingAnswers || !hasActiveEvidence}
+                            disabled={isAnswerLocked || isSubmittingAnswers}
                           >
                             Kirim
                           </Button>

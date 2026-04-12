@@ -225,6 +225,8 @@ services:
         VITE_SSO_SCOPE: ${SSO_SCOPE:-openid profile email}
         VITE_AUTH_PORTAL_URL: ${AUTH_PORTAL_URL:-https://auth.ryvidia.my.id}
         VITE_LOGBOOK_BASE_URL: ${AUTH_VITE_LOGBOOK_BASE_URL:-https://logbook.ryvidia.my.id}
+        VITE_K3_BASE_URL: ${AUTH_VITE_K3_BASE_URL:-https://k3.ryvidia.my.id}
+        VITE_KEAMANAN_BASE_URL: ${AUTH_VITE_KEAMANAN_BASE_URL:-https://keamanan.ryvidia.my.id}
     container_name: k2s-frontend
     restart: unless-stopped
     depends_on:

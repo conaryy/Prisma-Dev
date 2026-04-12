@@ -65,6 +65,12 @@ type QuestionMatchCandidate = {
   similarity: number;
 };
 
+type SimilarityPairCandidate = QuestionMatchCandidate & {
+  answerId: string;
+  localQuestionCode: string;
+  localQuestionText: string;
+};
+
 type SelectedDnpMatch = QuestionMatchCandidate & {
   answerId: string;
   localQuestionCode: string;
@@ -657,6 +663,30 @@ export function SelfAssessmentReviews({
       {}
     );
   }, [detail?.answers, activeDnpCompare?.items]);
+  const autoPairCandidates = useMemo(() => {
+    if (!detail?.answers.length || !activeDnpCompare?.items.length) {
+      return [] as SimilarityPairCandidate[];
+    }
+
+    return detail.answers
+      .flatMap((answer) =>
+        activeDnpCompare.items.map((item) => ({
+          id: item.id,
+          questionCode: item.questionCode ?? '-',
+          questionText: item.questionText ?? '',
+          reference: item.reference ?? '',
+          similarity: calculateQuestionSimilarity(
+            answer.questionText,
+            item.questionText ?? ''
+          ),
+          answerId: answer.id,
+          localQuestionCode: answer.questionCode,
+          localQuestionText: answer.questionText,
+        }))
+      )
+      .filter((item) => item.similarity >= dnpMatchThreshold)
+      .sort((left, right) => right.similarity - left.similarity);
+  }, [detail?.answers, activeDnpCompare?.items, dnpMatchThreshold]);
   const matchedAnswerCount = useMemo(
     () =>
       detail?.answers.filter(
@@ -798,10 +828,91 @@ export function SelfAssessmentReviews({
     }
   };
 
+  const handleAutoPairDnpMatches = async () => {
+    if (!detail?.answers.length || !activeDnpCompare?.items.length) {
+      return;
+    }
+
+    const previousMatches = selectedDnpMatches;
+    const previousCollapsedMatches = collapsedDnpMatches;
+    const nextMatches: Record<string, SelectedDnpMatch> = { ...previousMatches };
+    const usedAnswerIds = new Set<string>(Object.keys(previousMatches));
+    const usedDnpItemIds = new Set<string>(
+      Object.values(previousMatches).map((match) => match.id)
+    );
+
+    for (const candidate of autoPairCandidates) {
+      if (usedAnswerIds.has(candidate.answerId) || usedDnpItemIds.has(candidate.id)) {
+        continue;
+      }
+
+      usedAnswerIds.add(candidate.answerId);
+      usedDnpItemIds.add(candidate.id);
+      nextMatches[candidate.answerId] = {
+        id: candidate.id,
+        questionCode: candidate.questionCode,
+        questionText: candidate.questionText,
+        reference: candidate.reference ?? '',
+        similarity: candidate.similarity,
+        answerId: candidate.answerId,
+        localQuestionCode: candidate.localQuestionCode,
+        localQuestionText: candidate.localQuestionText,
+      };
+
+      if (usedAnswerIds.size >= detail.answers.length) {
+        break;
+      }
+    }
+
+    if (Object.keys(nextMatches).length === 0) {
+      toast({
+        title: 'Auto pairing tidak menemukan kandidat',
+        description: `Tidak ada pasangan lokal-DNP yang memenuhi threshold ${dnpMatchThreshold}%.`,
+      });
+      return;
+    }
+
+    const addedMatchCount =
+      Object.keys(nextMatches).length - Object.keys(previousMatches).length;
+    if (addedMatchCount <= 0) {
+      toast({
+        title: 'Auto pairing tidak menambah mapping baru',
+        description:
+          'Semua kandidat yang memenuhi threshold sudah dipakai pada pairing yang ada.',
+      });
+      return;
+    }
+
+    setSelectedDnpMatches(nextMatches);
+    setCollapsedDnpMatches({
+      ...previousCollapsedMatches,
+      ...Object.fromEntries(Object.keys(nextMatches).map((key) => [key, true])),
+    });
+
+    try {
+      await persistDnpMatches(nextMatches, { silent: true });
+      toast({
+        title: 'Auto pairing selesai',
+        description: `${addedMatchCount} pairing baru ditambahkan. Total pairing aktif ${Object.keys(nextMatches).length} dari ${detail.answers.length} pertanyaan lokal.`,
+      });
+    } catch (error) {
+      setSelectedDnpMatches(previousMatches);
+      setCollapsedDnpMatches(previousCollapsedMatches);
+      toast({
+        title: 'Gagal menyimpan auto pairing',
+        description:
+          error instanceof Error && error.message
+            ? error.message
+            : 'Terjadi kesalahan.',
+      });
+    }
+  };
+
   const handleChooseDnpMatch = async (
     answer: SubmissionDetail['answers'][number],
     match: QuestionMatchCandidate
   ) => {
+    const previousMatch = selectedDnpMatches[answer.id];
     const nextMatches = {
       ...selectedDnpMatches,
       [answer.id]: {
@@ -825,12 +936,16 @@ export function SelfAssessmentReviews({
     } catch (error) {
       setSelectedDnpMatches((prev) => {
         const fallback = { ...prev };
-        delete fallback[answer.id];
+        if (previousMatch) {
+          fallback[answer.id] = previousMatch;
+        } else {
+          delete fallback[answer.id];
+        }
         return fallback;
       });
       setCollapsedDnpMatches((prev) => ({
         ...prev,
-        [answer.id]: false,
+        [answer.id]: Boolean(previousMatch),
       }));
       toast({
         title: 'Gagal menyimpan target export',
@@ -1566,7 +1681,7 @@ export function SelfAssessmentReviews({
                         size="sm"
                         onClick={() => setIsDnpLoginCollapsed((prev) => !prev)}
                       >
-                        {isDnpLoginCollapsed ? 'Buka Lagi' : 'Minimize'}
+                        {isDnpLoginCollapsed ? 'Login' : 'Minimize'}
                       </Button>
                     ) : null}
                   </div>
@@ -1720,7 +1835,7 @@ export function SelfAssessmentReviews({
                   </div>
                 </div>
                 <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 md:grid-cols-[1fr_auto] md:items-end">
-                  <FormField label="Ambang Kecocokan Pertanyaan">
+                  <FormField label="Threshold Kecocokan Pertanyaan">
                     <div className="space-y-2">
                       <input
                         type="range"
@@ -1742,8 +1857,22 @@ export function SelfAssessmentReviews({
                       </div>
                     </div>
                   </FormField>
-                  <div className="rounded-xl bg-white px-3 py-2 text-xs text-slate-500">
-                    Dipakai untuk penyamaan pertanyaan lokal dengan DNP sebelum export.
+                  <div className="space-y-2">
+                    <div className="rounded-xl bg-white px-3 py-2 text-xs text-slate-500">
+                      Auto pairing akan mengambil similarity terbesar untuk tiap pertanyaan lokal.
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="w-full bg-blue-500 text-white hover:bg-blue-600"
+                      onClick={() => void handleAutoPairDnpMatches()}
+                      disabled={!detail.answers.length || !activeDnpCompare.items.length}
+                    >
+                      Auto Pairing Berdasarkan Threshold
+                    </Button>
+                    <div className="text-xs text-slate-500">
+                      Maksimal pairing mengikuti jumlah pertanyaan lokal dan target DNP tidak dipakai ganda.
+                    </div>
                   </div>
                 </div>
                 {paginatedDnpItems.length > 0 ? (
@@ -2161,7 +2290,7 @@ export function SelfAssessmentReviews({
                                       handleToggleDnpMatchCollapse(activeAnswer.id)
                                     }
                                   >
-                                    {isActiveDnpMatchCollapsed ? 'Buka Lagi' : 'Minimize'}
+                                    {isActiveDnpMatchCollapsed ? 'Open List' : 'Minimize'}
                                   </Button>
                                 </div>
                               </div>
