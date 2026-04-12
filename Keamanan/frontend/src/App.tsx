@@ -14,9 +14,14 @@ import {
   UserIcon,
 } from '@/components/icons';
 import { Sidebar } from '@/components/Sidebar';
+import { SupervisionProgramSection } from '@/components/SupervisionProgramSection';
 import {
+  createFacility,
   createPersonnel,
   fetchDashboard,
+  uploadPersonnelPhoto,
+  updateSupervisionStatus,
+  uploadSupervisionEvidence,
 } from '@/lib/api';
 import type {
   ActivityItem,
@@ -44,6 +49,13 @@ type NewPersonnelInput = {
   licenseNumber: string;
   address: string;
 };
+type NewFacilityInput = {
+  name: string;
+  zone: string;
+  status: FacilityItem['status'];
+  coveragePercent: string;
+  photo: File | null;
+};
 type RouteState = {
   routeId: RouteId;
   personSlug: string | null;
@@ -56,6 +68,14 @@ type PortalLink = {
   target: PortalTarget;
   iconKind: PortalIconKind;
   badgeClassName: string;
+};
+type RouteHeroContent = {
+  eyebrow: string;
+  title: string;
+  subtitle?: string;
+  chips?: string[];
+  showMeta?: boolean;
+  showResultCount?: boolean;
 };
 type SupervisionStatusTag = 'Sudah' | 'Belum';
 type AuditSummaryCard = {
@@ -96,7 +116,7 @@ type SupervisionHeatmapMarker = {
   slotIndex: number;
   level: SupervisionHeatmapLevel;
 };
-type SupervisionHeatmapCategory = 'Audit' | 'Inspeksi' | 'Pengujian';
+type SupervisionHeatmapCategory = 'Audit' | 'Inspeksi' | 'Pengunjungan';
 type SupervisionHeatmapRow = {
   id: string;
   category?: SupervisionHeatmapCategory;
@@ -132,20 +152,17 @@ type SupervisionBranchFilter = (typeof SUPERVISION_BRANCH_FILTERS)[number];
 type SupervisionHeatmapFilter = 'Semua' | SupervisionHeatmapCategory | SupervisionBranchFilter;
 
 const DASHBOARD_THEME_KEY = 'keamanan-dashboard-theme';
-const SUPERVISION_YEAR_OPTIONS = Array.from(
-  { length: new Date().getFullYear() + 25 - 1980 + 1 },
-  (_, index) => 1980 + index,
-);
+const SUPERVISION_YEAR_OPTIONS = Array.from({ length: 2030 - 2000 + 1 }, (_, index) => 2000 + index);
 const YEAR_TIMELINE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const TIMELINE_SLOT_LABELS = ['I', 'II', 'III', 'IV'] as const;
 const TIMELINE_SLOTS_PER_MONTH = 4;
 const TIMELINE_TOTAL_COLUMNS = YEAR_TIMELINE_MONTHS.length * TIMELINE_SLOTS_PER_MONTH;
 const HEATMAP_LEGEND_LEVELS: SupervisionHeatmapLevel[] = [1];
-const SUPERVISION_CATEGORY_FILTERS: SupervisionHeatmapCategory[] = ['Audit', 'Inspeksi', 'Pengujian'];
+const SUPERVISION_CATEGORY_FILTERS: SupervisionHeatmapCategory[] = ['Audit', 'Inspeksi', 'Pengunjungan'];
 const SUPERVISION_BRANCHES_BY_CATEGORY: Record<SupervisionHeatmapCategory, SupervisionBranchFilter[]> = {
   Audit: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Malang', 'KCP Sumenep'],
   Inspeksi: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Malang', 'KCP Sumenep', 'Penyedia Personel AVSEC'],
-  Pengujian: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'],
+  Pengunjungan: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'],
 };
 const BIMONTHLY_TEST_MONTHS = [1, 3, 5, 7, 9, 11] as const;
 const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
@@ -174,7 +191,7 @@ const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
   {
     kind: 'testing',
     id: 'testing',
-    title: 'Pengujian',
+    title: 'Pengunjungan',
     frequency: 'Tiap 2 bulan',
     done: 3,
     total: 6,
@@ -198,10 +215,10 @@ function createInspectionEntries(
 }
 
 function createTestingEntries(year: number): SupervisionScheduleEntry[] {
-  return SUPERVISION_BRANCHES_BY_CATEGORY.Pengujian.flatMap((branch) =>
+  return SUPERVISION_BRANCHES_BY_CATEGORY.Pengunjungan.flatMap((branch) =>
     BIMONTHLY_TEST_MONTHS.map((monthIndex) => ({
       id: `testing-${year}-${branch}-${monthIndex}`,
-      category: 'Pengujian' as const,
+      category: 'Pengunjungan' as const,
       branch,
       year,
       monthIndex,
@@ -252,7 +269,7 @@ function buildSupervisionHeatmapCells(markers: SupervisionHeatmapMarker[]) {
     const normalizedMonthIndex = Math.max(0, Math.min(YEAR_TIMELINE_MONTHS.length - 1, monthIndex));
     const normalizedSlotIndex = Math.max(0, Math.min(TIMELINE_SLOTS_PER_MONTH - 1, slotIndex));
     const targetIndex = normalizedMonthIndex * TIMELINE_SLOTS_PER_MONTH + normalizedSlotIndex;
-    cells[targetIndex] = level;
+    cells[targetIndex] = Math.max(cells[targetIndex], level) as SupervisionHeatmapLevel;
   });
 
   return cells;
@@ -338,14 +355,14 @@ const SUPERVISION_HEATMAP_ROWS: SupervisionHeatmapRow[] = [
   },
   {
     id: 'heatmap-testing-group',
-    category: 'Pengujian',
-    label: 'Pengujian',
+    category: 'Pengunjungan',
+    label: 'Pengunjungan',
     cells: buildSupervisionHeatmapCells([]),
     isGroup: true,
   },
   {
     id: 'heatmap-testing-surabaya',
-    category: 'Pengujian',
+    category: 'Pengunjungan',
     label: 'Cabang Surabaya',
     cells: buildSupervisionHeatmapCells([
       { monthIndex: 1, slotIndex: 0, level: 4 },
@@ -359,7 +376,7 @@ const SUPERVISION_HEATMAP_ROWS: SupervisionHeatmapRow[] = [
   },
   {
     id: 'heatmap-testing-banyuwangi',
-    category: 'Pengujian',
+    category: 'Pengunjungan',
     label: 'KCP Banyuwangi',
     cells: buildSupervisionHeatmapCells([
       { monthIndex: 1, slotIndex: 0, level: 4 },
@@ -373,7 +390,7 @@ const SUPERVISION_HEATMAP_ROWS: SupervisionHeatmapRow[] = [
   },
   {
     id: 'heatmap-testing-sumenep',
-    category: 'Pengujian',
+    category: 'Pengunjungan',
     label: 'KCP Sumenep',
     cells: buildSupervisionHeatmapCells([
       { monthIndex: 1, slotIndex: 0, level: 4 },
@@ -701,37 +718,12 @@ function buildPersonnelMetrics(items: LicenseItem[]): MetricCard[] {
   ];
 }
 
-function buildDocumentMetrics(items: DocumentItem[]): MetricCard[] {
-  const counts = countByStatus(items);
-
-  return [
-    {
-      label: 'Dokumen Terkontrol',
-      value: String(items.length),
-      delta: `${counts.Aktif ?? 0} aktif`,
-      description: 'Dokumen keamanan yang dikelola pada repository versi operasional saat ini.',
-    },
-    {
-      label: 'Dalam Review',
-      value: String(counts.Review ?? 0),
-      delta: 'Menunggu approval',
-      description: 'Dokumen yang sedang menjalani telaah unit, approval, atau verifikasi terakhir.',
-    },
-    {
-      label: 'Perlu Revisi',
-      value: String(counts.Revisi ?? 0),
-      delta: 'Update prioritas',
-      description: 'Dokumen yang harus diperbarui agar selaras dengan data operasi terbaru.',
-    },
-  ];
-}
-
 function getStatusTone(status: string) {
   if (['Optimal', 'Valid', 'Aktif', 'Terlaksana'].includes(status)) {
     return 'good';
   }
 
-  if (['Pelatihan', 'Review', 'Belum Terlaksana'].includes(status)) {
+  if (['Pelatihan', 'Review', 'Terjadwal'].includes(status)) {
     return 'neutral';
   }
 
@@ -745,28 +737,30 @@ function getRouteHero(
   visibleLicenses: LicenseItem[],
   visibleTests: TestItem[],
   visibleDocuments: DocumentItem[]
-) {
+): RouteHeroContent {
   switch (routeId) {
     case 'fasilitas-keamanan':
       return {
         eyebrow: 'Fasilitas Keamanan',
         title: 'Status perangkat lapangan keamanan.',
         subtitle: `Pantau ${visibleFacilities.length} fasilitas berupa CCTV, access gate, X-Ray, dan perimeter secara terpisah.`,
-        chips: ['CCTV', 'Access Gate', 'X-Ray', 'Perimeter'],
+        chips: [],
+        showResultCount: false,
       };
     case 'personil-keamanan':
       return {
         eyebrow: 'Personil Keamanan',
         title: 'Roster personel dan kesiapan shift.',
-        subtitle: `Data ${visibleLicenses.length} personel keamanan untuk memastikan coverage lisensi dan kesiapan operasional.`,
-        chips: ['Roster', 'Shift', 'Kesiapan'],
+        subtitle: '',
+        chips: [],
+        showMeta: false,
       };
     case 'tes-keamanan':
       return {
         eyebrow: 'Program Pengawasan Keamanan',
         title: 'Agenda pengawasan dan tindak lanjut operasional.',
-        subtitle: `Kelola ${visibleTests.length} agenda audit, inspeksi, dan test lengkap dengan evidence dan status pelaksanaan.`,
-        chips: ['Audit', 'Inspeksi', 'Test'],
+        subtitle: `Kelola ${visibleTests.length} agenda audit, inspeksi, dan pengunjungan lengkap dengan evidence dan status pelaksanaan.`,
+        chips: ['Audit', 'Inspeksi', 'Pengunjungan'],
       };
     case 'dokumen':
       return {
@@ -790,6 +784,15 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`status-badge is-${getStatusTone(status)}`}>{status}</span>;
 }
 
+function getPersonInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
 function EmptyRows({ copy }: { copy: string }) {
   return <div className="empty-inline">{copy}</div>;
 }
@@ -803,7 +806,7 @@ function getSupervisionCategoryBadgeClass(category: TestItem['category']) {
     return 'summary-category is-inspeksi';
   }
 
-  return 'summary-category is-tes';
+  return 'summary-category is-pengunjungan';
 }
 
 function PortalLinkIcon({ kind, className }: { kind: PortalIconKind; className?: string }) {
@@ -1081,10 +1084,55 @@ export default function App() {
     });
   }
 
-  async function handleAddPerson(input: NewPersonnelInput) {
-    await createPersonnel(input);
+  async function refreshDashboardData() {
     const nextDashboard = await fetchDashboard();
     setDashboard(nextDashboard);
+    return nextDashboard;
+  }
+
+  async function handleAddPerson(input: NewPersonnelInput) {
+    await createPersonnel(input);
+    await refreshDashboardData();
+  }
+
+  async function handleUploadPersonnelPhoto(slug: string, photo: File) {
+    await uploadPersonnelPhoto(slug, photo);
+    await refreshDashboardData();
+  }
+
+  async function handleAddFacility(input: NewFacilityInput) {
+    await createFacility({
+      name: input.name,
+      zone: input.zone,
+      status: input.status,
+      coveragePercent: Number.parseInt(input.coveragePercent, 10),
+      photo: input.photo,
+    });
+    await refreshDashboardData();
+  }
+
+  async function handleUpdateSupervisionActivity(input: {
+    activityId: string;
+    status: 'Terlaksana' | 'Perlu Tindak Lanjut';
+    completedAt?: string | null;
+    completionNote?: string | null;
+    inspectorNames?: string[] | null;
+  }) {
+    await updateSupervisionStatus(input.activityId, {
+      status: input.status,
+      completedAt: input.completedAt,
+      completionNote: input.completionNote,
+      inspectorNames: input.inspectorNames,
+    });
+    await refreshDashboardData();
+  }
+
+  async function handleUploadSupervisionActivityEvidence(activityId: string, files: File[]) {
+    for (const file of files) {
+      await uploadSupervisionEvidence(activityId, file);
+    }
+
+    await refreshDashboardData();
   }
 
   if (isLoading) {
@@ -1186,8 +1234,6 @@ export default function App() {
   );
 
   const facilityMetrics = buildFacilityMetrics(dashboard.facilities);
-  const personnelMetrics = buildPersonnelMetrics(dashboard.licenses);
-  const documentMetrics = buildDocumentMetrics(dashboard.documents);
   const topbarTitle =
     activeId === 'dashboard'
       ? 'Dashboard'
@@ -1337,16 +1383,15 @@ export default function App() {
           <DashboardPage
             dashboard={dashboard}
             generatedAt={generatedAt}
-            visibleMetrics={visibleMetrics}
+            searchQuery={deferredSearch}
             visibleFacilities={visibleFacilities}
+            visibleLicenses={visibleLicenses}
             visibleTests={visibleTests}
             visibleDocuments={visibleDocuments}
-            visibleActivities={visibleActivities}
-            visibleSpotlight={visibleSpotlight}
           />
         ) : activeId === 'personil-keamanan' && selectedPerson ? (
           <PersonnelDetailHero person={selectedPerson} onBack={() => handleSelect('personil-keamanan')} />
-        ) : activeId === 'tes-keamanan' ? null : (
+        ) : activeId === 'tes-keamanan' || activeId === 'personil-keamanan' || activeId === 'dokumen' ? null : (
           <RouteHero
             eyebrow={routeHero.eyebrow}
             title={routeHero.title}
@@ -1354,6 +1399,8 @@ export default function App() {
             generatedAt={generatedAt}
             chips={routeHero.chips}
             resultCount={resultCount}
+            showMeta={routeHero.showMeta}
+            showResultCount={routeHero.showResultCount}
           />
         )}
 
@@ -1364,51 +1411,41 @@ export default function App() {
                 <MetricCard key={metric.label} metric={metric} />
               ))}
             </section>
-            <FacilitiesSection facilities={visibleFacilities} />
+            <FacilitiesSection facilities={visibleFacilities} onAddFacility={handleAddFacility} />
           </>
         ) : null}
 
         {activeId === 'personil-keamanan' && !selectedPerson ? (
-          <>
-            <section className="metrics-grid">
-              {personnelMetrics.map((metric) => (
-              <MetricCard key={metric.label} metric={metric} />
-              ))}
-            </section>
-            <PersonnelSection
-              eyebrow="Personil Keamanan"
-              title="Roster personel dan lisensi"
-              subtitle="Pastikan ketersediaan lisensi kritis dan coverage setiap shift operasional."
-              licenses={visibleLicenses}
-              onAddPerson={handleAddPerson}
-              onSelectPerson={handleSelectPerson}
-            />
-          </>
+          <PersonnelSection
+            eyebrow="Personil Keamanan"
+            title="Roster personel dan lisensi"
+            subtitle="Pastikan ketersediaan lisensi kritis dan coverage setiap shift operasional."
+            licenses={visibleLicenses}
+            onAddPerson={handleAddPerson}
+            onSelectPerson={handleSelectPerson}
+          />
         ) : null}
 
         {activeId === 'personil-keamanan' && selectedPerson ? (
           <PersonnelDetailPage
             person={selectedPerson}
             certificates={selectedCertificates}
+            onUploadPhoto={(file) => handleUploadPersonnelPhoto(selectedPerson.slug, file)}
             onUploadCertificate={(file) => handleCertificateUpload(selectedPerson.slug, file)}
             onDeleteCertificate={(certificateId) => handleCertificateDelete(selectedPerson.slug, certificateId)}
           />
         ) : null}
 
         {activeId === 'tes-keamanan' ? (
-          <TestsSection />
+          <SupervisionProgramSection
+            tests={dashboard.tests}
+            searchQuery={deferredSearch}
+            onUpdateActivity={handleUpdateSupervisionActivity}
+            onUploadEvidence={handleUploadSupervisionActivityEvidence}
+          />
         ) : null}
 
-        {activeId === 'dokumen' ? (
-          <>
-            <section className="metrics-grid">
-              {documentMetrics.map((metric) => (
-                <MetricCard key={metric.label} metric={metric} />
-              ))}
-            </section>
-            <DocumentsSection documents={visibleDocuments} />
-          </>
-        ) : null}
+        {activeId === 'dokumen' ? <DocumentsSection documents={visibleDocuments} generatedAt={generatedAt} /> : null}
       </main>
     </div>
   );
@@ -1417,266 +1454,293 @@ export default function App() {
 function DashboardPage({
   dashboard,
   generatedAt,
-  visibleMetrics,
+  searchQuery,
   visibleFacilities,
+  visibleLicenses,
   visibleTests,
   visibleDocuments,
-  visibleActivities,
-  visibleSpotlight,
 }: {
   dashboard: DashboardData;
   generatedAt: string;
-  visibleMetrics: MetricCard[];
+  searchQuery: string;
   visibleFacilities: FacilityItem[];
+  visibleLicenses: LicenseItem[];
   visibleTests: TestItem[];
   visibleDocuments: DocumentItem[];
-  visibleActivities: ActivityItem[];
-  visibleSpotlight: SpotlightItem[];
 }) {
-  const [activeCategory, setActiveCategory] = useState<'Semua' | 'Fasilitas' | 'Tes' | 'Dokumen'>('Semua');
-  const [showStatistics, setShowStatistics] = useState(true);
-  const overviewRows = [
-    ...visibleFacilities.map((item) => ({
-      id: `facility-${item.name}`,
-      category: 'Fasilitas',
-      label: item.name,
-      context: item.zone,
-      detail: `Coverage ${item.coverage}`,
-      status: item.status,
-      updatedAt: item.updatedAt,
-    })),
-    ...visibleTests.map((item) => ({
-      id: `test-${item.title}`,
-      category: 'Tes',
-      label: `${item.category} - ${item.title}`,
-      context: item.owner,
-      detail: `${item.date} · ${item.score}`,
-      status: item.status,
-      updatedAt: item.completedAt ?? item.date,
-    })),
-    ...visibleDocuments.map((item) => ({
-      id: `document-${item.title}`,
-      category: 'Dokumen',
-      label: item.title,
-      context: item.owner,
-      detail: item.version,
-      status: item.status,
-      updatedAt: item.updatedAt,
-    })),
-  ];
-  const visibleRows =
-    activeCategory === 'Semua' ? overviewRows : overviewRows.filter((row) => row.category === activeCategory);
-  const categoryFilters = ['Semua', 'Fasilitas', 'Tes', 'Dokumen'] as const;
-  const quickActions = dashboard.quickActions.slice(-2);
+  const facilityOptimalCount = visibleFacilities.filter((item) => item.status === 'Optimal').length;
+  const facilityNeedsServiceCount = visibleFacilities.filter((item) => item.status === 'Perlu Servis').length;
+  const facilityScheduledCount = visibleFacilities.filter((item) => item.status === 'Terjadwal').length;
+
+  const validPersonnelCount = visibleLicenses.filter((item) => item.status === 'Valid').length;
+  const renewalPersonnelCount = visibleLicenses.filter((item) => item.status === 'Perpanjangan').length;
+  const trainingPersonnelCount = visibleLicenses.filter((item) => item.status === 'Pelatihan').length;
+
+  const completedSupervisionCount = visibleTests.filter((item) => item.status === 'Terlaksana').length;
+  const scheduledSupervisionCount = visibleTests.filter((item) => item.status === 'Terjadwal').length;
+  const followUpSupervisionCount = visibleTests.filter((item) => item.status === 'Perlu Tindak Lanjut').length;
+  const evidenceUploadCount = visibleTests.reduce((total, item) => total + item.evidenceFiles.length, 0);
+
+  const activeDocumentCount = visibleDocuments.filter((item) => item.status === 'Aktif').length;
+  const reviewDocumentCount = visibleDocuments.filter((item) => item.status === 'Review').length;
+  const revisionDocumentCount = visibleDocuments.filter((item) => item.status === 'Revisi').length;
+  const evidenceDocumentCount = visibleDocuments.filter((item) => item.version === 'Evidence Upload').length;
+
+  const facilityPreview = visibleFacilities.slice(0, 3);
+  const personnelPreview = visibleLicenses.slice(0, 3);
+  const supervisionPreview = visibleTests.slice(0, 3);
+  const documentPreview = visibleDocuments.slice(0, 3);
+  const isSearching = searchQuery.trim().length > 0;
+  const totalOverviewItems =
+    visibleFacilities.length + visibleLicenses.length + visibleTests.length + visibleDocuments.length;
 
   return (
     <>
-      <section className="panel dashboard-header-panel">
+      <section className="panel dashboard-overview-hero">
         <div className="dashboard-header-copy">
           <div>
             <p className="eyebrow">Dashboard</p>
-            <h2 className="dashboard-page-title">Ringkasan operasional keamanan</h2>
+            <h2 className="dashboard-page-title">Perum LPPNPI Cabang Surabaya</h2>
             <p className="panel-copy">
-              {dashboard.hero.subtitle}
+              Pantau kondisi terbaru fasilitas keamanan, personil keamanan, program pengawasan keamanan, dan dokumen
+              dari satu halaman ringkas sebelum masuk ke fitur detailnya.
             </p>
           </div>
           <div className="dashboard-header-meta">
             <span className="data-chip">Sinkron {generatedAt}</span>
-            <span className="data-chip">{overviewRows.length} item operasional</span>
-            <span className="data-chip">{dashboard.organization.branch}</span>
+            <span className="data-chip">4 fitur utama</span>
           </div>
         </div>
+        {isSearching ? (
+          <div className="dashboard-search-note">
+            Menampilkan overview yang cocok dengan pencarian <strong>{searchQuery}</strong>.
+          </div>
+        ) : null}
       </section>
 
-      <section className="panel dashboard-toolbar-panel">
-        <div className="dashboard-toolbar">
-          <div className="dashboard-toolbar-group">
-            <button type="button" className="dashboard-toolbar-button is-active">
-              Table View
-            </button>
-            {categoryFilters.map((filter) => (
-              <button
-                key={filter}
-                type="button"
-                className={`dashboard-toolbar-button ${activeCategory === filter ? 'is-active' : ''}`}
-                onClick={() => setActiveCategory(filter)}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
-
-          <div className="dashboard-toolbar-group dashboard-toolbar-group--end">
-            <div className="dashboard-toolbar-toggle-row">
-              <span className="dashboard-toggle-label">Statistik</span>
-              <button
-                type="button"
-                className={`dashboard-toggle ${showStatistics ? 'is-on' : ''}`}
-                onClick={() => setShowStatistics((current) => !current)}
-                aria-pressed={showStatistics}
-              >
-                <span className="dashboard-toggle-thumb" />
-              </button>
-            </div>
-
-            <div className="dashboard-toolbar-actions">
-              {quickActions.map((action) => (
-                <button
-                  key={action.label}
-                  type="button"
-                  className={`dashboard-toolbar-button ${action.variant === 'primary' ? 'is-primary' : ''}`}
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {showStatistics ? (
-        <section className="dashboard-stat-grid">
-          {visibleMetrics.map((metric) => (
-            <MetricCard key={metric.label} metric={metric} />
-          ))}
-        </section>
-      ) : null}
-
-      <section className="panel dashboard-table-panel">
-        <div className="panel-head panel-head--table">
-          <button type="button" className="dashboard-toolbar-button is-active">
-            Operasional Hari Ini
-          </button>
-          <div>
-            <p className="eyebrow">Daftar Utama</p>
-            <h2 className="panel-title">Tabel monitoring keamanan</h2>
-            <p className="panel-copy">Fasilitas, tes, dan dokumen prioritas ditampilkan dalam satu tabel utama.</p>
-          </div>
-          <div className="dashboard-inline-meta">
-            <span className="data-chip">{dashboard.alert.title}</span>
-            <span className="data-chip">{dashboard.alert.message}</span>
-          </div>
-        </div>
-
-        <div className="table-shell dashboard-table-desktop">
-          {visibleRows.length ? (
-            <table className="data-table dashboard-summary-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Kategori</th>
-                  <th>Area / PIC</th>
-                  <th>Detail</th>
-                  <th>Status</th>
-                  <th>Pembaruan</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <strong>{row.label}</strong>
-                    </td>
-                    <td>
-                      <span className={`summary-category is-${row.category.toLowerCase()}`}>
-                        <span className="summary-category-dot" />
-                        {row.category}
-                      </span>
-                    </td>
-                    <td>{row.context}</td>
-                    <td>{row.detail}</td>
-                    <td>
-                      <StatusBadge status={row.status} />
-                    </td>
-                    <td>{row.updatedAt}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <EmptyRows copy="Tidak ada ringkasan operasional yang cocok dengan pencarian." />
-          )}
-        </div>
-
-        <div className="dashboard-summary-mobile-list">
-          {visibleRows.length ? (
-            visibleRows.map((row) => (
-              <article key={row.id} className="dashboard-summary-mobile-card">
-                <div className="dashboard-summary-mobile-top">
-                  <span className={`summary-category is-${row.category.toLowerCase()}`}>
-                    <span className="summary-category-dot" />
-                    {row.category}
-                  </span>
-                  <StatusBadge status={row.status} />
-                </div>
-
-                <div className="dashboard-summary-mobile-copy">
-                  <strong>{row.label}</strong>
-                  <p>{row.detail}</p>
-                </div>
-
-                <dl className="dashboard-summary-mobile-meta">
-                  <div>
-                    <dt>Area / PIC</dt>
-                    <dd>{row.context}</dd>
-                  </div>
-                  <div>
-                    <dt>Pembaruan</dt>
-                    <dd>{row.updatedAt}</dd>
-                  </div>
-                </dl>
-              </article>
-            ))
-          ) : (
-            <EmptyRows copy="Tidak ada ringkasan operasional yang cocok dengan pencarian." />
-          )}
-        </div>
-      </section>
-
-      <section className="dashboard-secondary-grid">
-        <article className="panel dashboard-feed-panel">
-          <div className="panel-head">
+      <section className="dashboard-feature-grid">
+        <article className="panel dashboard-module-card">
+          <div className="dashboard-module-head">
             <div>
-              <p className="eyebrow">Aktivitas</p>
-              <h2 className="panel-title">Update terakhir</h2>
+              <p className="eyebrow">Fasilitas Keamanan</p>
+              <h3 className="dashboard-module-title">Kondisi alat lapangan</h3>
+            </div>
+            <span className="data-chip">{visibleFacilities.length} alat</span>
+          </div>
+
+          <div className="dashboard-module-highlight">
+            <strong>{facilityOptimalCount}</strong>
+            <span>alat dalam status optimal</span>
+            <p>
+              {facilityNeedsServiceCount > 0
+                ? `${facilityNeedsServiceCount} alat perlu servis dan ${facilityScheduledCount} masih terjadwal untuk penanganan.`
+                : 'Belum ada alat yang masuk status perlu servis pada data yang sedang ditampilkan.'}
+            </p>
+          </div>
+
+          <div className="dashboard-module-stat-grid">
+            <div className="dashboard-module-stat">
+              <span>Optimal</span>
+              <strong>{facilityOptimalCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Perlu Servis</span>
+              <strong>{facilityNeedsServiceCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Terjadwal</span>
+              <strong>{facilityScheduledCount}</strong>
             </div>
           </div>
 
-          <div className="dashboard-feed-list">
-            {visibleActivities.length ? (
-              visibleActivities.slice(0, 4).map((item) => (
-                <div key={item.title} className="dashboard-feed-item">
-                  <strong>{item.title}</strong>
-                  <p>{item.detail}</p>
-                  <small>{item.timestamp}</small>
+          <div className="dashboard-module-list">
+            {facilityPreview.length ? (
+              facilityPreview.map((item) => (
+                <div key={item.id} className="dashboard-module-item">
+                  <div className="dashboard-module-item-copy">
+                    <strong>
+                      {item.photoUrl ? (
+                        <a href={item.photoUrl} target="_blank" rel="noreferrer" className="facility-name-link">
+                          {item.name}
+                        </a>
+                      ) : (
+                        item.name
+                      )}
+                    </strong>
+                    <p>
+                      {item.zone} · Coverage {item.coverage}
+                    </p>
+                  </div>
+                  <div className="dashboard-module-item-meta">
+                    <StatusBadge status={item.status} />
+                  </div>
                 </div>
               ))
             ) : (
-              <EmptyRows copy="Tidak ada aktivitas yang cocok dengan pencarian." />
+              <EmptyRows copy="Belum ada fasilitas yang cocok dengan pencarian." />
             )}
           </div>
         </article>
 
-        <article className="panel dashboard-feed-panel">
-          <div className="panel-head">
+        <article className="panel dashboard-module-card">
+          <div className="dashboard-module-head">
             <div>
-              <p className="eyebrow">Prioritas</p>
-              <h2 className="panel-title">Snapshot singkat</h2>
+              <p className="eyebrow">Personil Keamanan</p>
+              <h3 className="dashboard-module-title">Status lisensi personel</h3>
+            </div>
+            <span className="data-chip">{visibleLicenses.length} personel</span>
+          </div>
+
+          <div className="dashboard-module-highlight">
+            <strong>{validPersonnelCount}</strong>
+            <span>personel dengan lisensi valid</span>
+            <p>
+              {renewalPersonnelCount + trainingPersonnelCount > 0
+                ? `${renewalPersonnelCount} perlu perpanjangan dan ${trainingPersonnelCount} masuk status pelatihan.`
+                : 'Tidak ada personel yang sedang menunggu perpanjangan atau pelatihan pada data ini.'}
+            </p>
+          </div>
+
+          <div className="dashboard-module-stat-grid">
+            <div className="dashboard-module-stat">
+              <span>Valid</span>
+              <strong>{validPersonnelCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Perpanjangan</span>
+              <strong>{renewalPersonnelCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Pelatihan</span>
+              <strong>{trainingPersonnelCount}</strong>
             </div>
           </div>
 
-          <div className="dashboard-spotlight-list">
-            {visibleSpotlight.slice(0, 3).map((item) => (
-              <div key={item.label} className="dashboard-spotlight-item">
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-                <p>{item.note}</p>
-              </div>
-            ))}
-            <div className="dashboard-priority-note">
-              <span className="eyebrow">Catatan Prioritas</span>
-              <strong>{dashboard.alert.hint}</strong>
+          <div className="dashboard-module-list">
+            {personnelPreview.length ? (
+              personnelPreview.map((item) => (
+                <div key={item.slug} className="dashboard-module-item">
+                  <div className="dashboard-module-item-copy">
+                    <strong>{item.name}</strong>
+                    <p>{item.location}</p>
+                  </div>
+                  <div className="dashboard-module-item-meta">
+                    <StatusBadge status={item.status} />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <EmptyRows copy="Belum ada personel yang cocok dengan pencarian." />
+            )}
+          </div>
+        </article>
+
+        <article className="panel dashboard-module-card">
+          <div className="dashboard-module-head">
+            <div>
+              <p className="eyebrow">Program Pengawasan</p>
+              <h3 className="dashboard-module-title">Pelaksanaan agenda keamanan</h3>
             </div>
+            <span className="data-chip">{visibleTests.length} agenda</span>
+          </div>
+
+          <div className="dashboard-module-highlight">
+            <strong>{completedSupervisionCount}</strong>
+            <span>agenda sudah terlaksana</span>
+            <p>
+              {scheduledSupervisionCount} masih terjadwal, {followUpSupervisionCount} perlu tindak lanjut, dan{' '}
+              {evidenceUploadCount} file evidence sudah terhubung.
+            </p>
+          </div>
+
+          <div className="dashboard-module-stat-grid">
+            <div className="dashboard-module-stat">
+              <span>Terlaksana</span>
+              <strong>{completedSupervisionCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Terjadwal</span>
+              <strong>{scheduledSupervisionCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Tindak Lanjut</span>
+              <strong>{followUpSupervisionCount}</strong>
+            </div>
+          </div>
+
+          <div className="dashboard-module-list">
+            {supervisionPreview.length ? (
+              supervisionPreview.map((item) => (
+                <div key={item.id} className="dashboard-module-item">
+                  <div className="dashboard-module-item-copy">
+                    <strong>{item.title}</strong>
+                    <p>
+                      {item.location ?? item.owner} · {item.completedAt ?? item.date}
+                    </p>
+                  </div>
+                  <div className="dashboard-module-item-meta">
+                    <span className={getSupervisionCategoryBadgeClass(item.category)}>{item.category}</span>
+                    <StatusBadge status={item.status} />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <EmptyRows copy="Belum ada agenda pengawasan yang cocok dengan pencarian." />
+            )}
+          </div>
+        </article>
+
+        <article className="panel dashboard-module-card">
+          <div className="dashboard-module-head">
+            <div>
+              <p className="eyebrow">Dokumen</p>
+              <h3 className="dashboard-module-title">Kontrol arsip dan evidence</h3>
+            </div>
+            <span className="data-chip">{visibleDocuments.length} dokumen</span>
+          </div>
+
+          <div className="dashboard-module-highlight">
+            <strong>{activeDocumentCount}</strong>
+            <span>dokumen berstatus aktif</span>
+            <p>
+              {evidenceDocumentCount} dokumen berasal dari upload evidence, {reviewDocumentCount} review, dan{' '}
+              {revisionDocumentCount} revisi.
+            </p>
+          </div>
+
+          <div className="dashboard-module-stat-grid">
+            <div className="dashboard-module-stat">
+              <span>Aktif</span>
+              <strong>{activeDocumentCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Review</span>
+              <strong>{reviewDocumentCount}</strong>
+            </div>
+            <div className="dashboard-module-stat">
+              <span>Revisi</span>
+              <strong>{revisionDocumentCount}</strong>
+            </div>
+          </div>
+
+          <div className="dashboard-module-list">
+            {documentPreview.length ? (
+              documentPreview.map((item) => (
+                <div key={item.id} className="dashboard-module-item">
+                  <div className="dashboard-module-item-copy">
+                    <strong>{item.title}</strong>
+                    <p>
+                      {item.owner} · {item.version}
+                    </p>
+                  </div>
+                  <div className="dashboard-module-item-meta">
+                    <StatusBadge status={item.status} />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <EmptyRows copy="Belum ada dokumen yang cocok dengan pencarian." />
+            )}
           </div>
         </article>
       </section>
@@ -1691,13 +1755,17 @@ function RouteHero({
   generatedAt,
   chips,
   resultCount,
+  showMeta = true,
+  showResultCount = true,
 }: {
   eyebrow: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   generatedAt: string;
-  chips: string[];
+  chips?: string[];
   resultCount: number;
+  showMeta?: boolean;
+  showResultCount?: boolean;
 }) {
   return (
     <section className="hero">
@@ -1706,17 +1774,19 @@ function RouteHero({
         <div>
           <p className="eyebrow">{eyebrow}</p>
           <h2 className="hero-title">{title}</h2>
-          <p className="hero-copy">{subtitle}</p>
+          {subtitle ? <p className="hero-copy">{subtitle}</p> : null}
         </div>
-        <div className="hero-actions">
-          <span className="data-chip">Sinkron {generatedAt}</span>
-          <span className="data-chip">{resultCount} hasil cocok</span>
-          {chips.slice(0, 2).map((chip) => (
-            <span key={chip} className="data-chip">
-              {chip}
-            </span>
-          ))}
-        </div>
+        {showMeta ? (
+          <div className="hero-actions">
+            <span className="data-chip">Sinkron {generatedAt}</span>
+            {showResultCount !== false ? <span className="data-chip">{resultCount} hasil cocok</span> : null}
+            {(chips ?? []).slice(0, 2).map((chip) => (
+              <span key={chip} className="data-chip">
+                {chip}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -1772,7 +1842,121 @@ function ActivityPanel({
   );
 }
 
-function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
+function FacilitiesSection({
+  facilities,
+  onAddFacility,
+}: {
+  facilities: FacilityItem[];
+  onAddFacility: (input: NewFacilityInput) => Promise<void>;
+}) {
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [photoPreview, setPhotoPreview] = useState('');
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const [formState, setFormState] = useState<NewFacilityInput>({
+    name: '',
+    zone: '',
+    status: 'Optimal',
+    coveragePercent: '',
+    photo: null,
+  });
+
+  useEffect(() => {
+    if (!formState.photo) {
+      setPhotoPreview('');
+      return;
+    }
+
+    const nextPreview = URL.createObjectURL(formState.photo);
+    setPhotoPreview(nextPreview);
+
+    return () => {
+      URL.revokeObjectURL(nextPreview);
+    };
+  }, [formState.photo]);
+
+  function handleFormChange<Key extends keyof NewFacilityInput>(key: Key, value: NewFacilityInput[Key]) {
+    setFormState((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
+  function closeModal() {
+    setIsAddOpen(false);
+    setIsSubmitting(false);
+    setSubmitError('');
+    setFormState({
+      name: '',
+      zone: '',
+      status: 'Optimal',
+      coveragePercent: '',
+      photo: null,
+    });
+    if (photoInputRef.current) {
+      photoInputRef.current.value = '';
+    }
+  }
+
+  function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) {
+      return;
+    }
+
+    setSubmitError('');
+    setFormState((current) => ({
+      ...current,
+      photo: file,
+    }));
+  }
+
+  function handleRemovePhoto() {
+    setFormState((current) => ({
+      ...current,
+      photo: null,
+    }));
+    if (photoInputRef.current) {
+      photoInputRef.current.value = '';
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const name = formState.name.trim();
+    const zone = formState.zone.trim();
+    const coveragePercent = Number.parseInt(formState.coveragePercent, 10);
+
+    if (!name || !zone) {
+      setSubmitError('Nama alat dan zona wajib diisi.');
+      return;
+    }
+
+    if (!Number.isFinite(coveragePercent) || Number.isNaN(coveragePercent) || coveragePercent < 0 || coveragePercent > 100) {
+      setSubmitError('Coverage harus diisi angka 0 sampai 100.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setSubmitError('');
+      await onAddFacility({
+        name,
+        zone,
+        status: formState.status,
+        coveragePercent: String(coveragePercent),
+        photo: formState.photo,
+      });
+      closeModal();
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Gagal menambahkan alat keamanan.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <section className="section-grid">
       <article className="panel">
@@ -1782,11 +1966,23 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
             <h2 className="panel-title">Status perangkat lapangan</h2>
             <p className="panel-copy">Pantau cakupan perangkat dan jadwal servis dari satu tabel.</p>
           </div>
+          <div className="panel-head-actions">
+            <button type="button" className="action-pill is-primary" onClick={() => setIsAddOpen(true)}>
+              Tambah Alat
+            </button>
+          </div>
         </div>
 
         <div className="table-shell records-table-desktop">
           {facilities.length ? (
-            <table className="data-table">
+            <table className="data-table facility-table">
+              <colgroup>
+                <col className="facility-table-col facility-table-col--name" />
+                <col className="facility-table-col facility-table-col--zone" />
+                <col className="facility-table-col facility-table-col--status" />
+                <col className="facility-table-col facility-table-col--coverage" />
+                <col className="facility-table-col facility-table-col--updated" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Fasilitas</th>
@@ -1798,8 +1994,16 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
               </thead>
               <tbody>
                 {facilities.map((item) => (
-                  <tr key={item.name}>
-                    <td>{item.name}</td>
+                  <tr key={item.id}>
+                    <td>
+                      {item.photoUrl ? (
+                        <a href={item.photoUrl} target="_blank" rel="noreferrer" className="facility-name-link">
+                          {item.name}
+                        </a>
+                      ) : (
+                        <span className="facility-name-text">{item.name}</span>
+                      )}
+                    </td>
                     <td>{item.zone}</td>
                     <td>
                       <StatusBadge status={item.status} />
@@ -1818,10 +2022,18 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
         <div className="records-mobile-list">
           {facilities.length ? (
             facilities.map((item) => (
-              <article key={item.name} className="records-mobile-card">
+              <article key={item.id} className="records-mobile-card">
                 <div className="records-mobile-top">
                   <div className="records-mobile-copy">
-                    <strong>{item.name}</strong>
+                    <strong>
+                      {item.photoUrl ? (
+                        <a href={item.photoUrl} target="_blank" rel="noreferrer" className="facility-name-link">
+                          {item.name}
+                        </a>
+                      ) : (
+                        item.name
+                      )}
+                    </strong>
                     <p>{item.zone}</p>
                   </div>
                   <StatusBadge status={item.status} />
@@ -1863,6 +2075,126 @@ function FacilitiesSection({ facilities }: { facilities: FacilityItem[] }) {
           />
         </div>
       </article>
+
+      {isAddOpen ? (
+        <div className="personnel-modal-overlay" onClick={closeModal}>
+          <div
+            className="personnel-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="facility-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">Tambah Fasilitas</p>
+                <h2 id="facility-modal-title" className="panel-title">
+                  Tambah Alat Keamanan
+                </h2>
+                <p className="panel-copy">Isi data alat agar langsung masuk ke tabel fasilitas keamanan.</p>
+              </div>
+              <button type="button" className="action-pill is-ghost" onClick={closeModal}>
+                Tutup
+              </button>
+            </div>
+
+            <form className="personnel-form" onSubmit={handleSubmit}>
+              <div className="personnel-form-grid">
+                <label className="personnel-field">
+                  <span>Nama Alat</span>
+                  <input
+                    className="personnel-form-input"
+                    type="text"
+                    value={formState.name}
+                    onChange={(event) => handleFormChange('name', event.target.value)}
+                    placeholder="Contoh: CCTV Corridor Timur"
+                    required
+                  />
+                </label>
+
+                <label className="personnel-field">
+                  <span>Zona</span>
+                  <input
+                    className="personnel-form-input"
+                    type="text"
+                    value={formState.zone}
+                    onChange={(event) => handleFormChange('zone', event.target.value)}
+                    placeholder="Contoh: Zona Airside"
+                    required
+                  />
+                </label>
+
+                <label className="personnel-field">
+                  <span>Status</span>
+                  <select
+                    className="personnel-form-input"
+                    value={formState.status}
+                    onChange={(event) => handleFormChange('status', event.target.value as FacilityItem['status'])}
+                  >
+                    <option value="Optimal">Optimal</option>
+                    <option value="Perlu Servis">Perlu Servis</option>
+                    <option value="Terjadwal">Terjadwal</option>
+                  </select>
+                </label>
+
+                <label className="personnel-field">
+                  <span>Coverage (%)</span>
+                  <input
+                    className="personnel-form-input"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={formState.coveragePercent}
+                    onChange={(event) => handleFormChange('coveragePercent', event.target.value)}
+                    placeholder="0 - 100"
+                    required
+                  />
+                </label>
+
+                <div className="personnel-field personnel-field--full">
+                  <span>Foto Alat</span>
+                  <div className="photo-upload-card facility-photo-upload-card">
+                    <div className="photo-preview-frame facility-photo-preview-frame">
+                      {photoPreview ? (
+                        <img src={photoPreview} alt="Preview foto alat keamanan" className="photo-preview-image" />
+                      ) : (
+                        <div className="photo-preview-placeholder">
+                          <strong>+</strong>
+                          <span>Belum ada foto alat dipilih</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="facility-photo-actions">
+                      <label className="photo-upload-button">
+                        Pilih Foto
+                        <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoChange} />
+                      </label>
+                      {formState.photo ? (
+                        <button type="button" className="action-pill is-ghost" onClick={handleRemovePhoto}>
+                          Hapus Foto
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {submitError ? <div className="personnel-form-error">{submitError}</div> : null}
+
+              <div className="personnel-form-actions">
+                <button type="button" className="action-pill is-ghost" onClick={closeModal} disabled={isSubmitting}>
+                  Batal
+                </button>
+                <button type="submit" className="action-pill is-primary" disabled={isSubmitting}>
+                  {isSubmitting ? 'Menyimpan...' : 'Simpan Alat'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -2190,21 +2522,30 @@ function PersonnelDetailHero({
 function PersonnelDetailPage({
   person,
   certificates,
+  onUploadPhoto,
   onUploadCertificate,
   onDeleteCertificate,
 }: {
   person: LicenseItem;
   certificates: CertificateUpload[];
+  onUploadPhoto: (file: File) => Promise<void>;
   onUploadCertificate: (file: File) => void;
   onDeleteCertificate: (certificateId: string) => void;
 }) {
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(person.photoUrl ?? null);
+  const [photoError, setPhotoError] = useState('');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<{
     key: number;
     title: string;
     message: string;
   } | null>(null);
   const uploadSuccessTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setPhotoPreview(person.photoUrl ?? null);
+    setPhotoError('');
+  }, [person.photoUrl, person.slug]);
 
   useEffect(() => {
     return () => {
@@ -2231,18 +2572,36 @@ function PersonnelDetailPage({
     }, 2200);
   }
 
-  function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
+  async function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setPhotoPreview(typeof reader.result === 'string' ? reader.result : null);
+    const nextPreview = await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+
+    if (nextPreview) {
+      setPhotoPreview(nextPreview);
+    }
+
+    setPhotoError('');
+    setIsUploadingPhoto(true);
+
+    try {
+      await onUploadPhoto(file);
       triggerUploadSuccess('Upload foto berhasil', 'Foto personel sudah diperbarui.');
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      setPhotoPreview(person.photoUrl ?? null);
+      setPhotoError(error instanceof Error ? error.message : 'Gagal mengunggah foto personel.');
+    } finally {
+      setIsUploadingPhoto(false);
+      event.target.value = '';
+    }
   }
 
   function handleCertificateChange(event: ChangeEvent<HTMLInputElement>) {
@@ -2256,12 +2615,7 @@ function PersonnelDetailPage({
     event.target.value = '';
   }
 
-  const initials = person.name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
+  const initials = getPersonInitials(person.name);
 
   return (
     <>
@@ -2288,9 +2642,11 @@ function PersonnelDetailPage({
                 )}
               </div>
 
+              {photoError ? <div className="personnel-form-error">{photoError}</div> : null}
+
               <label className="photo-upload-button">
-                Pilih Foto
-                <input type="file" accept="image/*" onChange={handlePhotoChange} />
+                {isUploadingPhoto ? 'Mengunggah...' : 'Pilih Foto'}
+                <input type="file" accept="image/*" onChange={handlePhotoChange} disabled={isUploadingPhoto} />
               </label>
             </div>
           </article>
@@ -3324,15 +3680,26 @@ function TestsSection() {
   );
 }
 
-function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
+function DocumentsSection({
+  documents,
+  generatedAt,
+}: {
+  documents: DocumentItem[];
+  generatedAt: string;
+}) {
   return (
-    <section className="section-grid">
+    <section className="section-grid section-grid--single">
       <article className="panel">
         <div className="panel-head">
           <div>
             <p className="eyebrow">Dokumen</p>
             <h2 className="panel-title">Kontrol revisi dokumen keamanan</h2>
-            <p className="panel-copy">Dokumen aktif, review, dan revisi yang dipantau secara terpusat.</p>
+            <p className="panel-copy">
+              Dokumen aktif, review, revisi, dan hasil upload pelaksanaan pengawasan yang dipantau secara terpusat.
+            </p>
+          </div>
+          <div className="panel-head-actions">
+            <span className="data-chip">Sinkron {generatedAt}</span>
           </div>
         </div>
 
@@ -3345,19 +3712,23 @@ function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
                   <th>Pemilik</th>
                   <th>Versi</th>
                   <th>Pembaruan</th>
-                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {documents.map((item) => (
-                  <tr key={item.title}>
-                    <td>{item.title}</td>
+                  <tr key={item.id}>
+                    <td>
+                      {item.url ? (
+                        <a href={item.url} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 underline-offset-4 hover:underline">
+                          {item.title}
+                        </a>
+                      ) : (
+                        item.title
+                      )}
+                    </td>
                     <td>{item.owner}</td>
                     <td>{item.version}</td>
                     <td>{item.updatedAt}</td>
-                    <td>
-                      <StatusBadge status={item.status} />
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -3370,13 +3741,18 @@ function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
         <div className="records-mobile-list">
           {documents.length ? (
             documents.map((item) => (
-              <article key={item.title} className="records-mobile-card">
-                <div className="records-mobile-top">
-                  <div className="records-mobile-copy">
+              <article key={item.id} className="records-mobile-card">
+                <div className="records-mobile-copy">
+                  {item.url ? (
+                    <strong>
+                      <a href={item.url} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
+                        {item.title}
+                      </a>
+                    </strong>
+                  ) : (
                     <strong>{item.title}</strong>
-                    <p>{item.owner}</p>
-                  </div>
-                  <StatusBadge status={item.status} />
+                  )}
+                  <p>{item.owner}</p>
                 </div>
 
                 <dl className="records-mobile-meta">
@@ -3394,21 +3770,6 @@ function DocumentsSection({ documents }: { documents: DocumentItem[] }) {
           ) : (
             <EmptyRows copy="Tidak ada dokumen yang cocok dengan pencarian." />
           )}
-        </div>
-      </article>
-
-      <article className="panel panel-side">
-        <div className="panel-head">
-          <div>
-            <p className="eyebrow">Queue Review</p>
-            <h2 className="panel-title">Dokumen prioritas</h2>
-          </div>
-        </div>
-
-        <div className="mini-stat-list">
-          <MiniStat label="Aktif" value="02" note="SOP access gate dan checklist CCTV aman digunakan." />
-          <MiniStat label="Review" value="01" note="Prosedur escalation alarm menunggu approval akhir." />
-          <MiniStat label="Revisi" value="01" note="Matriks lisensi butuh pembaruan data April 2026." />
         </div>
       </article>
     </section>

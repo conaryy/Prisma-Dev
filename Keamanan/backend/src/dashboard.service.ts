@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PersonnelStatus, Prisma } from '@prisma/client';
+import { FacilityStatus, PersonnelStatus, Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { basename, extname, join } from 'node:path';
@@ -12,6 +12,20 @@ type PersonnelWithRelations = Prisma.PersonnelGetPayload<{
     trainingHistories: true;
   };
 }>;
+
+type SecurityFacilityRow = {
+  id: string;
+  slug: string;
+  name: string;
+  zone: string;
+  status: FacilityStatus;
+  coveragePercent: number;
+  photoFileName: string | null;
+  photoStorageName: string | null;
+  photoMimeType: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 type SupervisionCategoryValue = 'AUDIT' | 'INSPEKSI' | 'TEST';
 type SupervisionStatusValue = 'BELUM_TERLAKSANA' | 'TERLAKSANA' | 'PERLU_TINDAK_LANJUT';
@@ -42,6 +56,7 @@ type DbSupervisionEvidenceRow = {
   storageName: string;
   mimeType: string | null;
   sizeBytes: number;
+  executionDate: Date | null;
   uploadedAt: Date;
 };
 
@@ -85,11 +100,13 @@ type ChartSeries = {
 };
 
 type FacilityItem = {
+  id: string;
   name: string;
   zone: string;
   status: 'Optimal' | 'Perlu Servis' | 'Terjadwal';
   coverage: string;
   updatedAt: string;
+  photoUrl?: string | null;
 };
 
 type LicenseItem = {
@@ -111,36 +128,45 @@ type LicenseItem = {
   refreshmentPlan: string;
   recurrentExisting: string;
   recurrentPlan: string;
+  photoUrl?: string | null;
 };
 
 type TestEvidenceItem = {
   id: string;
   name: string;
   url: string;
+  executionDateIso: string;
   uploadedAt: string;
 };
 
 type TestItem = {
   id: string;
   title: string;
-  category: 'Audit' | 'Inspeksi' | 'Test';
+  category: 'Audit' | 'Inspeksi' | 'Pengunjungan';
   owner: string;
+  location: string | null;
   inspector: string;
   date: string;
   score: string;
-  status: 'Belum Terlaksana' | 'Terlaksana' | 'Perlu Tindak Lanjut';
+  status: 'Terjadwal' | 'Terlaksana' | 'Perlu Tindak Lanjut';
   completedAt: string | null;
+  completedAtIso: string | null;
   completionNote: string | null;
   sourceDocument: string;
+  scheduleYear: number;
+  scheduleMonth: number | null;
+  scheduleWeek: number | null;
   evidenceFiles: TestEvidenceItem[];
 };
 
 type DocumentItem = {
+  id: string;
   title: string;
   owner: string;
   version: string;
   updatedAt: string;
   status: 'Aktif' | 'Review' | 'Revisi';
+  url?: string;
 };
 
 type ActivityItem = {
@@ -211,7 +237,7 @@ const SUPERVISION_ACTIVITY_SEED: SupervisionSeedItem[] = [
     SUPERVISION_TEST_MONTHS.map(({ month, label }) => ({
       id: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
       slug: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
-      title: 'Pengujian (Test) Keamanan',
+      title: 'Pengunjungan Keamanan',
       category: 'TEST' as const,
       location,
       inspectorNames: SUPERVISION_INSPECTOR_NAMES,
@@ -227,7 +253,11 @@ const SUPERVISION_ACTIVITY_SEED: SupervisionSeedItem[] = [
 @Injectable()
 export class DashboardService {
   private readonly uploadsRoot = join(__dirname, '..', 'uploads');
+  private readonly personnelPhotoUploadsRoot = join(this.uploadsRoot, 'personnel-photos');
+  private readonly facilityPhotoUploadsRoot = join(this.uploadsRoot, 'facility-photos');
   private readonly supervisionEvidenceUploadsRoot = join(this.uploadsRoot, 'supervision-evidence');
+  private personnelPhotoStorageReadyPromise: Promise<void> | null = null;
+  private facilityPhotoStorageReadyPromise: Promise<void> | null = null;
   private supervisionStorageReadyPromise: Promise<void> | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
@@ -256,6 +286,30 @@ export class DashboardService {
     return PersonnelStatus.VALID;
   }
 
+  private mapFacilityStatus(status: FacilityStatus): FacilityItem['status'] {
+    if (status === FacilityStatus.OPTIMAL) {
+      return 'Optimal';
+    }
+
+    if (status === FacilityStatus.PERLU_SERVIS) {
+      return 'Perlu Servis';
+    }
+
+    return 'Terjadwal';
+  }
+
+  private toFacilityStatus(status?: FacilityItem['status']): FacilityStatus {
+    if (status === 'Optimal') {
+      return FacilityStatus.OPTIMAL;
+    }
+
+    if (status === 'Perlu Servis') {
+      return FacilityStatus.PERLU_SERVIS;
+    }
+
+    return FacilityStatus.TERJADWAL;
+  }
+
   private mapSupervisionCategory(category: SupervisionCategoryValue): TestItem['category'] {
     if (category === 'AUDIT') {
       return 'Audit';
@@ -265,7 +319,7 @@ export class DashboardService {
       return 'Inspeksi';
     }
 
-    return 'Test';
+    return 'Pengunjungan';
   }
 
   private mapSupervisionStatus(status: SupervisionStatusValue): TestItem['status'] {
@@ -277,7 +331,7 @@ export class DashboardService {
       return 'Perlu Tindak Lanjut';
     }
 
-    return 'Belum Terlaksana';
+    return 'Terjadwal';
   }
 
   private toSupervisionStatus(status: TestItem['status']): SupervisionStatusValue {
@@ -314,6 +368,19 @@ export class DashboardService {
     return nextSlug;
   }
 
+  private async createUniqueFacilitySlug(baseSlug: string) {
+    const initialSlug = baseSlug || 'fasilitas-baru';
+    let nextSlug = initialSlug;
+    let counter = 2;
+
+    while (await this.prisma.securityFacility.findUnique({ where: { slug: nextSlug } })) {
+      nextSlug = `${initialSlug}-${counter}`;
+      counter += 1;
+    }
+
+    return nextSlug;
+  }
+
   private formatDate(value: Date) {
     return new Intl.DateTimeFormat('id-ID', {
       dateStyle: 'medium',
@@ -321,16 +388,123 @@ export class DashboardService {
     }).format(value);
   }
 
+  private parseCompletedAtInput(value?: string | null) {
+    if (!value) {
+      return null;
+    }
+
+    const normalizedValue = value.trim();
+    if (!normalizedValue) {
+      return null;
+    }
+
+    const dateOnlyMatch = normalizedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const parsedDate = dateOnlyMatch
+      ? new Date(`${normalizedValue}T12:00:00.000Z`)
+      : new Date(normalizedValue);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      throw new BadRequestException('Tanggal pelaksanaan kegiatan pengawasan tidak valid.');
+    }
+
+    return parsedDate;
+  }
+
+  private parseCoveragePercent(value: number | string) {
+    const normalizedValue = typeof value === 'number' ? value : Number.parseInt(String(value).trim(), 10);
+
+    if (!Number.isFinite(normalizedValue) || Number.isNaN(normalizedValue)) {
+      throw new BadRequestException('Coverage fasilitas harus berupa angka 0 sampai 100.');
+    }
+
+    const roundedValue = Math.round(normalizedValue);
+    if (roundedValue < 0 || roundedValue > 100) {
+      throw new BadRequestException('Coverage fasilitas harus berada di rentang 0 sampai 100.');
+    }
+
+    return roundedValue;
+  }
+
+  private facilityPhotoUrl(storageName: string) {
+    return `/uploads/facility-photos/${storageName}`;
+  }
+
+  private personnelPhotoUrl(storageName: string) {
+    return `/uploads/personnel-photos/${storageName}`;
+  }
+
   private supervisionEvidenceUrl(storageName: string) {
     return `/uploads/supervision-evidence/${storageName}`;
   }
 
   private toEvidenceItem(evidence: DbSupervisionEvidenceRow): TestEvidenceItem {
+    const executionDate = evidence.executionDate ?? evidence.uploadedAt;
+
     return {
       id: evidence.id,
       name: evidence.fileName,
       url: this.supervisionEvidenceUrl(evidence.storageName),
+      executionDateIso: executionDate.toISOString(),
       uploadedAt: this.formatDate(evidence.uploadedAt),
+    };
+  }
+
+  private toDocumentItemFromEvidence(
+    activity: SupervisionActivityWithRelations,
+    evidence: DbSupervisionEvidenceRow
+  ): DocumentItem & { sortValue: number } {
+    const categoryLabel = this.mapSupervisionCategory(activity.category);
+    const ownerLabel = activity.location ? `${categoryLabel} · ${activity.location}` : categoryLabel;
+
+    return {
+      id: `evidence-${evidence.id}`,
+      title: evidence.fileName,
+      owner: ownerLabel,
+      version: 'Evidence Upload',
+      updatedAt: this.formatDate(evidence.uploadedAt),
+      status: 'Aktif',
+      url: this.supervisionEvidenceUrl(evidence.storageName),
+      sortValue: evidence.uploadedAt.getTime(),
+    };
+  }
+
+  private toFacilityItem(facility: SecurityFacilityRow): FacilityItem {
+    return {
+      id: facility.id,
+      name: facility.name,
+      zone: facility.zone,
+      status: this.mapFacilityStatus(facility.status),
+      coverage: `${facility.coveragePercent}%`,
+      updatedAt: this.formatDate(facility.updatedAt),
+      photoUrl: facility.photoStorageName ? this.facilityPhotoUrl(facility.photoStorageName) : null,
+    };
+  }
+
+  private toPersonnelItem(person: PersonnelWithRelations): LicenseItem {
+    return {
+      slug: person.slug,
+      name: person.name,
+      location: person.location,
+      documentPeriod: person.documentPeriod ?? '-',
+      sourceDocument: person.sourceDocument ?? '-',
+      licenseNumber: person.licenseNumber ?? '-',
+      birthPlaceDate: person.birthPlaceDate ?? '-',
+      address: person.address ?? '-',
+      maritalStatus: person.maritalStatus ?? '-',
+      religion: person.religion ?? '-',
+      status: this.mapPersonnelStatus(person.status),
+      educationHistory: person.educationHistories.map(
+        (row: PersonnelWithRelations['educationHistories'][number]) => row.value
+      ),
+      workHistory: person.workHistories.map((row: PersonnelWithRelations['workHistories'][number]) => row.value),
+      trainingHistory: person.trainingHistories.map(
+        (row: PersonnelWithRelations['trainingHistories'][number]) => row.value
+      ),
+      refreshmentExisting: person.refreshmentExisting ?? '-',
+      refreshmentPlan: person.refreshmentPlan ?? '-',
+      recurrentExisting: person.recurrentExisting ?? '-',
+      recurrentPlan: person.recurrentPlan ?? '-',
+      photoUrl: person.photoStorageName ? this.personnelPhotoUrl(person.photoStorageName) : null,
     };
   }
 
@@ -344,16 +518,21 @@ export class DashboardService {
 
     return {
       id: activity.id,
-      title: activity.title,
+      title: activity.category === 'TEST' ? 'Pengunjungan Keamanan' : activity.title,
       category: this.mapSupervisionCategory(activity.category),
       owner: activity.location ?? 'Perum LPPNPI Cabang Surabaya',
-      inspector: activity.inspectorNames.join(', '),
+      location: activity.location,
+      inspector: activity.inspectorNames.length ? activity.inspectorNames.join(', ') : '-',
       date: activity.scheduleLabel,
       score: evidenceSummary,
       status: this.mapSupervisionStatus(activity.status),
       completedAt: activity.completedAt ? this.formatDate(activity.completedAt) : null,
+      completedAtIso: activity.completedAt ? activity.completedAt.toISOString() : null,
       completionNote: activity.completionNote ?? null,
       sourceDocument: activity.sourceDocument ?? '-',
+      scheduleYear: activity.scheduleYear,
+      scheduleMonth: activity.scheduleMonth,
+      scheduleWeek: activity.scheduleWeek,
       evidenceFiles: evidences,
     };
   }
@@ -394,6 +573,34 @@ export class DashboardService {
     }
 
     await this.supervisionStorageReadyPromise;
+  }
+
+  private async ensureFacilityPhotoStorage() {
+    if (!this.facilityPhotoStorageReadyPromise) {
+      this.facilityPhotoStorageReadyPromise = fs
+        .mkdir(this.facilityPhotoUploadsRoot, { recursive: true })
+        .then(() => undefined)
+        .catch((error) => {
+          this.facilityPhotoStorageReadyPromise = null;
+          throw error;
+        });
+    }
+
+    await this.facilityPhotoStorageReadyPromise;
+  }
+
+  private async ensurePersonnelPhotoStorage() {
+    if (!this.personnelPhotoStorageReadyPromise) {
+      this.personnelPhotoStorageReadyPromise = fs
+        .mkdir(this.personnelPhotoUploadsRoot, { recursive: true })
+        .then(() => undefined)
+        .catch((error) => {
+          this.personnelPhotoStorageReadyPromise = null;
+          throw error;
+        });
+    }
+
+    await this.personnelPhotoStorageReadyPromise;
   }
 
   private async setupSupervisionStorage() {
@@ -446,8 +653,20 @@ export class DashboardService {
         "storageName" TEXT NOT NULL UNIQUE,
         "mimeType" TEXT,
         "sizeBytes" INTEGER NOT NULL,
+        "executionDate" TIMESTAMPTZ,
         "uploadedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+    `);
+
+    await this.prisma.$executeRawUnsafe(`
+      ALTER TABLE "SupervisionEvidence"
+      ADD COLUMN IF NOT EXISTS "executionDate" TIMESTAMPTZ;
+    `);
+
+    await this.prisma.$executeRawUnsafe(`
+      UPDATE "SupervisionEvidence"
+      SET "executionDate" = COALESCE("executionDate", "uploadedAt")
+      WHERE "executionDate" IS NULL;
     `);
 
     await this.prisma.$executeRawUnsafe(`
@@ -458,6 +677,18 @@ export class DashboardService {
     await this.prisma.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "SupervisionEvidence_activity_uploaded_idx"
       ON "SupervisionEvidence" ("activityId", "uploadedAt");
+    `);
+
+    await this.prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "SupervisionEvidence_activity_execution_uploaded_idx"
+      ON "SupervisionEvidence" ("activityId", "executionDate", "uploadedAt");
+    `);
+
+    await this.prisma.$executeRawUnsafe(`
+      UPDATE "SupervisionActivity"
+      SET "title" = 'Pengunjungan Keamanan'
+      WHERE "category" = 'TEST'
+        AND "title" IN ('Pengujian (Test) Keamanan', 'Pengujian Keamanan');
     `);
 
     const [countRow] = await this.prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
@@ -533,6 +764,7 @@ export class DashboardService {
           "storageName",
           "mimeType",
           "sizeBytes",
+          "executionDate",
           "uploadedAt"
         FROM "SupervisionEvidence"
         ORDER BY "uploadedAt" DESC
@@ -602,7 +834,10 @@ export class DashboardService {
       },
     ];
 
-    const [personnelRows, supervisionRows] = await Promise.all([
+    const [facilityRows, personnelRows, supervisionRows] = await Promise.all([
+      this.prisma.securityFacility.findMany({
+        orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }, { name: 'asc' }],
+      }),
       this.prisma.personnel.findMany({
         include: {
           educationHistories: true,
@@ -614,30 +849,9 @@ export class DashboardService {
       this.loadSupervisionActivities(),
     ]);
 
-    const licenses: LicenseItem[] = personnelRows.map((item: PersonnelWithRelations) => ({
-      slug: item.slug,
-      name: item.name,
-      location: item.location,
-      documentPeriod: item.documentPeriod ?? '-',
-      sourceDocument: item.sourceDocument ?? '-',
-      licenseNumber: item.licenseNumber ?? '-',
-      birthPlaceDate: item.birthPlaceDate ?? '-',
-      address: item.address ?? '-',
-      maritalStatus: item.maritalStatus ?? '-',
-      religion: item.religion ?? '-',
-      status: this.mapPersonnelStatus(item.status),
-      educationHistory: item.educationHistories.map(
-        (row: PersonnelWithRelations['educationHistories'][number]) => row.value
-      ),
-      workHistory: item.workHistories.map((row: PersonnelWithRelations['workHistories'][number]) => row.value),
-      trainingHistory: item.trainingHistories.map(
-        (row: PersonnelWithRelations['trainingHistories'][number]) => row.value
-      ),
-      refreshmentExisting: item.refreshmentExisting ?? '-',
-      refreshmentPlan: item.refreshmentPlan ?? '-',
-      recurrentExisting: item.recurrentExisting ?? '-',
-      recurrentPlan: item.recurrentPlan ?? '-',
-    }));
+    const facilities: FacilityItem[] = facilityRows.map((item) => this.toFacilityItem(item as SecurityFacilityRow));
+
+    const licenses: LicenseItem[] = personnelRows.map((item: PersonnelWithRelations) => this.toPersonnelItem(item));
 
     const tests = this.sortSupervisionActivities(supervisionRows).map((item) => this.toTestItem(item));
 
@@ -647,9 +861,7 @@ export class DashboardService {
     const followUpSupervisionCount = tests.filter(
       (item) => item.status === 'Perlu Tindak Lanjut'
     ).length;
-    const pendingSupervisionCount = tests.filter(
-      (item) => item.status === 'Belum Terlaksana'
-    ).length;
+    const scheduledSupervisionCount = tests.filter((item) => item.status === 'Terjadwal').length;
     const evidenceUploadCount = tests.reduce((total, item) => total + item.evidenceFiles.length, 0);
 
     const metrics: MetricCard[] = [
@@ -669,7 +881,7 @@ export class DashboardService {
         label: 'Agenda Pengawasan',
         value: String(tests.length),
         delta: `${completedSupervisionCount} terlaksana`,
-        description: `${pendingSupervisionCount} agenda belum terlaksana dan ${followUpSupervisionCount} perlu tindak lanjut.`,
+        description: `${scheduledSupervisionCount} agenda terjadwal dan ${followUpSupervisionCount} perlu tindak lanjut.`,
       },
       {
         label: 'Evidence Tersimpan',
@@ -679,67 +891,54 @@ export class DashboardService {
       },
     ];
 
-    const facilities: FacilityItem[] = [
+    const manualDocuments: Array<DocumentItem & { sortValue: number }> = [
       {
-        name: 'CCTV Perimeter Timur',
-        zone: 'Zona Airside',
-        status: 'Optimal',
-        coverage: '98%',
-        updatedAt: '30 Mar 2026, 08:15',
-      },
-      {
-        name: 'Access Gate Cargo',
-        zone: 'Zona Cargo',
-        status: 'Perlu Servis',
-        coverage: '76%',
-        updatedAt: '29 Mar 2026, 17:40',
-      },
-      {
-        name: 'X-Ray Checkpoint Utama',
-        zone: 'Terminal Kedatangan',
-        status: 'Optimal',
-        coverage: '100%',
-        updatedAt: '30 Mar 2026, 06:25',
-      },
-      {
-        name: 'Pagar Perimeter Selatan',
-        zone: 'Zona Restricted',
-        status: 'Terjadwal',
-        coverage: '88%',
-        updatedAt: '31 Mar 2026, 09:00',
-      },
-    ];
-
-    const documents: DocumentItem[] = [
-      {
+        id: 'doc-sop-access-gate',
         title: 'SOP Pemeriksaan Access Gate',
         owner: 'Compliance',
         version: 'v3.2',
         updatedAt: '27 Mar 2026',
         status: 'Aktif',
+        sortValue: new Date('2026-03-27T08:00:00.000Z').getTime(),
       },
       {
+        id: 'doc-checklist-cctv',
         title: 'Checklist Harian CCTV',
         owner: 'Control Room',
         version: 'v1.8',
         updatedAt: '30 Mar 2026',
         status: 'Aktif',
+        sortValue: new Date('2026-03-30T08:00:00.000Z').getTime(),
       },
       {
+        id: 'doc-escalation-alarm',
         title: 'Prosedur Escalation Alarm',
         owner: 'Security Lead',
         version: 'v2.0',
         updatedAt: '18 Mar 2026',
         status: 'Review',
+        sortValue: new Date('2026-03-18T08:00:00.000Z').getTime(),
       },
       {
+        id: 'doc-matriks-lisensi',
         title: 'Matriks Lisensi Personel',
         owner: 'HR Security',
         version: 'v4.1',
         updatedAt: '26 Mar 2026',
         status: 'Revisi',
+        sortValue: new Date('2026-03-26T08:00:00.000Z').getTime(),
       },
     ];
+
+    const uploadedDocuments = supervisionRows
+      .flatMap((activity) =>
+        activity.evidences.map((evidence) => this.toDocumentItemFromEvidence(activity, evidence))
+      )
+      .sort((left, right) => right.sortValue - left.sortValue);
+
+    const documents: DocumentItem[] = [...uploadedDocuments, ...manualDocuments]
+      .sort((left, right) => right.sortValue - left.sortValue)
+      .map(({ sortValue: _sortValue, ...item }) => item);
 
     const activitiesFromSupervision = supervisionRows
       .flatMap((item): Array<{ title: string; detail: string; timestamp: string; value: number }> => {
@@ -794,7 +993,7 @@ export class DashboardService {
         : [
             {
               title: 'Program pengawasan 2026 berhasil dimuat',
-              detail: 'Agenda audit, inspeksi, dan test diambil dari dokumen kerja pengawasan keamanan tahun 2026.',
+              detail: 'Agenda audit, inspeksi, dan pengunjungan diambil dari dokumen kerja pengawasan keamanan tahun 2026.',
               timestamp: 'Hari ini',
             },
             {
@@ -827,9 +1026,9 @@ export class DashboardService {
       metrics,
       alert: {
         title: 'Status Program Pengawasan',
-        message: `${pendingSupervisionCount} agenda belum terlaksana, ${followUpSupervisionCount} perlu tindak lanjut.`,
+        message: `${scheduledSupervisionCount} agenda terjadwal, ${followUpSupervisionCount} perlu tindak lanjut.`,
         hint: 'Unggah evidence pada agenda yang selesai agar pelaksanaan pengawasan tercatat dengan benar.',
-        tone: pendingSupervisionCount > 0 || followUpSupervisionCount > 0 ? 'warning' : 'calm',
+        tone: scheduledSupervisionCount > 0 || followUpSupervisionCount > 0 ? 'warning' : 'calm',
       } as AlertPanel,
       chart: {
         title: 'Kesiapan Keamanan',
@@ -865,7 +1064,7 @@ export class DashboardService {
         {
           label: 'Agenda Total',
           value: String(tests.length),
-          note: 'Agenda audit, inspeksi, dan test berasal dari dokumen program kerja pengawasan 2026.',
+          note: 'Agenda audit, inspeksi, dan pengunjungan berasal dari dokumen program kerja pengawasan 2026.',
         },
         {
           label: 'Terlaksana',
@@ -913,18 +1112,196 @@ export class DashboardService {
     });
   }
 
-  async updateSupervisionStatus(activityId: string, status: TestItem['status']) {
+  private async savePersonnelPhoto(file: {
+    originalname?: string;
+    mimetype?: string;
+    buffer?: Buffer;
+  }) {
+    if (!file?.buffer || !file.originalname) {
+      return null;
+    }
+
+    if (!file.mimetype?.startsWith('image/')) {
+      throw new BadRequestException('Foto personel harus berupa file gambar.');
+    }
+
+    await this.ensurePersonnelPhotoStorage();
+
+    const safeOriginalName = basename(file.originalname).replace(/[^a-zA-Z0-9._-]+/g, '-');
+    const extension = extname(safeOriginalName);
+    const storageName = `${Date.now()}-${randomUUID()}${extension || ''}`;
+    const targetPath = join(this.personnelPhotoUploadsRoot, storageName);
+    await fs.writeFile(targetPath, file.buffer);
+
+    return {
+      fileName: safeOriginalName,
+      mimeType: file.mimetype ?? null,
+      storageName,
+      targetPath,
+    };
+  }
+
+  async uploadPersonnelPhoto(
+    slug: string,
+    photo?: {
+      originalname?: string;
+      mimetype?: string;
+      buffer?: Buffer;
+    }
+  ) {
+    const person = await this.prisma.personnel.findUnique({
+      where: { slug },
+    });
+
+    if (!person) {
+      throw new NotFoundException('Personel keamanan tidak ditemukan.');
+    }
+
+    const savedPhoto = await this.savePersonnelPhoto(photo ?? {});
+
+    if (!savedPhoto) {
+      throw new BadRequestException('Foto personel wajib diunggah.');
+    }
+
+    const previousStorageName = person.photoStorageName;
+
+    try {
+      const updatedPerson = await this.prisma.personnel.update({
+        where: { slug },
+        data: {
+          photoFileName: savedPhoto.fileName,
+          photoStorageName: savedPhoto.storageName,
+          photoMimeType: savedPhoto.mimeType,
+        },
+        include: {
+          educationHistories: true,
+          workHistories: true,
+          trainingHistories: true,
+        },
+      });
+
+      if (previousStorageName) {
+        const previousPath = join(this.personnelPhotoUploadsRoot, previousStorageName);
+        await fs.unlink(previousPath).catch(() => undefined);
+      }
+
+      return this.toPersonnelItem(updatedPerson);
+    } catch (error) {
+      await fs.unlink(savedPhoto.targetPath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async saveFacilityPhoto(file: {
+    originalname?: string;
+    mimetype?: string;
+    buffer?: Buffer;
+  }) {
+    if (!file?.buffer || !file.originalname) {
+      return null;
+    }
+
+    if (!file.mimetype?.startsWith('image/')) {
+      throw new BadRequestException('Foto alat keamanan harus berupa file gambar.');
+    }
+
+    await this.ensureFacilityPhotoStorage();
+
+    const safeOriginalName = basename(file.originalname).replace(/[^a-zA-Z0-9._-]+/g, '-');
+    const extension = extname(safeOriginalName);
+    const storageName = `${Date.now()}-${randomUUID()}${extension || ''}`;
+    const targetPath = join(this.facilityPhotoUploadsRoot, storageName);
+    await fs.writeFile(targetPath, file.buffer);
+
+    return {
+      fileName: safeOriginalName,
+      mimeType: file.mimetype ?? null,
+      storageName,
+      targetPath,
+    };
+  }
+
+  async createFacility(body: {
+    name: string;
+    zone: string;
+    status?: FacilityItem['status'];
+    coveragePercent: number | string;
+  }, photo?: {
+    originalname?: string;
+    mimetype?: string;
+    buffer?: Buffer;
+  }) {
+    const name = body.name.trim();
+    const zone = body.zone.trim();
+
+    if (!name) {
+      throw new BadRequestException('Nama alat keamanan wajib diisi.');
+    }
+
+    if (!zone) {
+      throw new BadRequestException('Zona alat keamanan wajib diisi.');
+    }
+
+    const coveragePercent = this.parseCoveragePercent(body.coveragePercent);
+    const slug = await this.createUniqueFacilitySlug(this.slugify(`${name}-${zone}`));
+    const savedPhoto = await this.saveFacilityPhoto(photo ?? {});
+
+    try {
+      return await this.prisma.securityFacility.create({
+        data: {
+          slug,
+          name,
+          zone,
+          status: this.toFacilityStatus(body.status),
+          coveragePercent,
+          photoFileName: savedPhoto?.fileName ?? null,
+          photoStorageName: savedPhoto?.storageName ?? null,
+          photoMimeType: savedPhoto?.mimeType ?? null,
+        },
+      });
+    } catch (error) {
+      if (savedPhoto?.targetPath) {
+        await fs.unlink(savedPhoto.targetPath).catch(() => undefined);
+      }
+
+      throw error;
+    }
+  }
+
+  async updateSupervisionStatus(
+    activityId: string,
+    input: {
+      status: 'Terlaksana' | 'Perlu Tindak Lanjut';
+      completedAt?: string | null;
+      completionNote?: string | null;
+      inspectorNames?: string[] | null;
+    }
+  ) {
     const activity = await this.requireSupervisionActivity(activityId);
-    const nextStatus = this.toSupervisionStatus(status);
+    const nextStatus = this.toSupervisionStatus(input.status);
+    const requestedCompletedAt = this.parseCompletedAtInput(input.completedAt);
 
     const completedAt =
-      nextStatus === 'BELUM_TERLAKSANA' ? null : activity.completedAt ?? new Date();
+      nextStatus === 'BELUM_TERLAKSANA' ? null : requestedCompletedAt ?? activity.completedAt ?? new Date();
+    const trimmedCompletionNote = input.completionNote?.trim();
     const completionNote =
       nextStatus === 'BELUM_TERLAKSANA'
         ? null
-        : nextStatus === 'PERLU_TINDAK_LANJUT'
-          ? 'Pelaksanaan membutuhkan tindak lanjut tambahan.'
-          : null;
+        : trimmedCompletionNote
+          ? trimmedCompletionNote
+          : nextStatus === 'PERLU_TINDAK_LANJUT'
+            ? 'Pelaksanaan membutuhkan tindak lanjut tambahan.'
+            : null;
+    const normalizedInspectorNames =
+      input.inspectorNames === undefined
+        ? activity.inspectorNames
+        : Array.from(
+            new Set(
+              (input.inspectorNames ?? [])
+                .map((name) => name.trim())
+                .filter(Boolean)
+            )
+          );
 
     await this.ensureSupervisionStorage();
     await this.prisma.$executeRaw(Prisma.sql`
@@ -933,6 +1310,7 @@ export class DashboardService {
         "status" = ${nextStatus}::"SupervisionStatus",
         "completedAt" = ${completedAt},
         "completionNote" = ${completionNote},
+        "inspectorNames" = ${normalizedInspectorNames},
         "updatedAt" = NOW()
       WHERE "id" = ${activity.id}
     `);
@@ -967,6 +1345,7 @@ export class DashboardService {
 
     try {
       await this.ensureSupervisionStorage();
+      const executionDate = activity.completedAt ?? new Date();
       await this.prisma.$executeRaw(Prisma.sql`
         INSERT INTO "SupervisionEvidence" (
           "id",
@@ -974,7 +1353,8 @@ export class DashboardService {
           "fileName",
           "storageName",
           "mimeType",
-          "sizeBytes"
+          "sizeBytes",
+          "executionDate"
         )
         VALUES (
           ${randomUUID()},
@@ -982,7 +1362,8 @@ export class DashboardService {
           ${file.originalname},
           ${storageName},
           ${file.mimetype || null},
-          ${Number(file.size ?? file.buffer.byteLength ?? 0)}
+          ${Number(file.size ?? file.buffer.byteLength ?? 0)},
+          ${executionDate}
         )
       `);
     } catch (error) {

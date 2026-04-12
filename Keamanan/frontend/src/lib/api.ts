@@ -18,6 +18,14 @@ function resolveApiAssetUrl(url: string) {
 function normalizeDashboard(data: DashboardData): DashboardData {
   return {
     ...data,
+    facilities: data.facilities.map((item) => ({
+      ...item,
+      photoUrl: item.photoUrl ? resolveApiAssetUrl(item.photoUrl) : item.photoUrl,
+    })),
+    licenses: data.licenses.map((item) => ({
+      ...item,
+      photoUrl: item.photoUrl ? resolveApiAssetUrl(item.photoUrl) : item.photoUrl,
+    })),
     tests: data.tests.map((item) => ({
       ...item,
       evidenceFiles: item.evidenceFiles.map((evidence) => ({
@@ -74,16 +82,65 @@ export async function createPersonnel(input: {
   return response.json();
 }
 
+export async function uploadPersonnelPhoto(slug: string, photo: File) {
+  const formData = new FormData();
+  formData.append('photo', photo);
+
+  const response = await fetch(`${API_BASE_URL}/api/personnel/${slug}/photo`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Gagal menyimpan foto personel.'));
+  }
+
+  return response.json();
+}
+
+export async function createFacility(input: {
+  name: string;
+  zone: string;
+  status?: 'Optimal' | 'Perlu Servis' | 'Terjadwal';
+  coveragePercent: number;
+  photo?: File | null;
+}) {
+  const formData = new FormData();
+  formData.append('name', input.name);
+  formData.append('zone', input.zone);
+  formData.append('status', input.status ?? 'Optimal');
+  formData.append('coveragePercent', String(input.coveragePercent));
+  if (input.photo) {
+    formData.append('photo', input.photo);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/facilities`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Gagal menyimpan alat keamanan.'));
+  }
+
+  return response.json();
+}
+
 export async function updateSupervisionStatus(
   activityId: string,
-  status: 'Belum Terlaksana' | 'Terlaksana' | 'Perlu Tindak Lanjut'
+  input: {
+    status: 'Terlaksana' | 'Perlu Tindak Lanjut';
+    completedAt?: string | null;
+    completionNote?: string | null;
+    inspectorNames?: string[] | null;
+  }
 ) {
   const response = await fetch(`${API_BASE_URL}/api/supervision-activities/${activityId}/status`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(input),
   });
 
   if (!response.ok) {

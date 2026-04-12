@@ -2,6 +2,37 @@ const { PrismaClient, PersonnelStatus } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
+const securityFacilitySeed = [
+  {
+    slug: 'cctv-perimeter-timur-zona-airside',
+    name: 'CCTV Perimeter Timur',
+    zone: 'Zona Airside',
+    status: 'OPTIMAL',
+    coveragePercent: 98,
+  },
+  {
+    slug: 'access-gate-cargo-zona-cargo',
+    name: 'Access Gate Cargo',
+    zone: 'Zona Cargo',
+    status: 'PERLU_SERVIS',
+    coveragePercent: 76,
+  },
+  {
+    slug: 'x-ray-checkpoint-utama-terminal-kedatangan',
+    name: 'X-Ray Checkpoint Utama',
+    zone: 'Terminal Kedatangan',
+    status: 'OPTIMAL',
+    coveragePercent: 100,
+  },
+  {
+    slug: 'pagar-perimeter-selatan-zona-restricted',
+    name: 'Pagar Perimeter Selatan',
+    zone: 'Zona Restricted',
+    status: 'TERJADWAL',
+    coveragePercent: 88,
+  },
+];
+
 async function ensureSupervisionStorage(prismaClient) {
   await prismaClient.$executeRawUnsafe(`
     DO $$
@@ -645,6 +676,19 @@ function nestedCreate(values) {
 }
 
 async function main() {
+  for (const item of securityFacilitySeed) {
+    await prisma.securityFacility.upsert({
+      where: { slug: item.slug },
+      update: {
+        name: item.name,
+        zone: item.zone,
+        status: item.status,
+        coveragePercent: item.coveragePercent,
+      },
+      create: item,
+    });
+  }
+
   for (const item of personnelSeed) {
     const {
       educationHistory,
@@ -703,7 +747,9 @@ async function main() {
         "scheduleYear",
         "scheduleMonth",
         "scheduleWeek",
-        "sourceDocument"
+        "sourceDocument",
+        "createdAt",
+        "updatedAt"
       )
       VALUES (
         ${item.id},
@@ -716,7 +762,9 @@ async function main() {
         ${item.scheduleYear},
         ${item.scheduleMonth},
         ${item.scheduleWeek},
-        ${item.sourceDocument}
+        ${item.sourceDocument},
+        NOW(),
+        NOW()
       )
       ON CONFLICT ("slug") DO UPDATE SET
         "title" = EXCLUDED."title",
@@ -727,12 +775,13 @@ async function main() {
         "scheduleYear" = EXCLUDED."scheduleYear",
         "scheduleMonth" = EXCLUDED."scheduleMonth",
         "scheduleWeek" = EXCLUDED."scheduleWeek",
-        "sourceDocument" = EXCLUDED."sourceDocument"
+        "sourceDocument" = EXCLUDED."sourceDocument",
+        "updatedAt" = NOW()
     `;
   }
 
   console.log(
-    `Seed keamanan selesai: ${personnelSeed.length} personel, ${supervisionActivitySeed.length} agenda pengawasan.`
+    `Seed keamanan selesai: ${securityFacilitySeed.length} fasilitas, ${personnelSeed.length} personel, ${supervisionActivitySeed.length} agenda pengawasan.`
   );
 }
 

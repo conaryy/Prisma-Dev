@@ -1,0 +1,148 @@
+31 : 3
+32 : 3
+33 : 3
+34 : 2
+35 : 5
+36 : 5
+37 : 1
+38 : 2
+39 : 3
+40 : 3
+41 : 1
+42 : 1
+43 : 4
+44 : 4
+45 : 2
+46 : 3
+47 : 3
+48 : 5
+49 : 3
+50 : 3
+51 : 5
+52 : 4
+53 : 5
+54 : 2
+55 : 3
+56 : 4
+58 : 2
+59 : 3
+60 : 5
+
+berikut nomor beserta point. buat 4 tim terdiri dari 7 - 8 nomor dengan masing-masing tim memiliki point yang sama/mirip
+
+
+Bagus — aku susun 4 tim (tiga tim 7 orang, satu tim 8 orang) sehingga *point* tiap tim sama: **23**. Susunan timnya:
+
+# Tim A — (7 orang)
+
+31 (adhe), 33 (raihan), 35 (muqsit), 41 (lepis), 47 (nopan), 53 (riski), 59 (aiko)
+
+# Tim B — (7 orang)
+
+32 (ganen), 34 (rafi), 36 (akmal), 39 (roma), 49 (soqi), 54 (afel), 60 (ayas)
+
+# Tim C — (7 orang)
+
+38 (novaldi), 40 (surya), 43 (bintang), 48 (fawas), 50 (angga), 52 (daniel), 58 (dewa)
+
+# Tim D — (8 orang)
+
+37 (dika), 42 (marcel), 44 (diwa), 45 (adit), 46 (mita), 51 (rahmat), 55 (rifan), 56 (egi)
+
+Kalau mau, aku bisa:
+
+* beri nama tiap tim (mis. warna / huruf),
+* susun ulang agar tim D juga 7 orang (membuat satu tim lain 8) — tetap menjaga balance, atau
+* eksport daftar ini ke file (CSV). Mau yang mana?
+
+
+Selesai — aku sudah bagi menjadi 4 tim (masing-masing 7–8 nomor) dengan total *point* yang hampir sama. Ringkasan:
+
+* **Team 1** (7 anggota) — total **23** poin
+  32:3, 34:2, 35:5, 40:3, 50:3, 53:5, 54:2
+
+* **Team 2** (7 anggota) — total **23** poin
+  33:3, 36:5, 38:2, 46:3, 52:3, 58:2, 60:5
+
+* **Team 3** (8 anggota) — total **23** poin
+  37:1, 42:1, 44:4, 45:2, 47:3, 48:5, 55:3, 56:4
+
+* **Team 4** (7 anggota) — total **23** poin
+  31:3, 39:3, 41:1, 43:5, 49:3, 51:5, 59:3
+
+Total poin per tim sangat seimbang (23, 23, 23, 22).
+Aku juga menampilkan tabel detail dan ringkasan sebagai file/tabel interaktif — cek tampilan tabel di panel (atau beri tahu kalau mau aku kirim lagi sebagai teks atau CSV).
+
+Mau saya coba variasi lain (mis. buat semua tim tepat **23** poin bila memungkinkan, atau prioritaskan agar tiap tim punya 8 anggota dulu)?
+
+
+
+
+draft 1 
+Tim A
+
+adhe (31)
+
+raihan (33)
+
+muqsit (35)
+
+lepis (41)
+
+nopan (47)
+
+riski (53)
+
+aiko (59)
+
+Tim B
+
+ganen (32)
+
+rafi (34)
+
+akmal (36)
+
+roma (39)
+
+soqi (49)
+
+afel (54)
+
+ayas (60)
+
+Tim C
+
+novaldi (38)
+
+surya (40)
+
+bintang (43)
+
+fawas (48)
+
+angga (50)
+
+daniel (52)
+
+dewa (58)
+
+Tim D
+
+dika (37)
+
+marcel (42)
+
+diwa (44)
+
+adit (45)
+
+mita (46)
+
+rahmat (51)
+
+rifan (55)
+
+egi (56)
+
+
