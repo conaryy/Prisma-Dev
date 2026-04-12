@@ -66,6 +66,18 @@ export async function createPersonnel(input: {
   status?: 'Valid' | 'Perpanjangan' | 'Pelatihan';
   licenseNumber?: string;
   address?: string;
+  documentPeriod?: string;
+  sourceDocument?: string;
+  birthPlaceDate?: string;
+  maritalStatus?: string;
+  religion?: string;
+  educationHistory?: string[];
+  workHistory?: string[];
+  trainingHistory?: string[];
+  refreshmentExisting?: string;
+  refreshmentPlan?: string;
+  recurrentExisting?: string;
+  recurrentPlan?: string;
 }) {
   const response = await fetch(`${API_BASE_URL}/api/personnel`, {
     method: 'POST',
@@ -77,6 +89,18 @@ export async function createPersonnel(input: {
 
   if (!response.ok) {
     throw new Error(await readApiError(response, 'Gagal menyimpan personil keamanan.'));
+  }
+
+  return response.json();
+}
+
+export async function deletePersonnelTable() {
+  const response = await fetch(`${API_BASE_URL}/api/personnel`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Gagal menghapus data personil keamanan.'));
   }
 
   return response.json();

@@ -18,6 +18,7 @@ import { SupervisionProgramSection } from '@/components/SupervisionProgramSectio
 import {
   createFacility,
   createPersonnel,
+  deletePersonnelTable,
   fetchDashboard,
   uploadPersonnelPhoto,
   updateSupervisionStatus,
@@ -48,6 +49,18 @@ type NewPersonnelInput = {
   status: LicenseItem['status'];
   licenseNumber: string;
   address: string;
+  documentPeriod?: string;
+  sourceDocument?: string;
+  birthPlaceDate?: string;
+  maritalStatus?: string;
+  religion?: string;
+  educationHistory?: string[];
+  workHistory?: string[];
+  trainingHistory?: string[];
+  refreshmentExisting?: string;
+  refreshmentPlan?: string;
+  recurrentExisting?: string;
+  recurrentPlan?: string;
 };
 type NewFacilityInput = {
   name: string;
@@ -55,6 +68,10 @@ type NewFacilityInput = {
   status: FacilityItem['status'];
   coveragePercent: string;
   photo: File | null;
+};
+type PersonnelImportResult = {
+  imported: number;
+  failed: string[];
 };
 type RouteState = {
   routeId: RouteId;
@@ -793,6 +810,260 @@ function getPersonInitials(name: string) {
     .join('');
 }
 
+function normalizePersonnelImportHeader(value: string) {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function normalizePersonnelImportStatus(value?: string): NewPersonnelInput['status'] {
+  const normalized = (value ?? '').trim().toLowerCase();
+
+  if (['perpanjangan', 'renewal', 'renew'].includes(normalized)) {
+    return 'Perpanjangan';
+  }
+
+  if (['pelatihan', 'training', 'refreshment'].includes(normalized)) {
+    return 'Pelatihan';
+  }
+
+  return 'Valid';
+}
+
+function toTitleCaseWords(value: string) {
+  return value
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function normalizePersonnelImportLocation(value?: string) {
+  const normalized = (value ?? '').trim().replace(/\s+/g, ' ');
+  if (!normalized) {
+    return '';
+  }
+
+  if (/^(cabang|kcp)\b/i.test(normalized)) {
+    return toTitleCaseWords(normalized);
+  }
+
+  return `Cabang ${toTitleCaseWords(normalized)}`;
+}
+
+function splitMultilineField(value?: string) {
+  return (value ?? '')
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function flattenMultilineField(value?: string) {
+  return splitMultilineField(value).join(' · ');
+}
+
+function combineParallelFields(...columns: Array<string[]>) {
+  const maxLength = Math.max(0, ...columns.map((items) => items.length));
+
+  return Array.from({ length: maxLength }, (_, index) =>
+    columns
+      .map((items) => items[index]?.trim() ?? '')
+      .filter(Boolean)
+      .join(' · ')
+  ).filter(Boolean);
+}
+
+function deriveDocumentPeriodFromSource(sourceDocument?: string) {
+  const source = (sourceDocument ?? '').trim();
+  if (!source) {
+    return 'Import CSV';
+  }
+
+  const upperSource = source.toUpperCase();
+  const yearMatch = upperSource.match(/TAHUN\s+(\d{4})/);
+  const monthMatch = upperSource.match(
+    /\b(JANUARI|FEBRUARI|MARET|APRIL|MEI|JUNI|JULI|AGUSTUS|SEPTEMBER|OKTOBER|NOVEMBER|DESEMBER)\b/
+  );
+
+  if (monthMatch && yearMatch) {
+    return `${toTitleCaseWords(monthMatch[1])} ${yearMatch[1]}`;
+  }
+
+  if (yearMatch) {
+    return `Tahun ${yearMatch[1]}`;
+  }
+
+  return 'Import CSV';
+}
+
+function parseDelimitedRows(input: string, delimiter: ',' | ';') {
+  const source = input.replace(/^\uFEFF/, '');
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentValue = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+
+    if (char === '"') {
+      if (inQuotes && source[index + 1] === '"') {
+        currentValue += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (!inQuotes && char === delimiter) {
+      currentRow.push(currentValue.trim());
+      currentValue = '';
+      continue;
+    }
+
+    if (!inQuotes && (char === '\n' || char === '\r')) {
+      if (char === '\r' && source[index + 1] === '\n') {
+        index += 1;
+      }
+      currentRow.push(currentValue.trim());
+      if (currentRow.some((cell) => cell.trim())) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      currentValue = '';
+      continue;
+    }
+
+    currentValue += char;
+  }
+
+  currentRow.push(currentValue.trim());
+  if (currentRow.some((cell) => cell.trim())) {
+    rows.push(currentRow);
+  }
+
+  return rows;
+}
+
+function parsePersonnelImportFile(input: string): NewPersonnelInput[] {
+  const commaRows = parseDelimitedRows(input, ',');
+  const semicolonRows = parseDelimitedRows(input, ';');
+  const rows = semicolonRows[0]?.length > commaRows[0]?.length ? semicolonRows : commaRows;
+
+  if (rows.length < 2) {
+    throw new Error('File import harus berisi header dan minimal satu baris data.');
+  }
+
+  const headers = rows[0].map(normalizePersonnelImportHeader);
+  const nameIndex = headers.findIndex((item) =>
+    ['name', 'nama', 'namapersonel', 'namapersonnel', 'namanolicense'].includes(item)
+  );
+  const locationIndex = headers.findIndex((item) =>
+    ['location', 'lokasi', 'cabang', 'cabanglokasi', 'unit'].includes(item)
+  );
+  const statusIndex = headers.findIndex((item) => ['statuspersonel', 'statuslisensi', 'statusrekamjejak'].includes(item));
+  const sourceDocumentIndex = headers.findIndex((item) => ['sourcefile', 'sourcedocument', 'dokumensumber'].includes(item));
+  const birthPlaceDateIndex = headers.findIndex((item) =>
+    ['tempattanggallahir', 'ttl', 'birthplacedate'].includes(item)
+  );
+  const addressIndex = headers.findIndex((item) => ['address', 'alamat', 'domisili'].includes(item));
+  const maritalStatusIndex = headers.findIndex((item) => ['status', 'statuspernikahan', 'maritalstatus'].includes(item));
+  const religionIndex = headers.findIndex((item) => ['agama', 'religion'].includes(item));
+  const educationLevelIndex = headers.findIndex((item) =>
+    ['riwayatpendidikantingkat', 'pendidikantingkat'].includes(item)
+  );
+  const educationSchoolIndex = headers.findIndex((item) =>
+    ['riwayatpendidikansekolah', 'pendidikansekolah'].includes(item)
+  );
+  const educationYearIndex = headers.findIndex((item) =>
+    ['riwayatpendidikantahun', 'pendidikantahun'].includes(item)
+  );
+  const workRoleIndex = headers.findIndex((item) => ['riwayatpekerjaanjabatan', 'pekerjaanjabatan'].includes(item));
+  const workCompanyIndex = headers.findIndex((item) => ['riwayatpekerjaaninstansi', 'pekerjaaninstansi'].includes(item));
+  const workYearIndex = headers.findIndex((item) => ['riwayatpekerjaantahun', 'pekerjaantahun'].includes(item));
+  const trainingNameIndex = headers.findIndex((item) =>
+    ['riwayatpelatihanpelatihan', 'pelatihanpelatihan', 'riwayatpelatihan'].includes(item)
+  );
+  const trainingYearIndex = headers.findIndex((item) => ['riwayatpelatihantahun', 'pelatihantahun'].includes(item));
+  const refreshmentExistingIndex = headers.findIndex((item) => ['refreshmentexisting'].includes(item));
+  const refreshmentPlanIndex = headers.findIndex((item) => ['refreshmentrencana', 'refreshmentplan'].includes(item));
+  const recurrentExistingIndex = headers.findIndex((item) => ['recurrentexisting'].includes(item));
+  const recurrentPlanIndex = headers.findIndex((item) => ['recurrentrencana', 'recurrentplan'].includes(item));
+
+  if (nameIndex === -1 || locationIndex === -1 || sourceDocumentIndex === -1) {
+    throw new Error('Header import wajib memiliki kolom cabang, source file, dan nama/no license.');
+  }
+
+  const nextItems = rows.slice(1).flatMap((row, rowIndex) => {
+    const nameLicenseParts = splitMultilineField(row[nameIndex]);
+    const name = nameLicenseParts[0] ?? '';
+    const location = normalizePersonnelImportLocation(row[locationIndex]);
+    const sourceDocument = row[sourceDocumentIndex]?.trim() ?? '';
+
+    if (!name && row.every((cell) => !cell.trim())) {
+      return [];
+    }
+
+    if (!name) {
+      return [];
+    }
+
+    if (!location) {
+      throw new Error(`Baris ${rowIndex + 2} wajib mengisi cabang/lokasi.`);
+    }
+
+    const educationHistory = combineParallelFields(
+      splitMultilineField(row[educationLevelIndex] ?? ''),
+      splitMultilineField(row[educationSchoolIndex] ?? ''),
+      splitMultilineField(row[educationYearIndex] ?? '')
+    );
+
+    const workHistory = combineParallelFields(
+      splitMultilineField(row[workRoleIndex] ?? ''),
+      splitMultilineField(row[workCompanyIndex] ?? ''),
+      splitMultilineField(row[workYearIndex] ?? '')
+    );
+
+    const trainingHistory = combineParallelFields(
+      splitMultilineField(row[trainingNameIndex] ?? ''),
+      splitMultilineField(row[trainingYearIndex] ?? '')
+    );
+
+    return [
+      {
+        name,
+        location,
+        status: normalizePersonnelImportStatus(statusIndex >= 0 ? row[statusIndex] : undefined),
+        licenseNumber: nameLicenseParts.slice(1).join(' ').trim(),
+        address: addressIndex >= 0 ? (row[addressIndex]?.trim() ?? '') : '',
+        documentPeriod: deriveDocumentPeriodFromSource(sourceDocument),
+        sourceDocument,
+        birthPlaceDate: birthPlaceDateIndex >= 0 ? (row[birthPlaceDateIndex]?.trim() ?? '') : '',
+        maritalStatus: maritalStatusIndex >= 0 ? (row[maritalStatusIndex]?.trim() ?? '') : '',
+        religion: religionIndex >= 0 ? (row[religionIndex]?.trim() ?? '') : '',
+        educationHistory,
+        workHistory,
+        trainingHistory,
+        refreshmentExisting:
+          refreshmentExistingIndex >= 0 ? flattenMultilineField(row[refreshmentExistingIndex]) : '',
+        refreshmentPlan: refreshmentPlanIndex >= 0 ? flattenMultilineField(row[refreshmentPlanIndex]) : '',
+        recurrentExisting: recurrentExistingIndex >= 0 ? flattenMultilineField(row[recurrentExistingIndex]) : '',
+        recurrentPlan: recurrentPlanIndex >= 0 ? flattenMultilineField(row[recurrentPlanIndex]) : '',
+      },
+    ];
+  });
+
+  if (!nextItems.length) {
+    throw new Error('Tidak ada data personel yang dapat diimpor dari file tersebut.');
+  }
+
+  return nextItems;
+}
+
 function EmptyRows({ copy }: { copy: string }) {
   return <div className="empty-inline">{copy}</div>;
 }
@@ -1093,6 +1364,38 @@ export default function App() {
   async function handleAddPerson(input: NewPersonnelInput) {
     await createPersonnel(input);
     await refreshDashboardData();
+  }
+
+  async function handleDeletePersonnelTable() {
+    await deletePersonnelTable();
+    await refreshDashboardData();
+  }
+
+  async function handleImportPersonnel(items: NewPersonnelInput[]): Promise<PersonnelImportResult> {
+    let imported = 0;
+    const failed: string[] = [];
+
+    for (const item of items) {
+      try {
+        await createPersonnel(item);
+        imported += 1;
+      } catch {
+        failed.push(item.name);
+      }
+    }
+
+    if (imported > 0) {
+      await refreshDashboardData();
+    }
+
+    if (!imported) {
+      throw new Error('Tidak ada personel yang berhasil diimpor.');
+    }
+
+    return {
+      imported,
+      failed,
+    };
   }
 
   async function handleUploadPersonnelPhoto(slug: string, photo: File) {
@@ -1422,6 +1725,8 @@ export default function App() {
             subtitle="Pastikan ketersediaan lisensi kritis dan coverage setiap shift operasional."
             licenses={visibleLicenses}
             onAddPerson={handleAddPerson}
+            onDeletePersonnelTable={handleDeletePersonnelTable}
+            onImportPersonnel={handleImportPersonnel}
             onSelectPerson={handleSelectPerson}
           />
         ) : null}
@@ -2205,6 +2510,8 @@ function PersonnelSection({
   subtitle,
   licenses,
   onAddPerson,
+  onDeletePersonnelTable,
+  onImportPersonnel,
   onSelectPerson,
 }: {
   eyebrow: string;
@@ -2212,13 +2519,20 @@ function PersonnelSection({
   subtitle: string;
   licenses: LicenseItem[];
   onAddPerson: (input: NewPersonnelInput) => Promise<void>;
+  onDeletePersonnelTable: () => Promise<void>;
+  onImportPersonnel: (items: NewPersonnelInput[]) => Promise<PersonnelImportResult>;
   onSelectPerson: (slug: string) => void;
 }) {
   const ITEMS_PER_PAGE = 6;
   const [currentPage, setCurrentPage] = useState(1);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [importError, setImportError] = useState('');
+  const [importMessage, setImportMessage] = useState('');
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const [formState, setFormState] = useState<NewPersonnelInput>({
     name: '',
     location: '',
@@ -2271,6 +2585,58 @@ function PersonnelSection({
     });
   }
 
+  async function handleImportChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      setIsImporting(true);
+      setImportError('');
+      setImportMessage('');
+
+      const nextItems = parsePersonnelImportFile(await file.text());
+      const result = await onImportPersonnel(nextItems);
+      const failedCopy = result.failed.length
+        ? ` ${result.failed.length} data belum masuk: ${result.failed.slice(0, 3).join(', ')}${
+            result.failed.length > 3 ? ' dan lainnya.' : '.'
+          }`
+        : '';
+
+      setImportMessage(`${result.imported} personel berhasil diimpor dari ${file.name}.${failedCopy}`);
+      setCurrentPage(1);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Gagal mengimpor dokumen personel.');
+    } finally {
+      setIsImporting(false);
+      event.target.value = '';
+    }
+  }
+
+  async function handleDeleteTable() {
+    const confirmed = window.confirm(
+      'Hapus seluruh data pada tabel personil keamanan? Tindakan ini akan menghapus data personel beserta foto yang tersimpan.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      setImportError('');
+      setImportMessage('');
+      await onDeletePersonnelTable();
+      setCurrentPage(1);
+      setImportMessage('Seluruh data pada tabel personil keamanan berhasil dihapus.');
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Gagal menghapus tabel personil keamanan.');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -2301,11 +2667,42 @@ function PersonnelSection({
             <p className="panel-copy">{subtitle}</p>
           </div>
           <div className="panel-head-actions">
-            <button type="button" className="action-pill is-primary" onClick={() => setIsAddOpen(true)}>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={handleImportChange}
+            />
+            <button
+              type="button"
+              className="action-pill action-pill--danger"
+              onClick={handleDeleteTable}
+              disabled={!licenses.length || isDeleting || isImporting}
+            >
+              {isDeleting ? 'Menghapus...' : 'Hapus'}
+            </button>
+            <button
+              type="button"
+              className="action-pill is-ghost"
+              onClick={() => importInputRef.current?.click()}
+              disabled={isImporting || isDeleting}
+            >
+              {isImporting ? 'Mengimpor...' : 'Import dokumen'}
+            </button>
+            <button
+              type="button"
+              className="action-pill is-primary"
+              onClick={() => setIsAddOpen(true)}
+              disabled={isDeleting}
+            >
               Tambah
             </button>
           </div>
         </div>
+
+        {importMessage ? <div className="program-feedback is-success">{importMessage}</div> : null}
+        {importError ? <div className="personnel-form-error">{importError}</div> : null}
 
         <div className="table-shell">
           {licenses.length ? (

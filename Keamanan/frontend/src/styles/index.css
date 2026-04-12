@@ -1936,7 +1936,9 @@ body {
 }
 
 .topbar {
+  align-content: start;
   align-items: center;
+  min-height: 108px;
   padding: 14px 18px;
   border: 1px solid #e8edf3;
   border-radius: 20px;
@@ -1946,11 +1948,20 @@ body {
 
 .topbar-profile {
   min-width: 0;
+  align-self: start;
+}
+
+.topbar-mobile-shell {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
 }
 
 .topbar-backdrop {
   display: grid;
   gap: 2px;
+  min-height: 0;
   min-width: 0;
   padding: 0;
   border: 0;
@@ -1985,6 +1996,7 @@ body {
 }
 
 .searchbox {
+  align-self: start;
   min-height: 48px;
 }
 
@@ -1999,6 +2011,10 @@ body {
 
 .topbar-action-group {
   position: relative;
+}
+
+.topbar-actions {
+  align-self: start;
 }
 
 .topbar-pill--menu.is-open {

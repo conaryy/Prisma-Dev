@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -46,10 +47,29 @@ export class AppController {
       status?: 'Valid' | 'Perpanjangan' | 'Pelatihan';
       licenseNumber?: string;
       address?: string;
+      documentPeriod?: string;
+      sourceDocument?: string;
+      birthPlaceDate?: string;
+      maritalStatus?: string;
+      religion?: string;
+      educationHistory?: string[];
+      workHistory?: string[];
+      trainingHistory?: string[];
+      refreshmentExisting?: string;
+      refreshmentPlan?: string;
+      recurrentExisting?: string;
+      recurrentPlan?: string;
     }
   ): Promise<{ data: unknown }> {
     return {
       data: await this.dashboardService.createPersonnel(body),
+    };
+  }
+
+  @Delete('personnel')
+  async clearPersonnel(): Promise<{ data: unknown }> {
+    return {
+      data: await this.dashboardService.clearPersonnel(),
     };
   }
 

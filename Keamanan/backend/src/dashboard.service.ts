@@ -1086,30 +1086,91 @@ export class DashboardService {
     status?: LicenseItem['status'];
     licenseNumber?: string;
     address?: string;
+    documentPeriod?: string;
+    sourceDocument?: string;
+    birthPlaceDate?: string;
+    maritalStatus?: string;
+    religion?: string;
+    educationHistory?: string[];
+    workHistory?: string[];
+    trainingHistory?: string[];
+    refreshmentExisting?: string;
+    refreshmentPlan?: string;
+    recurrentExisting?: string;
+    recurrentPlan?: string;
   }) {
     const name = body.name.trim();
     const location = body.location.trim();
     const slug = await this.createUniqueSlug(this.slugify(`${name}-${location}`));
+    const educationHistory = (body.educationHistory ?? []).map((value) => value.trim()).filter(Boolean);
+    const workHistory = (body.workHistory ?? []).map((value) => value.trim()).filter(Boolean);
+    const trainingHistory = (body.trainingHistory ?? []).map((value) => value.trim()).filter(Boolean);
 
     return this.prisma.personnel.create({
       data: {
         slug,
         name,
         location,
-        documentPeriod: 'Ditambahkan Manual',
-        sourceDocument: 'Input Dashboard',
+        documentPeriod: body.documentPeriod?.trim() || 'Ditambahkan Manual',
+        sourceDocument: body.sourceDocument?.trim() || 'Input Dashboard',
         licenseNumber: body.licenseNumber?.trim() || '-',
-        birthPlaceDate: '-',
+        birthPlaceDate: body.birthPlaceDate?.trim() || '-',
         address: body.address?.trim() || '-',
-        maritalStatus: '-',
-        religion: '-',
+        maritalStatus: body.maritalStatus?.trim() || '-',
+        religion: body.religion?.trim() || '-',
         status: this.toPersonnelStatus(body.status),
-        refreshmentExisting: '-',
-        refreshmentPlan: '-',
-        recurrentExisting: '-',
-        recurrentPlan: '-',
+        refreshmentExisting: body.refreshmentExisting?.trim() || '-',
+        refreshmentPlan: body.refreshmentPlan?.trim() || '-',
+        recurrentExisting: body.recurrentExisting?.trim() || '-',
+        recurrentPlan: body.recurrentPlan?.trim() || '-',
+        ...(educationHistory.length
+          ? {
+              educationHistories: {
+                create: educationHistory.map((value) => ({ value })),
+              },
+            }
+          : {}),
+        ...(workHistory.length
+          ? {
+              workHistories: {
+                create: workHistory.map((value) => ({ value })),
+              },
+            }
+          : {}),
+        ...(trainingHistory.length
+          ? {
+              trainingHistories: {
+                create: trainingHistory.map((value) => ({ value })),
+              },
+            }
+          : {}),
       },
     });
+  }
+
+  async clearPersonnel() {
+    const rows = await this.prisma.personnel.findMany({
+      select: {
+        photoStorageName: true,
+      },
+    });
+
+    const deleted = await this.prisma.personnel.deleteMany();
+
+    await Promise.all(
+      rows.map(async (row) => {
+        if (!row.photoStorageName) {
+          return;
+        }
+
+        const targetPath = join(this.personnelPhotoUploadsRoot, row.photoStorageName);
+        await fs.unlink(targetPath).catch(() => undefined);
+      })
+    );
+
+    return {
+      deletedCount: deleted.count,
+    };
   }
 
   private async savePersonnelPhoto(file: {
