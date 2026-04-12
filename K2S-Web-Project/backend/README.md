@@ -45,6 +45,17 @@ composer test
 - integrasi `whatsapp_api`
 - admin `Kelola User`
 
+## Export DNP Self Assessment
+
+- Jalur admin `Export DNP` untuk self assessment sekarang mencakup:
+  - compare pertanyaan lokal vs DNP
+  - pairing target pertanyaan DNP per jawaban lokal
+  - export draft jawaban ke DNP
+  - upload file evidence lokal ke draft DNP
+- Pairing disimpan di snapshot compare agar tidak hilang saat reload detail.
+- Import compare untuk area-user yang sama bersifat update/overwrite.
+- Jalur ini sensitif terhadap sinkronisasi Laravel backend dan `backend/wrapping`; jika proses lama masih berjalan, error yang muncul bisa berasal dari kode wrapper/backend yang belum ter-reload.
+
 ## Catatan Deploy
 
 - Deploy terpusat sekarang memakai `docker-compose.central.yml` dari root repo.
@@ -86,3 +97,4 @@ composer test
 
 - `backend/docs/openapi.yaml`
 - `backend/docs/AUTH_SSO_MIGRATION.md`
+- `backend/docs/README_k2s.md`

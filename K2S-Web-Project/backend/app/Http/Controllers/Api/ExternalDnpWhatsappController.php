@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Jobs\RunWhatsappBatchSend;
+use App\Models\ExternalDnpAnswer;
 use App\Models\ExternalDnpCapFulfillment;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -294,13 +295,15 @@ class ExternalDnpWhatsappController extends ApiController
         ?string $area = null
     ): array {
         $baseQuery = $this->buildImportedTemuanQuery($scope, $year, $instansi, $area);
+        $totalTemuan = (clone $baseQuery)->count('answers.id');
+        $totalTerpenuhi = $this->countCompletedTemuan($baseQuery);
 
         $summary = [
             'scope' => $scope,
             'year' => $year,
             'instansi' => $instansi,
             'area' => $area,
-            'totalTemuan' => (clone $baseQuery)->count(),
+            'totalTemuan' => $totalTemuan,
             'totalInstansi' => (clone $baseQuery)
                 ->whereNotNull('sessions.instansi_name')
                 ->where('sessions.instansi_name', '!=', '')
@@ -309,12 +312,8 @@ class ExternalDnpWhatsappController extends ApiController
             'totalArea' => (clone $baseQuery)
                 ->distinct()
                 ->count('areas.id'),
-            'totalTerpenuhi' => (clone $baseQuery)
-                ->where('fulfillments.progress', '>=', 100)
-                ->count(),
-            'totalBelumTerpenuhi' => (clone $baseQuery)
-                ->where('fulfillments.progress', '<', 100)
-                ->count(),
+            'totalTerpenuhi' => $totalTerpenuhi,
+            'totalBelumTerpenuhi' => $totalTemuan - $totalTerpenuhi,
             'byScope' => $this->buildScopeBreakdown($scope, $year, $instansi, $area),
             'byInstansi' => $this->buildInstansiBreakdown($scope, $year, $instansi, $area),
         ];
@@ -345,18 +344,10 @@ class ExternalDnpWhatsappController extends ApiController
         ?string $instansi = null,
         ?string $area = null
     ): array {
-        return (clone $this->buildImportedTemuanQuery($scope, $year, $instansi, $area))
+        $items = (clone $this->buildImportedTemuanQuery($scope, $year, $instansi, $area))
             ->select([
-                'fulfillments.id',
-                'fulfillments.step',
-                'fulfillments.progress',
-                'fulfillments.status as fulfillment_status',
-                'fulfillments.complete_date',
-                'fulfillments.submitted_at',
-                'fulfillments.created_at',
-                'fulfillments.propose_action',
-                'fulfillments.action_office',
-                'fulfillments.evidence_reference',
+                'answers.id',
+                'answers.question_code as answer_question_code',
                 'caps.id as cap_id',
                 'caps.external_cap_id',
                 'caps.status as cap_status',
@@ -373,13 +364,37 @@ class ExternalDnpWhatsappController extends ApiController
                 'sessions.start_date',
                 'sessions.end_date',
             ])
+            ->leftJoin('external_dnp_questions as questions', function ($join) {
+                $join->on('questions.scope', '=', 'sessions.scope')
+                    ->on('questions.code', '=', 'answers.question_code');
+            })
             ->orderByDesc('sessions.start_date')
             ->orderBy('sessions.instansi_name')
             ->orderBy('areas.category')
             ->orderBy('questions.code')
-            ->orderByDesc('fulfillments.step')
+            ->get();
+
+        $fulfillmentsByCapId = ExternalDnpCapFulfillment::query()
+            ->whereIn('cap_id', $items->pluck('cap_id')->filter()->unique()->values())
             ->get()
-            ->map(function ($item) {
+            ->groupBy('cap_id');
+
+        return $items
+            ->map(function ($item) use ($fulfillmentsByCapId) {
+                $fulfillments = $item->cap_id
+                    ? ($fulfillmentsByCapId[$item->cap_id] ?? collect())
+                    : collect();
+                $highestProgress = (int) ($fulfillments->max(
+                    fn ($fulfillment) => (int) ($fulfillment->progress ?? 0)
+                ) ?? 0);
+                $latestFulfillment = $fulfillments
+                    ->filter(fn ($fulfillment) => $fulfillment->submitted_at || $fulfillment->created_at)
+                    ->sortByDesc(function ($fulfillment) {
+                        $submitted = $fulfillment->submitted_at?->timestamp ?? 0;
+                        $created = $fulfillment->created_at?->timestamp ?? 0;
+                        return max($submitted, $created);
+                    })
+                    ->first();
                 $year = null;
                 if ($item->start_date) {
                     try {
@@ -399,7 +414,7 @@ class ExternalDnpWhatsappController extends ApiController
                         $item->end_date ? (string) $item->end_date : null
                     ),
                     'area' => $item->area_name ?: '-',
-                    'questionCode' => $item->question_code ?: '-',
+                    'questionCode' => $item->question_code ?: ($item->answer_question_code ?: '-'),
                     'questionText' => $item->question_text ?: '',
                     'findingText' => $item->review_finding
                         ?: $item->review_description
@@ -409,16 +424,22 @@ class ExternalDnpWhatsappController extends ApiController
                     'capStatus' => $item->cap_status ?: '-',
                     'capId' => $item->cap_id,
                     'externalCapId' => $item->external_cap_id,
-                    'step' => (int) $item->step,
-                    'progress' => (int) $item->progress,
-                    'fulfillmentStatus' => $item->fulfillment_status ?: '-',
-                    'completeDate' => $item->complete_date ? (string) $item->complete_date : null,
-                    'submittedAt' => $item->submitted_at ? (string) $item->submitted_at : null,
-                    'createdAt' => $item->created_at ? (string) $item->created_at : null,
+                    'step' => (int) ($latestFulfillment?->step ?? 0),
+                    'progress' => $highestProgress,
+                    'fulfillmentStatus' => $latestFulfillment?->status ?: '-',
+                    'completeDate' => $latestFulfillment?->complete_date
+                        ? (string) $latestFulfillment->complete_date
+                        : null,
+                    'submittedAt' => $latestFulfillment?->submitted_at
+                        ? (string) $latestFulfillment->submitted_at
+                        : null,
+                    'createdAt' => $latestFulfillment?->created_at
+                        ? (string) $latestFulfillment->created_at
+                        : null,
                     'actionPlan' => $item->action_plan ?: '',
-                    'proposeAction' => $item->propose_action ?: '',
-                    'actionOffice' => $item->action_office ?: '',
-                    'evidenceReference' => $item->evidence_reference ?: null,
+                    'proposeAction' => $latestFulfillment?->propose_action ?: '',
+                    'actionOffice' => $latestFulfillment?->action_office ?: '',
+                    'evidenceReference' => $latestFulfillment?->evidence_reference ?: null,
                 ];
             })
             ->values()
@@ -489,19 +510,13 @@ class ExternalDnpWhatsappController extends ApiController
         ?string $area = null
     ): Builder
     {
-        return ExternalDnpCapFulfillment::query()
-            ->from('external_dnp_cap_fulfillments as fulfillments')
-            ->join('external_dnp_caps as caps', 'caps.id', '=', 'fulfillments.cap_id')
-            ->join('external_dnp_answers as answers', 'answers.id', '=', 'caps.answer_id')
+        return ExternalDnpAnswer::query()
+            ->from('external_dnp_answers as answers')
             ->join('external_dnp_reviews as reviews', 'reviews.answer_id', '=', 'answers.id')
             ->join('external_dnp_session_areas as areas', 'areas.id', '=', 'answers.session_area_id')
             ->join('external_dnp_sessions as sessions', 'sessions.id', '=', 'areas.session_id')
-            ->leftJoin('external_dnp_questions as questions', function ($join) {
-                $join->on('questions.scope', '=', 'sessions.scope')
-                    ->on('questions.code', '=', 'answers.question_code');
-            })
-            ->whereNotNull('fulfillments.external_step_id')
-            ->where('fulfillments.external_step_id', '!=', '')
+            ->leftJoin('external_dnp_caps as caps', 'caps.answer_id', '=', 'answers.id')
+            ->where('answers.is_submitted', true)
             ->where('reviews.status', 'Not Satisfactory')
             ->whereNotNull('reviews.sent_at')
             ->when($scope !== 'all', function (Builder $query) use ($scope) {
@@ -524,6 +539,24 @@ class ExternalDnpWhatsappController extends ApiController
             });
     }
 
+    private function countCompletedTemuan(Builder $baseQuery): int
+    {
+        return (clone $baseQuery)
+            ->whereExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('external_dnp_caps as completed_caps')
+                    ->join(
+                        'external_dnp_cap_fulfillments as completed_fulfillments',
+                        'completed_fulfillments.cap_id',
+                        '=',
+                        'completed_caps.id'
+                    )
+                    ->whereColumn('completed_caps.answer_id', 'answers.id')
+                    ->where('completed_fulfillments.progress', '>=', 100);
+            })
+            ->count('answers.id');
+    }
+
     private function buildScopeBreakdown(
         string $scope,
         ?int $year,
@@ -542,7 +575,7 @@ class ExternalDnpWhatsappController extends ApiController
                 $year,
                 $instansi,
                 $area
-            ))->count();
+            ))->count('answers.id');
         }
 
         return $rows;
@@ -559,8 +592,26 @@ class ExternalDnpWhatsappController extends ApiController
             ->selectRaw("
                 COALESCE(NULLIF(TRIM(sessions.instansi_name), ''), '-') as instansi_name,
                 COUNT(*) as total_temuan,
-                SUM(CASE WHEN fulfillments.progress >= 100 THEN 1 ELSE 0 END) as total_terpenuhi,
-                SUM(CASE WHEN fulfillments.progress < 100 THEN 1 ELSE 0 END) as total_belum_terpenuhi
+                SUM(
+                    CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM external_dnp_caps completed_caps
+                        INNER JOIN external_dnp_cap_fulfillments completed_fulfillments
+                            ON completed_fulfillments.cap_id = completed_caps.id
+                        WHERE completed_caps.answer_id = answers.id
+                            AND completed_fulfillments.progress >= 100
+                    ) THEN 1 ELSE 0 END
+                ) as total_terpenuhi,
+                SUM(
+                    CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM external_dnp_caps completed_caps
+                        INNER JOIN external_dnp_cap_fulfillments completed_fulfillments
+                            ON completed_fulfillments.cap_id = completed_caps.id
+                        WHERE completed_caps.answer_id = answers.id
+                            AND completed_fulfillments.progress >= 100
+                    ) THEN 0 ELSE 1 END
+                ) as total_belum_terpenuhi
             ")
             ->groupByRaw("COALESCE(NULLIF(TRIM(sessions.instansi_name), ''), '-')")
             ->orderByDesc('total_temuan')
@@ -677,7 +728,7 @@ class ExternalDnpWhatsappController extends ApiController
         $lines = [
             'RINGKASAN TEMUAN DNP',
             '',
-            'Total pemenuhan CAP : '.(int) ($summary['totalTemuan'] ?? 0),
+            'Total temuan        : '.(int) ($summary['totalTemuan'] ?? 0),
             'Total instansi      : '.(int) ($summary['totalInstansi'] ?? 0),
             'Total area          : '.(int) ($summary['totalArea'] ?? 0),
             'Terpenuhi (100%)    : '.(int) ($summary['totalTerpenuhi'] ?? 0),

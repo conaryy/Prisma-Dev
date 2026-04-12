@@ -30,6 +30,10 @@ if not WRAPPER_INTERNAL_TOKEN:
 
 WEB2_URL = os.getenv('WEB2_URL', "http://180.214.246.148")
 WRAPPER_ALLOW_PUBLIC_UI = os.getenv('WRAPPER_ALLOW_PUBLIC_UI', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
+USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+)
 
 # Penyimpanan session di memory (server-side)
 user_sessions = {}
@@ -51,6 +55,35 @@ def _reject_public_ui():
     return jsonify({'error': 'Endpoint disabled in production.'}), 404
 
 # --- Helper Functions for Automation ---
+
+def _ajax_headers(referer):
+    return {
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": USER_AGENT,
+        "Referer": referer,
+    }
+
+def _escape_multipart_header(value):
+    return str(value or "").replace("\\", "\\\\").replace('"', '\\"')
+
+def _encode_webkit_multipart(fields):
+    boundary = f"----WebKitFormBoundary{uuid.uuid4().hex[:16]}"
+    body_parts = []
+
+    for name, value in fields:
+        body_parts.extend(
+            [
+                f"--{boundary}\r\n".encode(),
+                f'Content-Disposition: form-data; name="{_escape_multipart_header(name)}"\r\n\r\n'.encode(),
+                str(value or "").encode(),
+                b"\r\n",
+            ]
+        )
+
+    body_parts.append(f"--{boundary}--\r\n".encode())
+    return b"".join(body_parts), boundary
 
 def _run_penyusunan_automation(s, main_path_segment, debug_log):
     """
@@ -328,6 +361,98 @@ def _extract_pertanyaan_text(pq_desc):
     return text
 
 
+def _build_selfassessment_konten_ref(ref_data):
+    refs = []
+    for item in ref_data or []:
+        if not isinstance(item, dict):
+            continue
+        ref_no = ' '.join(str(item.get('ref_konten_no') or '').split())
+        ref_text = ' '.join(str(item.get('ref_konten') or '').split())
+        if ref_no and ref_text:
+            refs.append(f"{ref_no} - {ref_text}")
+        elif ref_no:
+            refs.append(ref_no)
+        elif ref_text:
+            refs.append(ref_text)
+    return '\n'.join(dict.fromkeys(refs))
+
+
+def _is_selfassessment_question_row(datatable_item, detail_payload):
+    pq_no = str(datatable_item.get('pq_no') or '').strip()
+    if '.' in pq_no:
+        return True
+    data_pq = (detail_payload.get('data_output') or {}).get('data_pq') or {}
+    return '.' in str(data_pq.get('pq_no') or '').strip()
+
+
+def _build_selfassessment_compare_item(scope, area_group_id, area, datatable_item, detail_payload):
+    data_output = detail_payload.get('data_output') or {}
+    data_pq = data_output.get('data_pq') or {}
+    ref_data = data_output.get('ref_data') or []
+    data_files = data_output.get('data_files') or []
+
+    pq_desc = data_output.get('pq_desc') or datatable_item.get('pq_desc') or ''
+    ass_status = data_pq.get('ass_status') or 'SA'
+
+    return {
+        'scope': scope,
+        'area': area or '',
+        'area_group_id': str(area_group_id or '').strip(),
+        'plan_id': str(data_pq.get('plan_id') or datatable_item.get('plan_id') or '').strip(),
+        'pq_id': str(data_pq.get('pq_id') or datatable_item.get('pq_id') or '').strip(),
+        'data_id': str(data_pq.get('data_id') or '').strip(),
+        'pq_no': data_pq.get('pq_no') or datatable_item.get('pq_no'),
+        'pq_desc': pq_desc,
+        'pertanyaan': _extract_pertanyaan_text(pq_desc),
+        'pq_guide': data_output.get('pq_guide') or '',
+        'konten_ref': _build_selfassessment_konten_ref(ref_data),
+        'ref_data': ref_data if isinstance(ref_data, list) else [],
+        'data_files': data_files if isinstance(data_files, list) else [],
+        'editable': {
+            'comment': data_pq.get('comment') or '',
+            'ass_status': ass_status if ass_status in {'SA', 'NA', 'NS'} else 'SA',
+            'evidence': data_pq.get('evidence') or '',
+        },
+        'draft_payload': {
+            'plan_id': str(data_pq.get('plan_id') or datatable_item.get('plan_id') or '').strip(),
+            'area_group_id': str(area_group_id or '').strip(),
+            'pq_id': str(data_pq.get('pq_id') or datatable_item.get('pq_id') or '').strip(),
+            'is_file_exist': '1' if isinstance(data_files, list) and len(data_files) > 0 else '0',
+            'pq_desc': pq_desc,
+            'konten_ref': _build_selfassessment_konten_ref(ref_data),
+            'ass_status': ass_status if ass_status in {'SA', 'NA', 'NS'} else 'SA',
+            'comment': data_pq.get('comment') or '',
+            'evidence': data_pq.get('evidence') or '',
+            'status': 'draft',
+        },
+        'raw_detail': detail_payload,
+    }
+
+
+def _resolve_selfassessment_data_id(s, scope, plan_id, pq_id, area_group_id):
+    main_path_segment = _build_selfassessment_main_path(scope)
+    if not main_path_segment:
+        return None, {"error": f"Scope selfassessment tidak valid: {scope}"}
+
+    fill_url = f"{WEB2_URL}/{main_path_segment}/fill/{plan_id}/{area_group_id}"
+    url = f"{WEB2_URL}/{main_path_segment}/insert_realisasi/{pq_id}/{plan_id}"
+    try:
+        res = s.get(url, headers=_ajax_headers(fill_url), timeout=120)
+        res.raise_for_status()
+    except Exception as exc:
+        return None, {"error": f"Gagal mengambil data_id self assessment: {exc}"}
+
+    try:
+        payload = res.json()
+    except ValueError:
+        return None, {"error": f"Respons data_id bukan JSON: {res.text[:500]}"}
+
+    data_id = str(payload.get("data_id") or "").strip()
+    if not data_id:
+        return None, {"error": "Respons insert_realisasi tidak berisi data_id.", "response": payload}
+    return data_id, {"target_url": url, "response": payload}
+
+
 def _build_deskripsi(ref_konten_no, ref_konten):
     parts = [part.strip() for part in str(ref_konten_no or '').split('-') if part.strip()]
     left_part = ' - '.join(parts)
@@ -590,6 +715,255 @@ def _scrape_selfassessment_fill(s, scope, year, code1, code2, area, debug_log):
         },
         'rows': rows,
     }
+
+
+def _compare_selfassessment_fill(s, scope, year, code1, code2, area, debug_log):
+    main_path_segment = _build_selfassessment_main_path(scope)
+    if not main_path_segment:
+        return {'error': f'Scope selfassessment tidak valid: {scope}'}
+
+    main_page_url = f"{WEB2_URL}/{main_path_segment}"
+    fill_url = f"{main_page_url}/fill/{code1}/{code2}"
+    datatable_url = f"{WEB2_URL}/{main_path_segment}/get_datatable/{code1}/{code2}"
+    debug_log.append(f"GET: {datatable_url}")
+
+    try:
+        datatable_res = s.get(datatable_url, headers=_ajax_headers(fill_url), timeout=120)
+        datatable_res.raise_for_status()
+        datatable_content = datatable_res.json()
+    except Exception as exc:
+        return {'error': f'Gagal mengambil datatable self assessment: {exc}'}
+
+    pq_items = []
+    if (
+        isinstance(datatable_content, list)
+        and datatable_content
+        and isinstance(datatable_content[0], dict)
+        and isinstance(datatable_content[0].get('rs_pq'), list)
+    ):
+        pq_items = datatable_content[0]['rs_pq']
+
+    requests_to_make = []
+    seen = set()
+    for item in pq_items:
+        if not isinstance(item, dict):
+            continue
+        item_plan_id = str(item.get('plan_id') or code1 or '').strip()
+        item_pq_id = str(item.get('pq_id') or '').strip()
+        if not item_plan_id or not item_pq_id or (item_plan_id, item_pq_id) in seen:
+            continue
+        seen.add((item_plan_id, item_pq_id))
+        requests_to_make.append((item, item_plan_id, item_pq_id))
+
+    detail_by_pq_id = {}
+    if requests_to_make:
+        max_workers = min(8, len(requests_to_make))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {
+                executor.submit(
+                    _fetch_plan_pq_detail,
+                    s,
+                    f"{WEB2_URL}/{main_path_segment}/get_plan_pq",
+                    _ajax_headers(fill_url),
+                    (item_plan_id, item_pq_id),
+                ): item_pq_id
+                for _, item_plan_id, item_pq_id in requests_to_make
+            }
+            for future in as_completed(future_map):
+                pair_key, detail_payload = future.result()
+                detail_by_pq_id[pair_key[1]] = detail_payload
+
+    items = []
+    for item, _, item_pq_id in requests_to_make:
+        detail_payload = detail_by_pq_id.get(item_pq_id, {})
+        if detail_payload.get('error') or not _is_selfassessment_question_row(item, detail_payload):
+            continue
+        compare_item = _build_selfassessment_compare_item(
+            scope=scope,
+            area_group_id=code2,
+            area=area,
+            datatable_item=item,
+            detail_payload=detail_payload,
+        )
+        if not compare_item.get('data_id'):
+            resolved_data_id, data_id_lookup = _resolve_selfassessment_data_id(
+                s=s,
+                scope=scope,
+                plan_id=compare_item.get('plan_id'),
+                pq_id=compare_item.get('pq_id'),
+                area_group_id=code2,
+            )
+            if resolved_data_id:
+                compare_item['data_id'] = resolved_data_id
+                compare_item['data_id_lookup'] = data_id_lookup
+                debug_log.append(
+                    f"GET: {WEB2_URL}/{main_path_segment}/insert_realisasi/"
+                    f"{compare_item.get('pq_id')}/{compare_item.get('plan_id')}"
+                )
+        items.append(compare_item)
+        debug_log.append(
+            f"GET: {WEB2_URL}/{main_path_segment}/get_plan_pq?plan_id={items[-1]['plan_id']}&pq_id={items[-1]['pq_id']}"
+        )
+
+    return {
+        'scope': scope,
+        'year': str(year),
+        'assessment': {
+            'area': area or '',
+            'fill_url': fill_url,
+            'datatable_url': datatable_url,
+        },
+        'items': items,
+    }
+
+def _post_selfassessment_draft(s, scope, csrf_token, payload_data):
+    main_path_segment = _build_selfassessment_main_path(scope)
+    if not main_path_segment:
+        return ({"error": f"Scope selfassessment tidak valid: {scope}"}, 400)
+
+    ass_status = str(payload_data.get('ass_status') or '').strip().upper()
+    if ass_status not in {'SA', 'NA', 'NS'}:
+        return ({"error": "ass_status harus salah satu dari SA, NA, NS."}, 422)
+
+    required_fields = ['plan_id', 'area_group_id', 'pq_id', 'pq_desc']
+    missing_fields = [
+        field for field in required_fields if not str(payload_data.get(field) or '').strip()
+    ]
+    if missing_fields:
+        return ({"error": f"Field wajib kosong: {', '.join(missing_fields)}"}, 422)
+
+    plan_id = str(payload_data.get('plan_id') or '').strip()
+    area_group_id = str(payload_data.get('area_group_id') or '').strip()
+    fill_url = f"{WEB2_URL}/{main_path_segment}/fill/{plan_id}/{area_group_id}"
+    url = f"{WEB2_URL}/{main_path_segment}/fill_process"
+    body = {
+        'ci_csrf_token': csrf_token or '',
+        'plan_id': plan_id,
+        'area_group_id': area_group_id,
+        'pq_id': str(payload_data.get('pq_id') or '').strip(),
+        'is_file_exist': str(payload_data.get('is_file_exist') or '0').strip(),
+        'pq_desc': payload_data.get('pq_desc') or '',
+        'konten_ref': payload_data.get('konten_ref') or '',
+        'ass_status': ass_status,
+        'comment': payload_data.get('comment') or '',
+        'evidence': payload_data.get('evidence') or '',
+        'status': 'draft',
+    }
+
+    headers = _ajax_headers(fill_url)
+    headers['Origin'] = WEB2_URL
+    headers['Accept-Encoding'] = 'gzip, deflate, br'
+    headers['Connection'] = 'keep-alive'
+    try:
+        multipart_body, boundary = _encode_webkit_multipart(list(body.items()))
+        headers['Content-Type'] = f'multipart/form-data; boundary={boundary}'
+        res = s.post(url, data=multipart_body, headers=headers, timeout=120)
+        res.raise_for_status()
+    except Exception as exc:
+        return ({"error": f"Gagal simpan draft self assessment: {exc}"}, 502)
+
+    try:
+        response_payload = res.json()
+    except ValueError:
+        response_payload = {'raw': res.text[:2000]}
+
+    return ({
+        'status': 'ok',
+        'target_url': url,
+        'request_payload': {key: value for key, value in body.items() if key != 'ci_csrf_token'},
+        'response': response_payload,
+    }, 200)
+
+def _upload_selfassessment_file(s, scope, payload_data, upload_file=None):
+    main_path_segment = _build_selfassessment_main_path(scope)
+    if not main_path_segment:
+        return ({"error": f"Scope selfassessment tidak valid: {scope}"}, 400)
+
+    plan_id = str(payload_data.get('plan_id') or '').strip()
+    area_group_id = str(payload_data.get('area_group_id') or '').strip()
+    pq_id = str(payload_data.get('pq_id') or '').strip()
+    data_id = str(payload_data.get('data_id') or '').strip()
+    missing_fields = [
+        name
+        for name, value in {
+            'plan_id': plan_id,
+            'area_group_id': area_group_id,
+            'pq_id': pq_id,
+        }.items()
+        if not value
+    ]
+    if missing_fields:
+        return ({"error": f"Field wajib kosong: {', '.join(missing_fields)}"}, 422)
+
+    data_id_lookup = None
+    if not data_id:
+        data_id, data_id_lookup = _resolve_selfassessment_data_id(
+            s=s,
+            scope=scope,
+            plan_id=plan_id,
+            pq_id=pq_id,
+            area_group_id=area_group_id,
+        )
+        if not data_id:
+            return (data_id_lookup, 502)
+
+    url = f"{WEB2_URL}/{main_path_segment}/upload_one_file"
+    fill_url = f"{WEB2_URL}/{main_path_segment}/fill/{plan_id}/{area_group_id}"
+    headers = _ajax_headers(fill_url)
+    headers['Origin'] = WEB2_URL
+    headers['Accept'] = '*/*'
+    data = {'data_id': data_id, 'plan_id': plan_id, 'pq_id': pq_id}
+
+    if upload_file is None:
+        return ({"error": "file wajib diisi."}, 422)
+
+    files = [
+        (
+            'file_evidence',
+            (
+                upload_file.filename,
+                upload_file.stream,
+                upload_file.mimetype or 'application/octet-stream',
+            ),
+        )
+    ]
+
+    try:
+        res = s.post(url, data=data, files=files, headers=headers, timeout=180)
+        res.raise_for_status()
+    except Exception as exc:
+        return ({"error": f"Gagal upload file self assessment: {exc}"}, 502)
+
+    try:
+        response_payload = res.json()
+    except ValueError:
+        response_payload = {'raw': res.text[:2000]}
+
+    post_upload_inspection = {
+        'data_files_count': None,
+        'latest_file': None,
+        'download_probe': None,
+    }
+    try:
+        post_upload_inspection = inspect_selfassessment_file_after_upload(
+            s=s,
+            scope=scope,
+            plan_id=plan_id,
+            pq_id=pq_id,
+            area_group_id=area_group_id,
+        )
+    except Exception:
+        pass
+
+    return ({
+        'status': 'ok',
+        'target_url': url,
+        'data_id_lookup': data_id_lookup,
+        'sent_filename': upload_file.filename,
+        'request_payload': data,
+        'response': response_payload,
+        'post_upload_inspection': post_upload_inspection,
+    }, 200)
 
 def _post_pemenuhan_draft(s, scope, csrf_token, payload_data, upload_file=None):
     if scope == 'audit':
@@ -858,6 +1232,35 @@ def automation_run():
         )
         return jsonify(result), status
 
+    if action == 'selfassessment_save_draft':
+        if not meta.get('authenticated'):
+            return jsonify({
+                'error': 'Session belum login. Jalankan login DNP terlebih dahulu.',
+                'need_new_session': True,
+            }), 401
+        result, status = _post_selfassessment_draft(
+            s=s,
+            scope=(incoming.get('type') or '').strip(),
+            csrf_token=meta.get('csrf', ''),
+            payload_data=incoming,
+        )
+        return jsonify(result), status
+
+    if action == 'selfassessment_upload_file':
+        if not meta.get('authenticated'):
+            return jsonify({
+                'error': 'Session belum login. Jalankan login DNP terlebih dahulu.',
+                'need_new_session': True,
+            }), 401
+        upload_file = request.files.get('file') if request.files else None
+        result, status = _upload_selfassessment_file(
+            s=s,
+            scope=(incoming.get('type') or '').strip(),
+            payload_data=incoming,
+            upload_file=upload_file,
+        )
+        return jsonify(result), status
+
     captcha_value = (incoming.get('captcha') or '').strip()
     audit_type = (incoming.get('type') or '').strip()
     audit_stage = (incoming.get('stage') or '').strip()
@@ -937,6 +1340,30 @@ def automation_run():
 
             return jsonify({
                 'results': {'selfassessment': scrape_payload},
+                'debug_log': debug_log,
+            })
+
+        if action == 'selfassessment_compare':
+            fill_code1 = (incoming.get('fill_code1') or '').strip()
+            fill_code2 = (incoming.get('fill_code2') or '').strip()
+            fill_area = (incoming.get('fill_area') or '').strip()
+            if not fill_code1 or not fill_code2:
+                return jsonify({'error': 'fill_code1 dan fill_code2 wajib diisi.'}), 422
+
+            compare_payload = _compare_selfassessment_fill(
+                s=s,
+                scope=audit_type,
+                year=year_number,
+                code1=fill_code1,
+                code2=fill_code2,
+                area=fill_area,
+                debug_log=debug_log,
+            )
+            if compare_payload.get('error'):
+                return jsonify({'error': compare_payload['error'], 'debug_log': debug_log}), 502
+
+            return jsonify({
+                'results': {'selfassessment': compare_payload},
                 'debug_log': debug_log,
             })
 

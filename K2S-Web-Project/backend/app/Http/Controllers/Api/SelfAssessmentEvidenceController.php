@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\SelfAssessmentAnswer;
 use App\Models\SelfAssessmentEvidence;
 use App\Models\SelfAssessmentSessionArea;
 use Illuminate\Http\Request;
@@ -72,6 +73,69 @@ class SelfAssessmentEvidenceController extends ApiController
         }
 
         $evidence->delete();
+        return $this->respondData(['success' => true]);
+    }
+
+    public function adminStore(Request $request)
+    {
+        $validated = $request->validate([
+            'answerId' => ['required', 'uuid'],
+            'file' => ['required', 'file', 'max:20480', 'mimes:jpg,jpeg,png,pdf,docx,xlsx,mp3,mp4'],
+        ]);
+
+        $answer = SelfAssessmentAnswer::query()
+            ->with('review')
+            ->find($validated['answerId']);
+
+        if (!$answer) {
+            return response()->json(['error' => 'Jawaban tidak ditemukan.'], 404);
+        }
+
+        if ($answer->review && $answer->review->is_final) {
+            return response()->json([
+                'error' => 'Jawaban sudah difinalisasi dan evidence tidak bisa diubah.',
+            ], 403);
+        }
+
+        $file = $validated['file'];
+        $path = $file->store('self-assessment-evidence', 'public');
+
+        $item = SelfAssessmentEvidence::create([
+            'session_area_id' => $answer->session_area_id,
+            'user_id' => $answer->user_id,
+            'question_code' => $answer->question_code,
+            'name' => $file->getClientOriginalName(),
+            'url' => Storage::disk('public')->url($path),
+            'created_at' => now(),
+        ]);
+
+        $item->url = $this->signedDownloadUrl($item);
+
+        return $this->respondData($item, 201);
+    }
+
+    public function adminDestroy(SelfAssessmentEvidence $evidence)
+    {
+        $answer = SelfAssessmentAnswer::query()
+            ->with('review')
+            ->where('session_area_id', $evidence->session_area_id)
+            ->where('user_id', $evidence->user_id)
+            ->where('question_code', $evidence->question_code)
+            ->first();
+
+        if ($answer && $answer->review && $answer->review->is_final) {
+            return response()->json([
+                'error' => 'Jawaban sudah difinalisasi dan evidence tidak bisa dihapus.',
+            ], 403);
+        }
+
+        $relativePath = $this->resolveStoragePath($evidence->url ?? '', ['self-assessment-evidence/']);
+        if ($relativePath && Storage::disk('public')->exists($relativePath)) {
+            Storage::disk('public')->delete($relativePath);
+        }
+
+        $evidence->delete();
+
         return $this->respondData(['success' => true]);
     }
 

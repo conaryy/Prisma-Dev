@@ -3,9 +3,6 @@ import {
   Check,
   ClipboardCheck,
   FileText,
-  FolderOpen,
-  RefreshCw,
-  Search,
   SendHorizontal,
   UploadCloud,
 } from 'lucide-react';
@@ -13,17 +10,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { FormField, FormSection } from '@/components/shared/Form';
+import {
+  SelfAssessmentSubmissionTable,
+  type SelfAssessmentSubmissionTableRow,
+} from '@/components/self-assessment/SelfAssessmentSubmissionTable';
+import {
+  SelfAssessmentListFilters,
+  SelfAssessmentWorkspace,
+} from '@/components/self-assessment/SelfAssessmentWorkspace';
 import { toast } from '@/hooks/use-toast';
 import { resolveApiUrl } from '@/lib/api';
 import { formatDateRangeIndonesian } from '@/lib/date';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  SELF_ASSESSMENT_MONTH_OPTIONS as MONTH_OPTIONS,
+  SELF_ASSESSMENT_YEAR_OPTIONS_WITH_ALL as YEAR_OPTIONS,
+} from '@/lib/selfAssessmentFilters';
 import {
   deleteSelfAssessmentEvidence,
   fetchSelfAssessmentAnswers,
@@ -35,23 +36,6 @@ import {
 import { type SelfAssessmentScope } from '@/types/selfAssessment';
 import cnsQuestionsText from '../../pertanyaan_inspeksi_selfassesment_cns.txt?raw';
 import atsQuestionsText from '../../pertanyaan_inspeksi_selftassesment_ats.txt?raw';
-
-const MONTH_OPTIONS = [
-  { value: 'ALL', label: 'Semua', shortLabel: 'All' },
-  { value: 'JANUARI', label: 'JANUARI', shortLabel: 'Jan' },
-  { value: 'FEBRUARI', label: 'FEBRUARI', shortLabel: 'Feb' },
-  { value: 'MARET', label: 'MARET', shortLabel: 'Mar' },
-  { value: 'APRIL', label: 'APRIL', shortLabel: 'Apr' },
-  { value: 'MEI', label: 'MEI', shortLabel: 'Mei' },
-  { value: 'JUNI', label: 'JUNI', shortLabel: 'Jun' },
-  { value: 'JULI', label: 'JULI', shortLabel: 'Jul' },
-  { value: 'AGUSTUS', label: 'AGUSTUS', shortLabel: 'Agu' },
-  { value: 'SEPTEMBER', label: 'SEPTEMBER', shortLabel: 'Sep' },
-  { value: 'OKTOBER', label: 'OKTOBER', shortLabel: 'Okt' },
-  { value: 'NOVEMBER', label: 'NOVEMBER', shortLabel: 'Nov' },
-  { value: 'DESEMBER', label: 'DESEMBER', shortLabel: 'Des' },
-];
-const YEAR_OPTIONS = ['ALL', '2026', '2025', '2024', '2023', '2022'];
 
 const selectClassName =
   'h-11 w-full rounded-xl border border-input bg-white/80 px-4 text-sm text-slate-700 shadow-sm transition-colors placeholder:text-slate-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus:border-blue-400 dark:focus:ring-blue-900/50 sm:w-60';
@@ -180,6 +164,55 @@ const FALLBACK_QUESTION: ProtocolQuestion = {
   key: 'fallback',
 };
 
+const MONTH_INDEX_BY_VALUE: Record<string, number> = {
+  JANUARI: 0,
+  FEBRUARI: 1,
+  MARET: 2,
+  APRIL: 3,
+  MEI: 4,
+  JUNI: 5,
+  JULI: 6,
+  AGUSTUS: 7,
+  SEPTEMBER: 8,
+  OKTOBER: 9,
+  NOVEMBER: 10,
+  DESEMBER: 11,
+};
+
+const matchesScheduleFilter = (
+  startDate: string,
+  endDate: string,
+  month: string,
+  year: string
+) => {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T23:59:59`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return true;
+  }
+
+  if (year !== 'ALL') {
+    const selectedYear = Number(year);
+    if (
+      Number.isNaN(selectedYear) ||
+      (start.getFullYear() !== selectedYear && end.getFullYear() !== selectedYear)
+    ) {
+      return false;
+    }
+  }
+
+  if (month === 'ALL') {
+    return true;
+  }
+
+  const selectedMonth = MONTH_INDEX_BY_VALUE[month];
+  if (selectedMonth === undefined) {
+    return true;
+  }
+
+  return start.getMonth() === selectedMonth || end.getMonth() === selectedMonth;
+};
+
 type ViewMode = 'list' | 'questions';
 
 interface InspeksiSelfAssessmentProps {
@@ -246,6 +279,36 @@ export function InspeksiSelfAssessment({
     Record<string, { leader: string; dnp: string[]; kobo: string[] }>
   >({});
   const [isSubmittingAnswers, setIsSubmittingAnswers] = useState(false);
+  const filteredSessions = useMemo(() => {
+    const term = searchText.trim().toLowerCase();
+
+    return sessions.filter((session) => {
+      const matchesSchedule =
+        month === 'ALL' && year === 'ALL'
+          ? true
+          : matchesScheduleFilter(session.startDate, session.endDate, month, year);
+      if (!matchesSchedule) {
+        return false;
+      }
+
+      if (!term) {
+        return true;
+      }
+
+      return session.areas.some((area) => {
+        const team = teamOverrides[area.id] ?? area.team;
+        const haystack = [
+          area.category,
+          team?.leader ?? '',
+          ...(team?.dnp ?? []),
+          ...(team?.kobo ?? []),
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(term);
+      });
+    });
+  }, [month, searchText, sessions, teamOverrides, year]);
 
   useEffect(() => {
     if (areas) {
@@ -254,7 +317,7 @@ export function InspeksiSelfAssessment({
   }, [areas]);
 
   const sessionAreas = useMemo(() => {
-    return sessions.flatMap((session) =>
+    return filteredSessions.flatMap((session) =>
       session.areas.map((area) => ({
         id: area.id,
         area: area.category,
@@ -266,7 +329,7 @@ export function InspeksiSelfAssessment({
           : null,
       }))
     );
-  }, [sessions, teamOverrides]);
+  }, [filteredSessions, teamOverrides]);
 
   useEffect(() => {
     if (!selectedAreaId) {
@@ -317,6 +380,22 @@ export function InspeksiSelfAssessment({
   const selectedMonth =
     MONTH_OPTIONS.find((option) => option.value === month) ?? MONTH_OPTIONS[0];
   const badgeLabel = `${selectedMonth.shortLabel} ${year}`;
+  const submissionRows: SelfAssessmentSubmissionTableRow[] = sessionAreas.map((item) => ({
+    id: item.id,
+    areas: [
+      {
+        id: item.id,
+        label: item.area,
+        onClick: () => openQuestions(item.id),
+      },
+    ],
+    leader: item.leader,
+    members: item.dnp,
+    auditees: item.kobo,
+    schedule: item.schedule
+      ? formatDateRangeIndonesian(item.schedule)
+      : 'Menunggu jadwal',
+  }));
 
   const activeArea =
     areaOptions.find((option) => option.id === selectedAreaCategory) ??
@@ -806,66 +885,38 @@ export function InspeksiSelfAssessment({
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:bg-[#0b1736] dark:shadow-[0_24px_60px_rgba(2,8,28,0.55)]">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-6 py-5 dark:border-slate-700">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-600 shadow-sm">
-                <ClipboardCheck className="h-5 w-5" />
-              </span>
-              <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                Protocol Question (PQ)
-              </h1>
-            </div>
-            <span className="hidden h-6 w-px bg-slate-200 sm:block dark:bg-slate-700" />
-            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-300">
-              <span>{scopeLabel}</span>
-              <span>/</span>
-              <span className="font-semibold text-blue-600">
-                Protocol Question (PQ)
-              </span>
-            </div>
-          </div>
-        </header>
-
-        <div className="bg-blue-50/60 px-6 py-6 dark:bg-[#0d214f]">
-          <section className="overflow-hidden rounded-2xl border border-blue-100/60 bg-white shadow-sm dark:border-slate-700 dark:bg-[#132754]">
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 px-6 py-5 dark:border-slate-700">
-              <div className="flex items-start gap-4">
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                  <FileText className="h-5 w-5" />
-                </span>
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                      Data Self Assessment
-                    </h2>
-                    {selectedAreaCategory && (
-                      <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                        {selectedAreaCategory}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-slate-500 dark:text-slate-300">
-                    Lihat dan kelola data hasil self assessment Protocol Question (PQ).
-                  </p>
-                </div>
-              </div>
-              {view !== 'list' ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="rounded-xl border-slate-200 text-slate-600 shadow-sm hover:border-blue-200 hover:bg-blue-50 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
-                  onClick={() => setView(view === 'questions' ? 'list' : 'questions')}
-                >
-                  Kembali
-                </Button>
-              ) : (
-                <span className="rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm">
-                  {badgeLabel}
-                </span>
-              )}
-            </div>
+      <SelfAssessmentWorkspace
+        outerIcon={<ClipboardCheck className="h-5 w-5" />}
+        outerTitle="Protocol Question (PQ)"
+        outerContextLabel={scopeLabel}
+        outerCurrentLabel="Protocol Question (PQ)"
+        headerAction={
+          view !== 'list' ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl border-slate-200 text-slate-600 shadow-sm hover:border-blue-200 hover:bg-blue-50 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-800"
+              onClick={() => setView(view === 'questions' ? 'list' : 'questions')}
+            >
+              Kembali
+            </Button>
+          ) : (
+            <span className="rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-white shadow-sm">
+              {badgeLabel}
+            </span>
+          )
+        }
+        innerIcon={<FileText className="h-5 w-5" />}
+        innerTitle="Data Self Assessment"
+        innerDescription="Lihat dan kelola data hasil self assessment Protocol Question (PQ)."
+        innerBadge={
+          view === 'questions' && selectedAreaCategory ? (
+            <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+              {selectedAreaCategory}
+            </span>
+          ) : undefined
+        }
+      >
 
             {view === 'questions' ? (
               <div className="space-y-5 px-6 pb-6">
@@ -1198,187 +1249,30 @@ export function InspeksiSelfAssessment({
               </div>
             ) : (
               <>
-                <div className="flex flex-wrap items-center gap-4 px-6 py-5">
-                  <select
-                    className={selectClassName}
-                    value={month}
-                    onChange={(event) => setMonth(event.target.value)}
-                  >
-                    {MONTH_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    className="h-11 w-full rounded-xl border border-input bg-white/80 px-4 text-sm text-slate-700 shadow-sm transition-colors focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-slate-100 sm:w-32"
-                    value={year}
-                    onChange={(event) => setYear(event.target.value)}
-                  >
-                    {YEAR_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="relative min-w-0 flex-1 sm:min-w-[220px]">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-blue-200/70" />
-                    <Input
-                      value={searchText}
-                      onChange={(event) => setSearchText(event.target.value)}
-                      className="h-11 rounded-xl border border-input bg-white/80 pl-9 text-slate-700 placeholder:text-slate-400 focus-visible:border-blue-300 focus-visible:ring-2 focus-visible:ring-blue-200 dark:text-slate-100"
-                      placeholder="Cari area / ketua tim..."
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    className="h-11 rounded-xl bg-blue-500 px-5 text-white shadow-sm hover:bg-blue-600"
-                  >
-                    <Search className="mr-2 h-4 w-4" />
-                    Search
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 rounded-xl border-slate-200 px-4 text-slate-600 shadow-sm hover:border-blue-200 hover:bg-blue-50"
-                    onClick={resetFilters}
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Reset
-                  </Button>
-                </div>
+                <SelfAssessmentListFilters
+                  month={month}
+                  monthOptions={MONTH_OPTIONS}
+                  onMonthChange={setMonth}
+                  year={year}
+                  yearOptions={YEAR_OPTIONS}
+                  onYearChange={setYear}
+                  searchText={searchText}
+                  onSearchTextChange={setSearchText}
+                  onSearch={() => {}}
+                  onReset={resetFilters}
+                  monthClassName={selectClassName}
+                />
 
                 <div className="px-6 pb-6">
-                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/60">
-                    <Table className="w-full">
-                      <TableHeader className="bg-slate-50/80">
-                        <TableRow>
-                          <TableHead
-                            rowSpan={2}
-                            className="border-r border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500"
-                          >
-                            No
-                          </TableHead>
-                          <TableHead
-                            rowSpan={2}
-                            className="border-r border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500"
-                          >
-                            Area
-                          </TableHead>
-                          <TableHead
-                            rowSpan={2}
-                            className="border-r border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500"
-                          >
-                            Ketua Tim
-                          </TableHead>
-                          <TableHead
-                            colSpan={2}
-                            className="border-r border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500"
-                          >
-                            Anggota
-                          </TableHead>
-                          <TableHead
-                            rowSpan={2}
-                            className="text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500"
-                          >
-                            Tanggal Pelaksanaan
-                          </TableHead>
-                        </TableRow>
-                        <TableRow>
-                          <TableHead className="border-r border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                            Anggota
-                          </TableHead>
-                          <TableHead className="border-r border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                            Audity
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {sessionAreas.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="py-16">
-                              <div className="flex flex-col items-center gap-3 text-center text-slate-500">
-                                <div className="relative">
-                                  <FolderOpen className="h-16 w-16 text-blue-200" />
-                                  <Search className="absolute bottom-1 right-0 h-6 w-6 rounded-full bg-blue-100 p-1 text-blue-400" />
-                                </div>
-                                <div className="space-y-1">
-                                  <div className="text-base font-semibold text-slate-700">
-                                    Belum ada data
-                                  </div>
-                                  <div className="text-sm text-slate-500">
-                                    Coba ubah filter bulan/tahun atau reset filter
-                                  </div>
-                                </div>
-                                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="rounded-xl border-slate-200 px-4 text-slate-600 shadow-sm hover:border-blue-200 hover:bg-blue-50"
-                                    onClick={resetFilters}
-                                  >
-                                    <RefreshCw className="mr-2 h-4 w-4" />
-                                    Reset Filter
-                                  </Button>
-                                </div>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          sessionAreas.map((item, index) => (
-                            <TableRow key={item.id}>
-                              <TableCell className="text-center text-sm">
-                                {index + 1}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 rounded-lg border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700"
-                                  onClick={() => openQuestions(item.id)}
-                                >
-                                  {item.area}
-                                </Button>
-                              </TableCell>
-                              <TableCell className="text-center text-sm">
-                                {item.leader}
-                              </TableCell>
-                              <TableCell className="text-sm">
-                                <ol className="list-decimal space-y-1 pl-4">
-                                  {item.dnp.map((name) => (
-                                    <li key={name}>{name}</li>
-                                  ))}
-                                </ol>
-                              </TableCell>
-                              <TableCell className="text-sm">
-                                <ol className="list-decimal space-y-1 pl-4">
-                                  {item.kobo.map((name) => (
-                                    <li key={name}>{name}</li>
-                                  ))}
-                                </ol>
-                              </TableCell>
-                              <TableCell className="text-center text-sm text-slate-500">
-                                {item.schedule
-                                  ? formatDateRangeIndonesian(item.schedule)
-                                  : 'Menunggu jadwal'}
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                    <div className="border-t border-slate-200 px-4 py-3 text-sm text-slate-500">
-                      Menampilkan {sessionAreas.length || 0} dari total{' '}
-                      {sessionAreas.length || 0} data
-                    </div>
-                  </div>
+                  <SelfAssessmentSubmissionTable
+                    rows={submissionRows}
+                    totalCount={submissionRows.length}
+                    onResetFilters={resetFilters}
+                  />
                 </div>
               </>
             )}
-          </section>
-        </div>
-      </section>
+      </SelfAssessmentWorkspace>
     </div>
   );
 }

@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Test5 Self Assessment</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; background: #f5f7f9; color: #1d252c; }
+        h1, h2, h3 { margin-bottom: 10px; }
+        section { margin-bottom: 22px; padding: 18px; background: #fff; border: 1px solid #d9e0e6; border-radius: 8px; }
+        label { display: block; margin-top: 10px; font-weight: 700; }
+        input, select, textarea, button { box-sizing: border-box; width: 100%; padding: 9px; margin-top: 5px; font: inherit; }
+        textarea { min-height: 76px; }
+        button { border: 0; border-radius: 6px; background: #1f7a5a; color: white; font-weight: 700; cursor: pointer; }
+        button:disabled { cursor: wait; opacity: 0.75; }
+        button.secondary { background: #425466; }
+        button.warning { background: #9a5b00; }
+        button.loading::after {
+            content: "";
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-left: 8px;
+            border: 2px solid rgba(255,255,255,0.45);
+            border-top-color: #fff;
+            border-radius: 50%;
+            vertical-align: -2px;
+            animation: spin 0.75s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .flash { animation: flash 0.55s ease-out; }
+        @keyframes flash {
+            0% { box-shadow: 0 0 0 0 rgba(31,122,90,0.55); }
+            100% { box-shadow: 0 0 0 12px rgba(31,122,90,0); }
+        }
+        .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+        .target, .question { border: 1px solid #d9e0e6; border-radius: 8px; padding: 14px; margin-top: 12px; background: #fbfcfd; }
+        .muted { color: #607080; font-size: 14px; }
+        .inline-status { margin-top: 10px; color: #607080; font-size: 14px; min-height: 20px; }
+        pre { white-space: pre-wrap; word-break: break-word; background: #151b21; color: #d7f7e9; padding: 12px; border-radius: 8px; max-height: 320px; overflow: auto; }
+        @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<h1>Self Assessment Draft</h1>
+
+<section>
+    <h2>Ambil Daftar Area</h2>
+    <div class="grid">
+        <div>
+            <label>Scope</label>
+            <select id="scope">
+                <option value="inspeksi" selected>inspeksi</option>
+                <option value="audit">audit</option>
+                <option value="surveillance">surveillance</option>
+            </select>
+        </div>
+        <div>
+            <label>Tahun</label>
+            <input id="year" type="number" value="2026">
+        </div>
+        <div>
+            <label>&nbsp;</label>
+            <button id="btnTargets">Ambil Area</button>
+        </div>
+    </div>
+    <div id="targets"></div>
+    <div id="targetStatus" class="inline-status"></div>
+</section>
+
+<section>
+    <h2>Pertanyaan</h2>
+    <p class="muted">Field yang bisa diedit sebelum simpan draft: comment, ass_status, evidence.</p>
+    <div id="questions"></div>
+    <div id="questionStatus" class="inline-status"></div>
+</section>
+
+<section>
+    <h2>Debug</h2>
+    <pre id="debug">Menunggu aksi...</pre>
+</section>
+
+<script>
+const targetsBox = document.getElementById('targets');
+const questionsBox = document.getElementById('questions');
+const debugBox = document.getElementById('debug');
+const targetStatus = document.getElementById('targetStatus');
+const questionStatus = document.getElementById('questionStatus');
+
+function log(value) {
+    debugBox.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+}
+
+function setButtonLoading(button, isLoading, text) {
+    if (!button) return;
+    if (isLoading) {
+        if (!button.classList.contains('loading')) {
+            button.dataset.originalText = button.textContent;
+        }
+        button.textContent = text || button.textContent;
+        button.classList.add('loading');
+        button.disabled = true;
+        return;
+    }
+    button.textContent = button.dataset.originalText || button.textContent;
+    button.classList.remove('loading');
+    button.disabled = false;
+}
+
+function flashElement(element) {
+    if (!element) return;
+    element.classList.remove('flash');
+    void element.offsetWidth;
+    element.classList.add('flash');
+}
+
+async function postJson(url, payload) {
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) {
+        throw data;
+    }
+    return data;
+}
+
+async function postForm(url, formData) {
+    const response = await fetch(url, {
+        method: 'POST',
+        body: formData
+    });
+    const data = await response.json();
+    if (!response.ok) {
+        throw data;
+    }
+    return data;
+}
+
+function findDataId(value) {
+    if (!value || typeof value !== 'object') return '';
+    if (value.data_id) return String(value.data_id);
+    for (const child of Object.values(value)) {
+        const found = findDataId(child);
+        if (found) return found;
+    }
+    return '';
+}
+
+function renderTargets(targets, scope) {
+    targetsBox.innerHTML = '';
+    if (!targets.length) {
+        targetsBox.innerHTML = '<p class="muted">Tidak ada area ditemukan.</p>';
+        return;
+    }
+    for (const target of targets) {
+        const el = document.createElement('div');
+        el.className = 'target';
+        el.innerHTML = `
+            <strong>${target.area || '(tanpa nama area)'}</strong>
+            <p class="muted">plan_id: ${target.plan_id} | area_group_id: ${target.area_group_id}</p>
+            <button class="secondary">Ambil Pertanyaan</button>
+        `;
+        const loadButton = el.querySelector('button');
+        loadButton.onclick = () => loadQuestions(scope, target, loadButton);
+        targetsBox.appendChild(el);
+    }
+}
+
+function renderQuestions(items) {
+    questionsBox.innerHTML = '';
+    if (!items.length) {
+        questionsBox.innerHTML = '<p class="muted">Tidak ada pertanyaan ditemukan.</p>';
+        return;
+    }
+    for (const item of items) {
+        const el = document.createElement('div');
+        el.className = 'question';
+        const fileLinks = (item.data_files || []).map(file => {
+            const title = file.file_judul || file.file_name || `file ${file.file_id}`;
+            return `<li><a href="/selfassessment/download-file/${file.file_id}?scope=${encodeURIComponent(item.scope)}" target="_blank">${title}</a></li>`;
+        }).join('');
+        el.innerHTML = `
+            <h3>${item.pq_no || ''} ${item.pertanyaan || item.pq_desc || ''}</h3>
+            <p class="muted">data_id: ${item.data_id || '-'} | plan_id: ${item.plan_id} | pq_id: ${item.pq_id}</p>
+            ${fileLinks ? `<label>File terdaftar</label><ul>${fileLinks}</ul>` : ''}
+            <label>Panduan</label>
+            <textarea readonly>${item.pq_guide || ''}</textarea>
+            <label>Referensi</label>
+            <textarea readonly>${item.konten_ref || ''}</textarea>
+            <label>comment</label>
+            <textarea class="comment">${item.editable.comment || ''}</textarea>
+            <label>ass_status</label>
+            <select class="ass_status">
+                <option value="SA">SA</option>
+                <option value="NA">NA</option>
+                <option value="NS">NS</option>
+            </select>
+            <label>evidence</label>
+            <textarea class="evidence">${item.editable.evidence || ''}</textarea>
+            <label>Upload file evidence</label>
+            <input class="file_evidence" type="file">
+            <button class="secondary upload-btn" type="button">Upload File</button>
+            <button class="warning">Simpan Draft</button>
+        `;
+        el.querySelector('.ass_status').value = item.editable.ass_status || 'SA';
+        const saveButton = el.querySelector('.warning');
+        const uploadButton = el.querySelector('.upload-btn');
+        const metaLine = el.querySelector('.muted');
+        const statusLine = document.createElement('div');
+        statusLine.className = 'inline-status';
+        el.appendChild(statusLine);
+
+        const updateDataIdFrom = (value) => {
+            const newDataId = findDataId(value);
+            if (newDataId) {
+                item.data_id = newDataId;
+                metaLine.textContent = `data_id: ${item.data_id} | plan_id: ${item.plan_id} | pq_id: ${item.pq_id}`;
+            }
+        };
+
+        const buildDraftPayload = (overrides = {}) => {
+            return {
+                ...item.draft_payload,
+                scope: item.scope,
+                data_id: item.data_id,
+                comment: el.querySelector('.comment').value,
+                ass_status: el.querySelector('.ass_status').value,
+                evidence: el.querySelector('.evidence').value,
+                ...overrides
+            };
+        };
+
+        const saveDraft = async (button, statusText, overrides = {}) => {
+            const payload = buildDraftPayload(overrides);
+            setButtonLoading(button, true, statusText || 'Menyimpan');
+            statusLine.textContent = 'Mengirim draft...';
+            const data = await postJson('/selfassessment/save-draft', payload);
+            updateDataIdFrom(data.response);
+            return data;
+        };
+
+        saveButton.onclick = async () => {
+            setButtonLoading(saveButton, true, 'Menyimpan');
+            statusLine.textContent = 'Mengirim draft...';
+            log('Menyimpan draft...');
+            try {
+                const data = await saveDraft(saveButton, 'Menyimpan');
+                statusLine.textContent = 'Draft tersimpan.';
+                flashElement(el);
+                log(data);
+            } catch (err) {
+                statusLine.textContent = 'Gagal menyimpan draft.';
+                log(err);
+            } finally {
+                setButtonLoading(saveButton, false);
+            }
+        };
+        uploadButton.onclick = async () => {
+            const fileInput = el.querySelector('.file_evidence');
+            const file = fileInput.files[0];
+            if (!file) {
+                statusLine.textContent = 'Pilih file evidence terlebih dahulu.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file_evidence', file);
+            formData.append('scope', item.scope);
+            formData.append('data_id', item.data_id || '');
+            formData.append('plan_id', item.plan_id);
+            formData.append('area_group_id', item.area_group_id);
+            formData.append('pq_id', item.pq_id);
+
+            setButtonLoading(uploadButton, true, 'Mengupload');
+            statusLine.textContent = 'Mengupload file evidence...';
+            log('Mengupload file evidence...');
+            try {
+                const uploadData = await postForm('/selfassessment/upload-file', formData);
+                updateDataIdFrom(uploadData);
+                statusLine.textContent = 'File evidence terupload.';
+                flashElement(el);
+                log(uploadData);
+            } catch (err) {
+                statusLine.textContent = 'Gagal upload file evidence.';
+                log(err);
+            } finally {
+                setButtonLoading(uploadButton, false);
+            }
+        };
+        questionsBox.appendChild(el);
+    }
+}
+
+async function loadQuestions(scope, target, button) {
+    questionsBox.innerHTML = '<p class="muted">Mengambil pertanyaan...</p>';
+    questionStatus.textContent = 'Request pertanyaan berjalan...';
+    setButtonLoading(button, true, 'Mengambil');
+    log('Mengambil get_datatable dan get_plan_pq...');
+    try {
+        const data = await postJson('/selfassessment/questions', {
+            scope,
+            plan_id: target.plan_id,
+            area_group_id: target.area_group_id,
+            area: target.area
+        });
+        renderQuestions(data.results.questions || []);
+        questionStatus.textContent = 'Pertanyaan selesai diambil.';
+        flashElement(questionsBox);
+        log(data.debug_log || data);
+    } catch (err) {
+        questionStatus.textContent = 'Gagal mengambil pertanyaan.';
+        log(err);
+    } finally {
+        setButtonLoading(button, false);
+    }
+}
+
+document.getElementById('btnTargets').onclick = async (event) => {
+    const button = event.currentTarget;
+    const scope = document.getElementById('scope').value;
+    const year = document.getElementById('year').value;
+    targetsBox.innerHTML = '<p class="muted">Mengambil area...</p>';
+    questionsBox.innerHTML = '';
+    targetStatus.textContent = 'Request area berjalan...';
+    questionStatus.textContent = '';
+    setButtonLoading(button, true, 'Mengambil');
+    log('Memfilter self assessment...');
+    try {
+        const data = await postJson('/selfassessment/targets', {scope, year});
+        renderTargets(data.results.targets || [], scope);
+        targetStatus.textContent = 'Area selesai diambil.';
+        flashElement(targetsBox);
+        log(data.debug_log || data);
+    } catch (err) {
+        targetStatus.textContent = 'Gagal mengambil area.';
+        log(err);
+    } finally {
+        setButtonLoading(button, false);
+    }
+};
+</script>
+</body>
+</html>

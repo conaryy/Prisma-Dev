@@ -228,7 +228,7 @@ def format_summary_message(data: dict[str, Any]) -> str:
     lines = [
         "RINGKASAN TEMUAN DNP",
         "",
-        f"Total pemenuhan CAP : {summary.get('totalTemuan', 0)}",
+        f"Total temuan        : {summary.get('totalTemuan', 0)}",
         f"Total instansi      : {summary.get('totalInstansi', 0)}",
         f"Total area          : {summary.get('totalArea', 0)}",
         f"Terpenuhi (100%)    : {summary.get('totalTerpenuhi', 0)}",

@@ -2,17 +2,17 @@
 
 ## Project Overview
 - Folder ini berisi aplikasi K3:
-  - backend NestJS di `K3/backend/src`
-  - frontend React + TypeScript + Vite di `K3/frontend`
-- Fokus utama:
-  - dashboard K3
-  - checklist audit
-  - upload dan penyimpanan dokumen audit
-  - integrasi Google Drive
-- Status terkini:
-  - K3 sekarang ikut `docker-compose.central.yml`
-  - frontend K3 sekarang memakai flow SSO pusat via `authapi.ryvidia.my.id`
-  - backend juga menyajikan `frontend/dist` pada build production
+  - `backend`: NestJS + Prisma + PostgreSQL
+  - `frontend`: React + TypeScript + Vite
+- Pada deploy production, `k3-backend` mem-build frontend dan menyajikan `frontend/dist` langsung dari backend.
+- Backend juga menyajikan `/uploads` secara statis bila folder upload ada.
+- K3 memakai SSO pusat dan integrasi Google Drive OAuth.
+- Area utama saat ini:
+  - dashboard
+  - upload dokumen audit
+  - analisis checklist audit
+  - upload evidence per butir
+  - sinkronisasi evidence ke Google Drive
 
 ## Build And Test Commands
 - Backend dev:
@@ -30,29 +30,42 @@
   - `npm run build`
 
 ## Code Style Guidelines
-- Backend memakai NestJS dengan TypeScript `strict`.
-- Frontend relatif ringan; ikuti pola React + TypeScript tanpa state management besar.
-- Untuk deploy production:
-  - jangan mengandalkan `K3/frontend/.env` untuk secret/redirect URI
-  - build deploy harus menerima `VITE_SSO_*` dari compose dan menimpa env dev lokal
-- `K3/backend/Dockerfile` sekarang juga mem-build frontend; perubahan env frontend production harus dilacak sampai Dockerfile/build args, bukan hanya file `.env`.
-- Untuk Google Drive OAuth, jaga `GOOGLE_REDIRECT_URI` sinkron dengan environment deploy.
+- Backend:
+  - pertahankan boundary yang ada:
+    - `auth/*` untuk SSO guard/strategy
+    - `database/*` untuk Prisma
+    - `checklist-audit.service.ts` untuk domain audit/evidence
+    - `google-drive.service.ts` dan `google-drive-callback.controller.ts` untuk integrasi Drive
+  - endpoint utama sekarang dipusatkan di `AppController`; tambah route baru dengan hati-hati agar controller ini tidak menjadi dumping ground
+- Frontend:
+  - gunakan alias `@/`
+  - route utama ada di `/`, `/upload-dokumen`, `/checklist-audit`, dan `/auth/callback`
+  - flow auth client ada di `frontend/src/lib/sso.ts` dan `frontend/src/lib/session.ts`
+- Deploy/build:
+  - `backend/Dockerfile` menulis `.env.production` frontend dari build args `VITE_SSO_*`
+  - jika env SSO frontend berubah, cek Dockerfile, compose args, dan env auth sekaligus
 
 ## Testing Instructions
 - Minimum check:
   - `cd K3/backend && npm run build`
-  - uji login SSO sampai `auth/callback`
-  - uji upload dokumen `.docx` atau `.doc`
-  - uji pemilihan dokumen di menu checklist
-  - uji tambah/hapus evidence
-  - uji integrasi Google Drive
-- Untuk verifikasi deploy:
-  - bundle frontend jangan memuat `dev-secret-k3` atau `localhost`
-  - `oauth_clients.k3-web` di auth backend harus cocok dengan `AUTH_K3_CLIENT_SECRET` dan `AUTH_K3_REDIRECT_URI`
-  - `GOOGLE_REDIRECT_URI` harus persis sama dengan `Authorized redirect URIs` di Google Cloud Console
+- Disarankan untuk perubahan yang menyentuh Prisma:
+  - `cd K3/backend && npm run prisma:push`
+- Smoke test aplikasi:
+  - login SSO sampai `/auth/callback`
+  - `GET /api/me`
+  - `GET /api/checklist-audit/latest`
+  - upload dokumen `.doc` atau `.docx`
+  - lihat daftar dokumen
+  - upload dan hapus evidence
+  - uji status, connect URL, list folder, dan disconnect Google Drive
+  - bila relevan, uji sync evidence ke Google Drive
+- Verifikasi deploy:
+  - `k3.ryvidia.my.id` dan `apik3.ryvidia.my.id` sama-sama mengarah ke `k3-backend`
+  - bundle frontend jangan memuat `localhost` atau dev secret
+  - `oauth_clients.k3-web`, env auth, dan env K3 harus sinkron
 
 ## Security Considerations
-- Service ini sekarang tidak lagi dianggap tanpa auth; frontend production sudah ikut SSO pusat.
-- Upload utama dan evidence tetap perlu validasi ukuran dan tipe file.
-- Google OAuth sangat sensitif terhadap `redirect_uri_mismatch`; perubahan domain API harus diikuti update di Google Cloud Console.
-- Secret frontend dev di `K3/frontend/.env` tidak boleh bocor ke bundle production.
+- Service ini bukan lagi local-only; semua flow utamanya sekarang bergantung pada SSO pusat.
+- Upload utama dan evidence harus tetap menjaga batas ukuran file dan validasi tipe.
+- Google OAuth sangat sensitif terhadap `redirect_uri_mismatch`; `GOOGLE_REDIRECT_URI` harus cocok persis dengan Google Cloud Console.
+- Jika static serving frontend atau uploads diubah, pastikan route `/api` tidak tertimpa fallback SPA.

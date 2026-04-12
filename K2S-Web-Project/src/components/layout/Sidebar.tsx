@@ -190,10 +190,14 @@ export function Sidebar({
   const isAdminReviewUnitSafetyActive = location.pathname.startsWith(
     '/admin/self-assessment-reviews'
   );
+  const isAdminExportDnpActive = location.pathname.startsWith(
+    '/admin/self-assessment-export-dnp'
+  );
   const isAdminSelfAssessmentMenuActive =
     isAdminSelfAssessmentQuestionActive ||
     isAdminSelfAssessmentSessionActive ||
-    isAdminReviewUnitSafetyActive;
+    isAdminReviewUnitSafetyActive ||
+    isAdminExportDnpActive;
   const isAdminCapReviewActive = location.pathname.startsWith(
     '/admin/self-assessment-cap-reviews'
   );
@@ -1355,6 +1359,16 @@ export function Sidebar({
                   >
                     <ClipboardCheck className={navIconClass} />
                     <span className={labelClass('flex-1')}>Review Unit Safety</span>
+                  </Link>
+                  <Link
+                    to="/admin/self-assessment-export-dnp"
+                    className={cn(
+                      subNavClass(isAdminExportDnpActive),
+                      'pl-8 text-[13px]'
+                    )}
+                  >
+                    <Share2 className={navIconClass} />
+                    <span className={labelClass('flex-1')}>Export DNP</span>
                   </Link>
                 </CollapsibleContent>
               </Collapsible>

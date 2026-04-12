@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Models\SelfAssessmentAnswer;
 use App\Models\SelfAssessmentCap;
 use App\Models\SelfAssessmentEvidence;
+use App\Models\SelfAssessmentExportDnpImportJob;
 use App\Models\SelfAssessmentQuestion;
+use App\Models\SelfAssessmentExportDnpSnapshot;
 use App\Models\SelfAssessmentReview;
 use App\Models\SelfAssessmentResult;
 use App\Models\SelfAssessmentSession;
@@ -16,6 +18,7 @@ use App\Models\SystemNotification;
 use App\Services\Whatsapp\SelfAssessmentWhatsappNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
@@ -113,6 +116,29 @@ class SelfAssessmentReviewController extends ApiController
             ->where('user_id', $validated['userId'])
             ->with('files')
             ->first();
+        $dnpSnapshot = SelfAssessmentExportDnpSnapshot::query()
+            ->where('session_area_id', $area->id)
+            ->where('user_id', $validated['userId'])
+            ->with(['items' => fn ($query) => $query->orderBy('sort_order')])
+            ->first();
+        $currentAdminUserId = (string) optional($request->user())->id;
+        $activeDnpImportJob = $currentAdminUserId !== ''
+            ? SelfAssessmentExportDnpImportJob::query()
+                ->where('user_id', $currentAdminUserId)
+                ->where('session_area_id', $area->id)
+                ->where('target_user_id', $validated['userId'])
+                ->whereIn('status', ['queued', 'running'])
+                ->latest('created_at')
+                ->first()
+            : null;
+        $cachedDnpSessionId = $currentAdminUserId !== ''
+            ? $this->getCachedExportDnpSessionId(
+                $currentAdminUserId,
+                (string) ($session?->scope ?? ''),
+                (string) $area->id,
+                $dnpSnapshot?->fill_area
+            )
+            : '';
 
         $payload = [
             'sessionAreaId' => $area->id,
@@ -132,6 +158,49 @@ class SelfAssessmentReviewController extends ApiController
                     'name' => $file->name,
                     'url' => $file->url,
                 ])->values(),
+            ] : null,
+            'dnpCompare' => $dnpSnapshot ? [
+                'id' => $dnpSnapshot->id,
+                'scope' => $dnpSnapshot->scope,
+                'year' => $dnpSnapshot->year,
+                'fillCode1' => $dnpSnapshot->fill_code1,
+                'fillCode2' => $dnpSnapshot->fill_code2,
+                'fillArea' => $dnpSnapshot->fill_area,
+                'localArea' => $dnpSnapshot->local_area,
+                'importedAt' => optional($dnpSnapshot->imported_at)->toDateTimeString(),
+                'summary' => $dnpSnapshot->summary,
+                'selectedMatches' => collect(data_get($dnpSnapshot->summary, 'selectedMatches', []))
+                    ->filter(fn ($item) => is_array($item))
+                    ->values()
+                    ->all(),
+                'items' => $dnpSnapshot->items->map(fn ($item) => [
+                    'id' => $item->id,
+                    'questionCode' => $item->question_code,
+                    'questionText' => $item->question_text,
+                    'reference' => $item->reference,
+                    'status' => $item->status,
+                    'comment' => $item->comment,
+                    'evidenceNote' => $item->evidence_note,
+                    'files' => $item->files ?? [],
+                    'sortOrder' => $item->sort_order,
+                ])->values(),
+            ] : null,
+            'dnpSession' => [
+                'active' => $cachedDnpSessionId !== '',
+                'sessionId' => $cachedDnpSessionId !== '' ? $cachedDnpSessionId : null,
+                'scope' => $session?->scope ?? null,
+                'sessionAreaId' => $area->id,
+                'fillArea' => $dnpSnapshot?->fill_area,
+                'fillCode1' => $dnpSnapshot?->fill_code1,
+                'fillCode2' => $dnpSnapshot?->fill_code2,
+                'year' => $dnpSnapshot?->year,
+            ],
+            'dnpImportJob' => $activeDnpImportJob ? [
+                'jobId' => $activeDnpImportJob->id,
+                'status' => $activeDnpImportJob->status,
+                'message' => $activeDnpImportJob->message,
+                'createdAt' => optional($activeDnpImportJob->created_at)->toDateTimeString(),
+                'startedAt' => optional($activeDnpImportJob->started_at)->toDateTimeString(),
             ] : null,
             'answers' => $answers->map(function (SelfAssessmentAnswer $answer) use ($questions, $evidence) {
                 $question = $questions[$answer->question_code] ?? null;
@@ -224,6 +293,71 @@ class SelfAssessmentReviewController extends ApiController
         );
 
         return $baseQuery->count();
+    }
+
+    private function getCachedExportDnpSessionId(
+        string $userId,
+        string $scope,
+        string $sessionAreaId,
+        ?string $fillArea = null
+    ): string {
+        $sessionId = (string) Cache::get(
+            $this->exportDnpSessionCacheKey($userId, $scope, $sessionAreaId, $fillArea),
+            ''
+        );
+        if ($sessionId !== '') {
+            return $sessionId;
+        }
+
+        $sessionId = (string) Cache::get(
+            $this->exportDnpSessionCacheKey($userId, $scope, $sessionAreaId),
+            ''
+        );
+        if ($sessionId !== '') {
+            return $sessionId;
+        }
+
+        $sessionId = (string) Cache::get($this->exportDnpSessionCacheKey($userId, $scope), '');
+        if ($sessionId !== '') {
+            return $sessionId;
+        }
+
+        return (string) Cache::get($this->exportDnpSessionCacheKey($userId), '');
+    }
+
+    private function exportDnpSessionCacheKey(
+        string $userId,
+        ?string $scope = null,
+        ?string $sessionAreaId = null,
+        ?string $fillArea = null
+    ): string {
+        $segments = ['self_assessment_export_dnp_wrapper_session', $userId];
+
+        $normalizedScope = $this->normalizeExportDnpCacheSegment($scope);
+        if ($normalizedScope !== '') {
+            $segments[] = $normalizedScope;
+        }
+
+        $normalizedSessionAreaId = $this->normalizeExportDnpCacheSegment($sessionAreaId);
+        if ($normalizedSessionAreaId !== '') {
+            $segments[] = $normalizedSessionAreaId;
+        }
+
+        $normalizedFillArea = $this->normalizeExportDnpCacheSegment($fillArea);
+        if ($normalizedFillArea !== '') {
+            $segments[] = md5($normalizedFillArea);
+        }
+
+        return implode('_', $segments);
+    }
+
+    private function normalizeExportDnpCacheSegment(?string $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        return trim(Str::of($value)->lower()->squish()->value());
     }
 
     public function storeBulk(Request $request)

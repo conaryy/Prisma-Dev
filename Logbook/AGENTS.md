@@ -2,17 +2,18 @@
 
 ## Project Overview
 - Folder ini berisi service Logbook:
-  - `Logbook/frontend`: React + Vite + TypeScript
-  - `Logbook/backend`: NestJS + Prisma + PostgreSQL
-- Logbook mengandalkan Auth Portal/SSO pusat.
-- Frontend menjalankan Authorization Code + PKCE.
-- Backend memverifikasi bearer token menggunakan issuer/audience/JWKS.
-- Kategori aktif:
+  - `frontend`: React + Vite + TypeScript
+  - `backend`: NestJS + Prisma + PostgreSQL
+- Backend berjalan dengan global prefix `api/v1`.
+- Backend memvalidasi access token SSO melalui `SsoJwtStrategy` dan `SsoAuthGuard`.
+- Domain logbook aktif:
+  - frontend `logbook.ryvidia.my.id`
+  - backend `apilogbook.ryvidia.my.id`
+- Kategori logbook aktif:
   - `tower`
   - `app`
   - `teknik`
-- `logbook.service.ts` menjadi orchestration layer untuk query, filter, sort, pagination, dan import.
-- Schema/database saat ini memakai kolom snake_case yang dipakai juga oleh raw SQL bootstrap/indexing.
+- Import parser dipisah per kategori di `src/logbook/imports`.
 
 ## Build And Test Commands
 - Frontend:
@@ -33,43 +34,48 @@
   - `docker compose --env-file .env.central -f docker-compose.central.yml up -d --build`
 
 ## Code Style Guidelines
-- Frontend memakai React function component dengan styling utilitas sederhana.
-- Backend memakai NestJS modular:
-  - auth guard/strategy di `src/auth`
-  - data access via Prisma di `src/database`
-  - domain logbook di `src/logbook`
-- Untuk schema/data:
-  - semua perubahan database harus lewat `prisma/schema.prisma`
-  - perhatikan mapping `@map(...)` ke kolom snake_case
-  - raw SQL di `PrismaService` dan query service harus sinkron dengan nama kolom database
-- Parser kategori baru atau heuristic import harus diletakkan di `src/logbook/imports`, bukan ditumpuk di `logbook.service.ts`.
-- Untuk frontend production:
-  - jangan mengandalkan `Logbook/frontend/.env`
-  - build deploy harus memakai `VITE_*` dari compose/env production agar tidak bocor `localhost` atau `dev-secret-logbook`
+- Frontend:
+  - gunakan pola yang ada di `components/layout`, `components/ui`, `lib`, `hooks`, dan `pages`
+  - SSO client ada di `frontend/src/lib/sso.ts`; jangan ubah flow callback tanpa cek integrasi auth portal
+- Backend:
+  - pertahankan pemisahan:
+    - `src/auth` untuk auth guard/strategy/current-user
+    - `src/database` untuk Prisma
+    - `src/health` untuk health endpoint
+    - `src/logbook` untuk domain utama
+  - import parser kategori baru harus ditaruh di `src/logbook/imports`, bukan menambah beban `logbook.service.ts`
+  - query utama memang memakai kombinasi Prisma schema dan raw SQL; bila schema berubah, cek keduanya
+- Schema/database:
+  - perubahan database tetap harus lewat `prisma/schema.prisma`
+  - perhatikan mapping `@map(...)` dan nama kolom snake_case yang dipakai raw SQL
+  - service sengaja mengembalikan `DATE` sebagai text untuk menghindari timezone shift; jangan ubah itu tanpa uji data nyata
 
 ## Testing Instructions
 - Minimum check:
   - `cd Logbook/backend && npm run build`
   - `cd Logbook/frontend && npm run build`
-  - bila schema berubah, jalankan `npm run prisma:generate` dan `npm run prisma:push`
-  - smoke test endpoint:
-    - `GET /api/v1/health`
-    - `GET /api/v1/logbook/me` dengan token valid
-    - `GET /api/v1/logbook/entries`
-    - `POST /api/v1/logbook/import/teknik`
-    - `POST /api/v1/logbook/import/app`
-    - `POST /api/v1/logbook/import/tower`
-- Untuk flow end-to-end:
-  - uji redirect login ke auth portal
-  - uji callback kembali ke `/auth/callback`
-  - pastikan access token tersimpan dan request `entries` tidak `401`
-- Untuk verifikasi deploy:
-  - bundle frontend jangan memuat `localhost:3104` atau `dev-secret-logbook`
-  - bundle harus memuat secret/redirect URI deploy yang sama dengan `oauth_clients.logbook-web`
+- Jika schema berubah:
+  - `cd Logbook/backend && npm run prisma:generate && npm run prisma:push`
+- Smoke test backend:
+  - `GET /api/v1/health`
+  - `GET /api/v1/logbook/me`
+  - `GET /api/v1/logbook/entries`
+  - `POST /api/v1/logbook/import/teknik`
+  - `POST /api/v1/logbook/import/app`
+  - `POST /api/v1/logbook/import/tower`
+  - `DELETE /api/v1/logbook/purge`
+- End-to-end minimum:
+  - redirect login ke auth portal
+  - callback ke `/auth/callback`
+  - request entries tidak `401`
+  - filter tahun/bulan tetap konsisten
+- Verifikasi deploy:
+  - bundle frontend tidak memuat `localhost` atau dev secret
+  - `oauth_clients.logbook-web` harus cocok dengan env deploy logbook dan auth backend
 
 ## Security Considerations
-- Token SSO disimpan di `localStorage`; jaga dari XSS.
-- Backend harus memvalidasi `iss`, `aud`, dan JWKS dengan benar.
-- Tombol purge memanggil penghapusan seluruh data logbook; perlakukan sebagai operasi destruktif.
-- Import Excel harus tetap membaca tanggal dari serial workbook mentah; hindari perubahan yang memicu tanggal bergeser.
-- Parser `app` dan `tower` memakai carry-forward row; jika heuristic berubah, uji dengan data referensi nyata.
+- Access token frontend disimpan client-side; hindari perubahan yang memperluas risiko XSS.
+- Backend wajib memvalidasi `iss`, `aud`, dan JWKS dengan benar.
+- Endpoint purge adalah operasi destruktif total; perlakukan perubahan di sana sebagai high risk.
+- Import Excel harus tetap menjaga pembacaan tanggal serial workbook mentah.
+- Parser `app` dan `tower` memakai pola carry-forward row; perubahan heuristic harus diuji dengan data contoh nyata.

@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\SelfAssessmentAnswerController;
 use App\Http\Controllers\Api\SelfAssessmentAreaQuestionCategoryController;
 use App\Http\Controllers\Api\SelfAssessmentCapController;
 use App\Http\Controllers\Api\SelfAssessmentEvidenceController;
+use App\Http\Controllers\Api\SelfAssessmentExportDnpController;
 use App\Http\Controllers\Api\SelfAssessmentQuestionController;
 use App\Http\Controllers\Api\SelfAssessmentQuestionCategoryController;
 use App\Http\Controllers\Api\SelfAssessmentReviewController;
@@ -70,6 +71,12 @@ Route::get(
 )
     ->middleware(['signed', 'throttle:60,1'])
     ->name('admin.self-assessment.questions.import-dnp.captcha');
+Route::get(
+    'admin/self-assessment/export-dnp/captcha/{sessionId}',
+    [SelfAssessmentExportDnpController::class, 'captcha']
+)
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('admin.self-assessment.export-dnp.captcha');
 Route::get(
     'admin/self-assessment/questions/export/signed',
     [SelfAssessmentQuestionController::class, 'exportDownloadSigned']
@@ -184,6 +191,16 @@ Route::middleware('auth.api')->group(function () {
     Route::prefix('admin/self-assessment')->middleware('admin')->group(function () {
         Route::get('submissions', [SelfAssessmentReviewController::class, 'adminIndex']);
         Route::get('submissions/{area}', [SelfAssessmentReviewController::class, 'adminShow']);
+        Route::post('export-dnp/init', [SelfAssessmentExportDnpController::class, 'init']);
+        Route::post('export-dnp/areas', [SelfAssessmentExportDnpController::class, 'areas']);
+        Route::post('export-dnp/import', [SelfAssessmentExportDnpController::class, 'import']);
+        Route::post('export-dnp/run', [SelfAssessmentExportDnpController::class, 'importRun']);
+        Route::post('export-dnp/matches', [SelfAssessmentExportDnpController::class, 'saveMatches']);
+        Route::post('export-dnp/export', [SelfAssessmentExportDnpController::class, 'exportDraft']);
+        Route::get('export-dnp/jobs/{job}', [SelfAssessmentExportDnpController::class, 'importStatus']);
+        Route::post('answers/bulk', [SelfAssessmentAnswerController::class, 'adminStoreBulk']);
+        Route::post('evidence', [SelfAssessmentEvidenceController::class, 'adminStore']);
+        Route::delete('evidence/{evidence}', [SelfAssessmentEvidenceController::class, 'adminDestroy']);
         Route::post('reviews/bulk', [SelfAssessmentReviewController::class, 'storeBulk']);
         Route::post('results/finalize', [SelfAssessmentResultController::class, 'adminFinalize']);
         Route::delete('results/files/{file}', [SelfAssessmentResultController::class, 'adminDeleteFile']);

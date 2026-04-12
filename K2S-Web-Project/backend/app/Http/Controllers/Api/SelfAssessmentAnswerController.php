@@ -145,6 +145,43 @@ class SelfAssessmentAnswerController extends ApiController
         return $this->respondData(['saved' => $saved]);
     }
 
+    public function adminStoreBulk(Request $request)
+    {
+        $validated = $request->validate([
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.answerId' => ['required', 'uuid'],
+            'items.*.status' => ['required', 'string'],
+            'items.*.comment' => ['nullable', 'string'],
+            'items.*.evidenceNote' => ['nullable', 'string'],
+        ]);
+
+        $saved = [];
+        foreach ($validated['items'] as $item) {
+            $answer = SelfAssessmentAnswer::query()
+                ->with('review')
+                ->find($item['answerId']);
+
+            if (!$answer) {
+                return response()->json(['error' => 'Jawaban tidak ditemukan.'], 404);
+            }
+
+            if ($answer->review && $answer->review->is_final) {
+                return response()->json([
+                    'error' => 'Jawaban sudah difinalisasi dan tidak bisa diubah.',
+                ], 403);
+            }
+
+            $answer->status = $item['status'];
+            $answer->comment = $item['comment'] ?? null;
+            $answer->evidence_note = $item['evidenceNote'] ?? null;
+            $answer->save();
+
+            $saved[] = $answer->id;
+        }
+
+        return $this->respondData(['saved' => $saved]);
+    }
+
     /**
      * @param array<int, array<string, mixed>> $items
      * @return array<int, string>

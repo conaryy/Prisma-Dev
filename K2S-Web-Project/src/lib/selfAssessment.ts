@@ -84,6 +84,70 @@ export type SelfAssessmentEvidence = {
   created_at?: string;
 };
 
+export type SelfAssessmentExportDnpCompareItem = {
+  id: string;
+  questionCode: string | null;
+  questionText: string | null;
+  reference: string | null;
+  status: string | null;
+  comment: string | null;
+  evidenceNote: string | null;
+  files: Array<Record<string, unknown>>;
+  sortOrder: number;
+};
+
+export type SelfAssessmentExportDnpAreaTarget = {
+  fillCode1: string;
+  fillCode2: string;
+  area: string;
+};
+
+export type SelfAssessmentExportDnpCompareSnapshot = {
+  id: string;
+  scope: string;
+  year: number | null;
+  fillCode1: string | null;
+  fillCode2: string | null;
+  fillArea: string | null;
+  localArea: string | null;
+  importedAt: string | null;
+  summary?: Record<string, unknown> | null;
+  selectedMatches?: Array<{
+    answerId: string;
+    localQuestionCode: string;
+    localQuestionText: string;
+    dnpSnapshotItemId: string;
+    dnpQuestionCode: string;
+    dnpQuestionText: string;
+    dnpReference: string;
+    similarity: number;
+  }>;
+  items: SelfAssessmentExportDnpCompareItem[];
+};
+
+export type SelfAssessmentExportDnpImportJobStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed';
+
+export type SelfAssessmentExportDnpImportJobResponse = {
+  jobId: string;
+  status: SelfAssessmentExportDnpImportJobStatus;
+  message?: string | null;
+  error?: string | null;
+  detail?: unknown;
+  debugLog?: string[] | null;
+  summary?: {
+    snapshot?: SelfAssessmentExportDnpCompareSnapshot | null;
+    detail?: unknown;
+    debugLog?: string[] | null;
+  } | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  createdAt?: string | null;
+};
+
 export async function fetchSelfAssessmentEvidence(params: {
   sessionAreaId: string;
   questionCode: string;
@@ -123,6 +187,180 @@ export async function deleteSelfAssessmentEvidence(id: string) {
     `/api/self-assessment/evidence/${id}`,
     { method: 'DELETE' }
   );
+  return response.data;
+}
+
+export async function submitAdminSelfAssessmentAnswers(payload: {
+  items: Array<{
+    answerId: string;
+    status: string;
+    comment?: string;
+    evidenceNote?: string;
+  }>;
+}) {
+  const response = await apiFetch<{ data: { saved: string[] } }>(
+    '/api/admin/self-assessment/answers/bulk',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  );
+  return response.data;
+}
+
+export async function uploadAdminSelfAssessmentEvidence(params: {
+  answerId: string;
+  file: File;
+}) {
+  const formData = new FormData();
+  formData.append('answerId', params.answerId);
+  formData.append('file', params.file);
+
+  const response = await apiFetch<{ data: SelfAssessmentEvidence }>(
+    '/api/admin/self-assessment/evidence',
+    {
+      method: 'POST',
+      body: formData,
+    }
+  );
+  return response.data;
+}
+
+export async function deleteAdminSelfAssessmentEvidence(id: string) {
+  const response = await apiFetch<{ data: { success: boolean } }>(
+    `/api/admin/self-assessment/evidence/${id}`,
+    { method: 'DELETE' }
+  );
+  return response.data;
+}
+
+export async function initAdminSelfAssessmentExportDnpSession() {
+  const response = await apiFetch<{ data: { sessionId: string; captchaUrl: string } }>(
+    '/api/admin/self-assessment/export-dnp/init',
+    {
+      method: 'POST',
+    }
+  );
+  return response.data;
+}
+
+export async function fetchAdminSelfAssessmentExportDnpAreas(payload: {
+  sessionAreaId: string;
+  sessionId: string;
+  username: string;
+  password: string;
+  captcha: string;
+  year: number;
+}) {
+  const response = await apiFetch<{ data: { areas: SelfAssessmentExportDnpAreaTarget[] } }>(
+    '/api/admin/self-assessment/export-dnp/areas',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  );
+  return response.data;
+}
+
+export async function importAdminSelfAssessmentExportDnp(payload: {
+  sessionAreaId: string;
+  userId: string;
+  sessionId: string;
+  username: string;
+  password: string;
+  captcha: string;
+  year?: number;
+  fillCode1: string;
+  fillCode2: string;
+  fillArea?: string;
+}) {
+  const response = await apiFetch<{ data: SelfAssessmentExportDnpImportJobResponse }>(
+    '/api/admin/self-assessment/export-dnp/import',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  );
+  return response.data;
+}
+
+export async function fetchAdminSelfAssessmentExportDnpImportJob(jobId: string) {
+  const response = await apiFetch<{ data: SelfAssessmentExportDnpImportJobResponse }>(
+    `/api/admin/self-assessment/export-dnp/jobs/${jobId}`
+  );
+  return response.data;
+}
+
+export async function saveAdminSelfAssessmentExportDnpMatches(payload: {
+  sessionAreaId: string;
+  userId: string;
+  matches: Array<{
+    answerId: string;
+    localQuestionCode: string;
+    localQuestionText: string;
+    dnpSnapshotItemId: string;
+    dnpQuestionCode?: string;
+    dnpQuestionText?: string;
+    dnpReference?: string;
+    similarity: number;
+  }>;
+}) {
+  const response = await apiFetch<{ data: {
+    selectedMatches: Array<{
+      answerId: string;
+      localQuestionCode: string;
+      localQuestionText: string;
+      dnpSnapshotItemId: string;
+      dnpQuestionCode: string;
+      dnpQuestionText: string;
+      dnpReference: string;
+      similarity: number;
+    }>;
+    updatedAt: string;
+  } }>('/api/admin/self-assessment/export-dnp/matches', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function exportAdminSelfAssessmentToDnp(payload: {
+  sessionAreaId: string;
+  userId: string;
+  sessionId: string;
+  answerIds?: string[];
+}) {
+  const response = await apiFetch<{ data: {
+    summary: {
+      total: number;
+      success: number;
+      failed: number;
+      skipped: number;
+    };
+    results: Array<{
+      answerId: string;
+      localQuestionCode: string;
+      dnpQuestionCode: string;
+      status: 'success' | 'failed' | 'skipped';
+      message: string;
+      detail?: unknown;
+      response?: unknown;
+      uploads?: Array<{
+        evidenceId: string;
+        fileName: string;
+        status: 'success' | 'failed' | 'skipped';
+        message: string;
+      }>;
+    }>;
+  } }>('/api/admin/self-assessment/export-dnp/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
   return response.data;
 }
 
@@ -224,6 +462,24 @@ export async function fetchAdminSelfAssessmentSubmissionDetail(params: {
       finalizedAt: string | null;
       files: Array<{ id: string; name: string; url: string }>;
     } | null;
+    dnpCompare?: SelfAssessmentExportDnpCompareSnapshot | null;
+    dnpSession?: {
+      active: boolean;
+      sessionId: string | null;
+      scope?: string | null;
+      sessionAreaId?: string | null;
+      fillArea?: string | null;
+      fillCode1?: string | null;
+      fillCode2?: string | null;
+      year?: number | null;
+    } | null;
+    dnpImportJob?: {
+      jobId: string;
+      status: SelfAssessmentExportDnpImportJobStatus;
+      message?: string | null;
+      createdAt?: string | null;
+      startedAt?: string | null;
+    } | null;
     answers: Array<{
       id: string;
       questionCode: string;
@@ -231,6 +487,7 @@ export async function fetchAdminSelfAssessmentSubmissionDetail(params: {
       reference: string | null;
       status: string;
       comment: string | null;
+      evidenceNote?: string | null;
       submittedAt: string | null;
       isSubmitted?: boolean;
       evidence: Array<{ id: string; name: string; url: string }>;
