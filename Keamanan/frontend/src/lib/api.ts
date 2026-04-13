@@ -106,6 +106,42 @@ export async function deletePersonnelTable() {
   return response.json();
 }
 
+export async function deletePersonnel(slug: string) {
+  const response = await fetch(`${API_BASE_URL}/api/personnel/${slug}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Gagal menghapus personil keamanan.'));
+  }
+
+  return response.json();
+}
+
+export async function deleteDocumentsTable() {
+  const response = await fetch(`${API_BASE_URL}/api/documents`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Gagal menghapus data dokumen keamanan.'));
+  }
+
+  return response.json();
+}
+
+export async function deleteDocument(sourceType: 'manual' | 'evidence', id: string) {
+  const response = await fetch(`${API_BASE_URL}/api/documents/${sourceType}/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Gagal menghapus dokumen keamanan.'));
+  }
+
+  return response.json();
+}
+
 export async function uploadPersonnelPhoto(slug: string, photo: File) {
   const formData = new FormData();
   formData.append('photo', photo);
@@ -150,10 +186,23 @@ export async function createFacility(input: {
   return response.json();
 }
 
+export async function deleteFacility(id: string) {
+  const response = await fetch(`${API_BASE_URL}/api/facilities/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Gagal menghapus alat keamanan.'));
+  }
+
+  return response.json();
+}
+
 export async function updateSupervisionStatus(
   activityId: string,
   input: {
     status: 'Terlaksana' | 'Perlu Tindak Lanjut';
+    location?: string | null;
     completedAt?: string | null;
     completionNote?: string | null;
     inspectorNames?: string[] | null;

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import type { TestItem } from '@/types/dashboard';
 
-type HeatmapCategory = 'Audit' | 'Inspeksi' | 'Pengunjungan';
+type HeatmapCategory = 'Audit' | 'Inspeksi' | 'Tes Keamanan';
 type HeatmapLevel = 0 | 1 | 2 | 3 | 4;
 type BranchLabel = (typeof BRANCH_FILTERS)[number];
 type HeatmapFilter = 'Semua' | HeatmapCategory | BranchLabel;
@@ -40,11 +40,11 @@ const BRANCH_FILTERS = [
   'Penyedia Personel AVSEC',
 ] as const;
 
-const CATEGORY_FILTERS: HeatmapCategory[] = ['Audit', 'Inspeksi', 'Pengunjungan'];
+const CATEGORY_FILTERS: HeatmapCategory[] = ['Audit', 'Inspeksi', 'Tes Keamanan'];
 const CATEGORY_BRANCHES: Record<HeatmapCategory, BranchLabel[]> = {
   Audit: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Malang', 'KCP Sumenep'],
   Inspeksi: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Malang', 'KCP Sumenep', 'Penyedia Personel AVSEC'],
-  Pengunjungan: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'],
+  'Tes Keamanan': ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'],
 };
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const TIMELINE_SLOTS_PER_MONTH = 4;
@@ -93,7 +93,7 @@ function getCategoryBadgeClasses(category: HeatmapCategory) {
     return 'summary-category is-inspeksi';
   }
 
-  return 'summary-category is-pengunjungan';
+  return 'summary-category is-tes';
 }
 
 function getCardAccent(category: HeatmapCategory) {
@@ -199,10 +199,11 @@ export function SupervisionProgramSection({
   onUpdateActivity: (input: {
     activityId: string;
     status: 'Terlaksana' | 'Perlu Tindak Lanjut';
+    location?: string | null;
     completedAt?: string | null;
     completionNote?: string | null;
     inspectorNames?: string[] | null;
-  }) => Promise<void>;
+  }) => Promise<TestItem>;
   onUploadEvidence: (activityId: string, files: File[]) => Promise<void>;
 }) {
   const getTodayInputValue = () => {
@@ -395,6 +396,7 @@ export function SupervisionProgramSection({
   const [timelineFilter, setTimelineFilter] = useState<HeatmapFilter>('Semua');
   const [timelineYear, setTimelineYear] = useState(defaultYear);
   const [statusDraft, setStatusDraft] = useState<'Terlaksana' | 'Perlu Tindak Lanjut'>('Terlaksana');
+  const [locationDraft, setLocationDraft] = useState<string>('Cabang Surabaya');
   const [completedAtDraft, setCompletedAtDraft] = useState(getTodayInputValue());
   const [completionNoteDraft, setCompletionNoteDraft] = useState('');
   const [inspectorNamesDraft, setInspectorNamesDraft] = useState('');
@@ -469,6 +471,7 @@ export function SupervisionProgramSection({
   }, [selectedActivityId, visibleCategoryActivities]);
 
   const selectedActivity = tests.find((item) => item.id === selectedActivityId && item.category === selectedCategory) ?? null;
+  const locationOptions = selectedActivity ? CATEGORY_BRANCHES[selectedActivity.category] : BRANCH_FILTERS;
   const selectedExecutionDateLabel = formatShortDate(completedAtDraft);
   const storedEvidenceFiles =
     selectedActivity?.evidenceFiles.filter((file) => toDateOnlyValue(file.executionDateIso) === completedAtDraft) ?? [];
@@ -495,6 +498,7 @@ export function SupervisionProgramSection({
     }
 
     setStatusDraft(selectedActivity.status === 'Perlu Tindak Lanjut' ? 'Perlu Tindak Lanjut' : 'Terlaksana');
+    setLocationDraft(normalizeBranch(selectedActivity.location ?? selectedActivity.owner));
     setCompletedAtDraft(toDateInputValue(selectedActivity.completedAtIso));
     setCompletionNoteDraft(selectedActivity.completionNote ?? '');
     setInspectorNamesDraft(selectedActivity.inspector === '-' ? '' : selectedActivity.inspector.split(/\s*,\s*/).join('\n'));
@@ -545,16 +549,18 @@ export function SupervisionProgramSection({
       setIsSubmitting(true);
       setFeedback(null);
 
-      await onUpdateActivity({
+      const updatedActivity = await onUpdateActivity({
         activityId: selectedActivity.id,
         status: statusDraft,
+        location: locationDraft,
         completedAt: completedAtDraft,
         completionNote: completionNoteDraft,
         inspectorNames: parseInspectorNames(inspectorNamesDraft),
       });
+      setSelectedActivityId(updatedActivity.id);
 
       if (pendingFiles.length) {
-        await onUploadEvidence(selectedActivity.id, pendingFiles);
+        await onUploadEvidence(updatedActivity.id, pendingFiles);
       }
 
       setPendingFiles([]);
@@ -617,7 +623,7 @@ export function SupervisionProgramSection({
               Dashboard Jadwal Pengawasan Internal
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500 sm:text-[15px] md:text-base">
-              Klik card Audit, Inspeksi, atau Pengunjungan untuk melihat agenda, memperbarui
+              Klik card Audit, Inspeksi, atau Tes Keamanan untuk melihat agenda, memperbarui
               pelaksanaan pada hari berjalan, dan mengunggah dokumen yang otomatis masuk ke
               calendar heatmap.
             </p>
@@ -678,7 +684,7 @@ export function SupervisionProgramSection({
                     </h3>
                   </div>
 
-                  {category === 'Pengunjungan' ? (
+                  {category === 'Tes Keamanan' ? (
                     <span className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700 ring-1 ring-inset ring-sky-200">
                       {completedCount} / {items.length} done
                     </span>
@@ -694,7 +700,7 @@ export function SupervisionProgramSection({
                     ? 'Audit internal berkala untuk memastikan evaluasi pengawasan berjalan menyeluruh.'
                     : category === 'Inspeksi'
                       ? 'Ringkasan lokasi prioritas yang menjadi fokus inspeksi tahunan dan status pelaksanaannya.'
-                      : 'Agenda pengunjungan berkala yang dapat diperbarui harian lengkap dengan bukti dokumen.'}
+                      : 'Agenda tes keamanan berkala yang dapat diperbarui harian lengkap dengan bukti dokumen.'}
                 </p>
 
                 {category === 'Audit' ? (
@@ -750,7 +756,7 @@ export function SupervisionProgramSection({
                   </>
                 ) : null}
 
-                {category === 'Pengunjungan' ? (
+                {category === 'Tes Keamanan' ? (
                   <>
                     <div className="grid gap-2.5 sm:grid-cols-3">
                       <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-3.5 py-3.5">
@@ -814,13 +820,13 @@ export function SupervisionProgramSection({
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Form Update</p>
                     <h3 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-900">{selectedActivity.title}</h3>
                     <p className="mt-2 text-sm leading-6 text-slate-500">
-                      {selectedActivity.owner} · {selectedActivity.date}
+                      {locationDraft} · {selectedActivity.date}
                     </p>
                   </div>
                   <StatusBadge status={selectedActivity.status} />
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   <label className="grid gap-2">
                     <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Status Pelaksanaan</span>
                     <select
@@ -841,6 +847,21 @@ export function SupervisionProgramSection({
                       onChange={(event) => setCompletedAtDraft(event.target.value)}
                       className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
                     />
+                  </label>
+
+                  <label className="grid gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Lokasi Pelaksanaan</span>
+                    <select
+                      value={locationDraft}
+                      onChange={(event) => setLocationDraft(event.target.value)}
+                      className="h-11 rounded-[16px] border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-300"
+                    >
+                      {locationOptions.map((location) => (
+                        <option key={location} value={location}>
+                          {location}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                 </div>
 
@@ -922,7 +943,7 @@ export function SupervisionProgramSection({
                   <span className="text-sm text-slate-500">
                     {pendingFiles.length
                       ? `${pendingFiles.length} file siap disimpan ke dokumen agenda ini.`
-                      : 'Pilih dokumen audit, inspeksi, atau pengunjungan yang dibuat pada hari pelaksanaan.'}
+                      : 'Pilih dokumen audit, inspeksi, atau tes keamanan yang dibuat pada hari pelaksanaan.'}
                   </span>
                 </div>
 

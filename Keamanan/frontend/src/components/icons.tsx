@@ -152,6 +152,19 @@ export function CloseIcon({ className }: IconProps) {
   );
 }
 
+export function TrashIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M9 4h6" />
+      <path d="M5 7h14" />
+      <path d="M8 7v11a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7" />
+      <path d="M10 11v5" />
+      <path d="M14 11v5" />
+      <path d="M9 4 10 2h4l1 2" />
+    </Svg>
+  );
+}
+
 export function PortalDashboardIcon({ className }: IconProps) {
   return (
     <Svg className={className}>

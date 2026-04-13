@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { FacilityStatus, PersonnelStatus, Prisma } from '@prisma/client';
+import { DocumentStatus, FacilityStatus, PersonnelStatus, Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { basename, extname, join } from 'node:path';
@@ -27,8 +27,20 @@ type SecurityFacilityRow = {
   updatedAt: Date;
 };
 
+type SecurityDocumentRow = {
+  id: string;
+  slug: string;
+  title: string;
+  owner: string;
+  version: string;
+  status: DocumentStatus;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 type SupervisionCategoryValue = 'AUDIT' | 'INSPEKSI' | 'TEST';
 type SupervisionStatusValue = 'BELUM_TERLAKSANA' | 'TERLAKSANA' | 'PERLU_TINDAK_LANJUT';
+type DocumentSourceType = 'manual' | 'evidence';
 
 type DbSupervisionActivityRow = {
   id: string;
@@ -142,7 +154,7 @@ type TestEvidenceItem = {
 type TestItem = {
   id: string;
   title: string;
-  category: 'Audit' | 'Inspeksi' | 'Pengunjungan';
+  category: 'Audit' | 'Inspeksi' | 'Tes Keamanan';
   owner: string;
   location: string | null;
   inspector: string;
@@ -161,6 +173,7 @@ type TestItem = {
 
 type DocumentItem = {
   id: string;
+  sourceType: DocumentSourceType;
   title: string;
   owner: string;
   version: string;
@@ -237,7 +250,7 @@ const SUPERVISION_ACTIVITY_SEED: SupervisionSeedItem[] = [
     SUPERVISION_TEST_MONTHS.map(({ month, label }) => ({
       id: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
       slug: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
-      title: 'Pengunjungan Keamanan',
+      title: 'Tes Keamanan',
       category: 'TEST' as const,
       location,
       inspectorNames: SUPERVISION_INSPECTOR_NAMES,
@@ -252,6 +265,7 @@ const SUPERVISION_ACTIVITY_SEED: SupervisionSeedItem[] = [
 
 @Injectable()
 export class DashboardService {
+  private static readonly JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000;
   private readonly uploadsRoot = join(__dirname, '..', 'uploads');
   private readonly personnelPhotoUploadsRoot = join(this.uploadsRoot, 'personnel-photos');
   private readonly facilityPhotoUploadsRoot = join(this.uploadsRoot, 'facility-photos');
@@ -310,6 +324,18 @@ export class DashboardService {
     return FacilityStatus.TERJADWAL;
   }
 
+  private mapDocumentStatus(status: DocumentStatus): DocumentItem['status'] {
+    if (status === DocumentStatus.REVIEW) {
+      return 'Review';
+    }
+
+    if (status === DocumentStatus.REVISI) {
+      return 'Revisi';
+    }
+
+    return 'Aktif';
+  }
+
   private mapSupervisionCategory(category: SupervisionCategoryValue): TestItem['category'] {
     if (category === 'AUDIT') {
       return 'Audit';
@@ -319,7 +345,7 @@ export class DashboardService {
       return 'Inspeksi';
     }
 
-    return 'Pengunjungan';
+    return 'Tes Keamanan';
   }
 
   private mapSupervisionStatus(status: SupervisionStatusValue): TestItem['status'] {
@@ -381,11 +407,31 @@ export class DashboardService {
     return nextSlug;
   }
 
+  private async createUniqueSupervisionSlug(baseSlug: string) {
+    const initialSlug = baseSlug || 'agenda-pengawasan-baru';
+    let nextSlug = initialSlug;
+    let counter = 2;
+
+    while (await this.prisma.supervisionActivity.findUnique({ where: { slug: nextSlug } })) {
+      nextSlug = `${initialSlug}-${counter}`;
+      counter += 1;
+    }
+
+    return nextSlug;
+  }
+
   private formatDate(value: Date) {
+    const normalizedValue = this.normalizeStoredJakartaDate(value);
+
     return new Intl.DateTimeFormat('id-ID', {
       dateStyle: 'medium',
       timeStyle: 'short',
-    }).format(value);
+      timeZone: 'Asia/Jakarta',
+    }).format(normalizedValue);
+  }
+
+  private normalizeStoredJakartaDate(value: Date) {
+    return new Date(value.getTime() - DashboardService.JAKARTA_OFFSET_MS);
   }
 
   private parseCompletedAtInput(value?: string | null) {
@@ -438,7 +484,7 @@ export class DashboardService {
   }
 
   private toEvidenceItem(evidence: DbSupervisionEvidenceRow): TestEvidenceItem {
-    const executionDate = evidence.executionDate ?? evidence.uploadedAt;
+    const executionDate = this.normalizeStoredJakartaDate(evidence.executionDate ?? evidence.uploadedAt);
 
     return {
       id: evidence.id,
@@ -457,7 +503,8 @@ export class DashboardService {
     const ownerLabel = activity.location ? `${categoryLabel} · ${activity.location}` : categoryLabel;
 
     return {
-      id: `evidence-${evidence.id}`,
+      id: evidence.id,
+      sourceType: 'evidence',
       title: evidence.fileName,
       owner: ownerLabel,
       version: 'Evidence Upload',
@@ -465,6 +512,19 @@ export class DashboardService {
       status: 'Aktif',
       url: this.supervisionEvidenceUrl(evidence.storageName),
       sortValue: evidence.uploadedAt.getTime(),
+    };
+  }
+
+  private toDocumentItem(document: SecurityDocumentRow): DocumentItem & { sortValue: number } {
+    return {
+      id: document.id,
+      sourceType: 'manual',
+      title: document.title,
+      owner: document.owner,
+      version: document.version,
+      updatedAt: this.formatDate(document.updatedAt),
+      status: this.mapDocumentStatus(document.status),
+      sortValue: document.updatedAt.getTime(),
     };
   }
 
@@ -518,7 +578,7 @@ export class DashboardService {
 
     return {
       id: activity.id,
-      title: activity.category === 'TEST' ? 'Pengunjungan Keamanan' : activity.title,
+      title: activity.category === 'TEST' ? 'Tes Keamanan' : activity.title,
       category: this.mapSupervisionCategory(activity.category),
       owner: activity.location ?? 'Perum LPPNPI Cabang Surabaya',
       location: activity.location,
@@ -527,7 +587,7 @@ export class DashboardService {
       score: evidenceSummary,
       status: this.mapSupervisionStatus(activity.status),
       completedAt: activity.completedAt ? this.formatDate(activity.completedAt) : null,
-      completedAtIso: activity.completedAt ? activity.completedAt.toISOString() : null,
+      completedAtIso: activity.completedAt ? this.normalizeStoredJakartaDate(activity.completedAt).toISOString() : null,
       completionNote: activity.completionNote ?? null,
       sourceDocument: activity.sourceDocument ?? '-',
       scheduleYear: activity.scheduleYear,
@@ -686,9 +746,9 @@ export class DashboardService {
 
     await this.prisma.$executeRawUnsafe(`
       UPDATE "SupervisionActivity"
-      SET "title" = 'Pengunjungan Keamanan'
+      SET "title" = 'Tes Keamanan'
       WHERE "category" = 'TEST'
-        AND "title" IN ('Pengujian (Test) Keamanan', 'Pengujian Keamanan');
+        AND "title" IN ('Pengujian (Test) Keamanan', 'Pengujian Keamanan', 'Pengunjungan Keamanan');
     `);
 
     const [countRow] = await this.prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
@@ -834,7 +894,7 @@ export class DashboardService {
       },
     ];
 
-    const [facilityRows, personnelRows, supervisionRows] = await Promise.all([
+    const [facilityRows, personnelRows, supervisionRows, documentRows] = await Promise.all([
       this.prisma.securityFacility.findMany({
         orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }, { name: 'asc' }],
       }),
@@ -847,6 +907,9 @@ export class DashboardService {
         orderBy: [{ createdAt: 'desc' }, { name: 'asc' }],
       }),
       this.loadSupervisionActivities(),
+      this.prisma.securityDocument.findMany({
+        orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }, { title: 'asc' }],
+      }),
     ]);
 
     const facilities: FacilityItem[] = facilityRows.map((item) => this.toFacilityItem(item as SecurityFacilityRow));
@@ -891,44 +954,7 @@ export class DashboardService {
       },
     ];
 
-    const manualDocuments: Array<DocumentItem & { sortValue: number }> = [
-      {
-        id: 'doc-sop-access-gate',
-        title: 'SOP Pemeriksaan Access Gate',
-        owner: 'Compliance',
-        version: 'v3.2',
-        updatedAt: '27 Mar 2026',
-        status: 'Aktif',
-        sortValue: new Date('2026-03-27T08:00:00.000Z').getTime(),
-      },
-      {
-        id: 'doc-checklist-cctv',
-        title: 'Checklist Harian CCTV',
-        owner: 'Control Room',
-        version: 'v1.8',
-        updatedAt: '30 Mar 2026',
-        status: 'Aktif',
-        sortValue: new Date('2026-03-30T08:00:00.000Z').getTime(),
-      },
-      {
-        id: 'doc-escalation-alarm',
-        title: 'Prosedur Escalation Alarm',
-        owner: 'Security Lead',
-        version: 'v2.0',
-        updatedAt: '18 Mar 2026',
-        status: 'Review',
-        sortValue: new Date('2026-03-18T08:00:00.000Z').getTime(),
-      },
-      {
-        id: 'doc-matriks-lisensi',
-        title: 'Matriks Lisensi Personel',
-        owner: 'HR Security',
-        version: 'v4.1',
-        updatedAt: '26 Mar 2026',
-        status: 'Revisi',
-        sortValue: new Date('2026-03-26T08:00:00.000Z').getTime(),
-      },
-    ];
+    const manualDocuments = documentRows.map((item) => this.toDocumentItem(item as SecurityDocumentRow));
 
     const uploadedDocuments = supervisionRows
       .flatMap((activity) =>
@@ -993,7 +1019,7 @@ export class DashboardService {
         : [
             {
               title: 'Program pengawasan 2026 berhasil dimuat',
-              detail: 'Agenda audit, inspeksi, dan pengunjungan diambil dari dokumen kerja pengawasan keamanan tahun 2026.',
+              detail: 'Agenda audit, inspeksi, dan tes keamanan diambil dari dokumen kerja pengawasan keamanan tahun 2026.',
               timestamp: 'Hari ini',
             },
             {
@@ -1064,7 +1090,7 @@ export class DashboardService {
         {
           label: 'Agenda Total',
           value: String(tests.length),
-          note: 'Agenda audit, inspeksi, dan pengunjungan berasal dari dokumen program kerja pengawasan 2026.',
+          note: 'Agenda audit, inspeksi, dan tes keamanan berasal dari dokumen program kerja pengawasan 2026.',
         },
         {
           label: 'Terlaksana',
@@ -1170,6 +1196,117 @@ export class DashboardService {
 
     return {
       deletedCount: deleted.count,
+    };
+  }
+
+  async clearDocuments() {
+    const [manualDeleted, evidences] = await Promise.all([
+      this.prisma.securityDocument.deleteMany(),
+      this.prisma.supervisionEvidence.findMany({
+        select: {
+          storageName: true,
+        },
+      }),
+    ]);
+
+    const evidenceDeleted = await this.prisma.supervisionEvidence.deleteMany();
+
+    await Promise.all(
+      evidences.map(async (row) => {
+        const targetPath = join(this.supervisionEvidenceUploadsRoot, row.storageName);
+        await fs.unlink(targetPath).catch(() => undefined);
+      })
+    );
+
+    return {
+      deletedManualCount: manualDeleted.count,
+      deletedEvidenceCount: evidenceDeleted.count,
+    };
+  }
+
+  async deleteDocument(sourceType: DocumentSourceType, id: string) {
+    if (sourceType === 'manual') {
+      const document = await this.prisma.securityDocument.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          title: true,
+        },
+      });
+
+      if (!document) {
+        throw new NotFoundException('Dokumen keamanan tidak ditemukan.');
+      }
+
+      await this.prisma.securityDocument.delete({
+        where: { id },
+      });
+
+      return {
+        deleted: true,
+        id,
+        title: document.title,
+      };
+    }
+
+    if (sourceType !== 'evidence') {
+      throw new BadRequestException('Sumber dokumen tidak valid.');
+    }
+
+    const evidence = await this.prisma.supervisionEvidence.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        fileName: true,
+        storageName: true,
+      },
+    });
+
+    if (!evidence) {
+      throw new NotFoundException('Dokumen evidence tidak ditemukan.');
+    }
+
+    await this.prisma.supervisionEvidence.delete({
+      where: { id },
+    });
+
+    const targetPath = join(this.supervisionEvidenceUploadsRoot, evidence.storageName);
+    await fs.unlink(targetPath).catch(() => undefined);
+
+    return {
+      deleted: true,
+      id,
+      title: evidence.fileName,
+    };
+  }
+
+  async deletePersonnel(slug: string) {
+    const person = await this.prisma.personnel.findUnique({
+      where: { slug },
+      select: {
+        id: true,
+        name: true,
+        photoStorageName: true,
+      },
+    });
+
+    if (!person) {
+      throw new NotFoundException('Personel keamanan tidak ditemukan.');
+    }
+
+    await this.prisma.personnel.delete({
+      where: { slug },
+    });
+
+    if (person.photoStorageName) {
+      const targetPath = join(this.personnelPhotoUploadsRoot, person.photoStorageName);
+      await fs.unlink(targetPath).catch(() => undefined);
+    }
+
+    return {
+      deleted: true,
+      slug,
+      name: person.name,
     };
   }
 
@@ -1329,10 +1466,41 @@ export class DashboardService {
     }
   }
 
+  async deleteFacility(id: string) {
+    const facility = await this.prisma.securityFacility.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        photoStorageName: true,
+      },
+    });
+
+    if (!facility) {
+      throw new NotFoundException('Alat keamanan tidak ditemukan.');
+    }
+
+    await this.prisma.securityFacility.delete({
+      where: { id },
+    });
+
+    if (facility.photoStorageName) {
+      const targetPath = join(this.facilityPhotoUploadsRoot, facility.photoStorageName);
+      await fs.unlink(targetPath).catch(() => undefined);
+    }
+
+    return {
+      deleted: true,
+      id,
+      name: facility.name,
+    };
+  }
+
   async updateSupervisionStatus(
     activityId: string,
     input: {
       status: 'Terlaksana' | 'Perlu Tindak Lanjut';
+      location?: string | null;
       completedAt?: string | null;
       completionNote?: string | null;
       inspectorNames?: string[] | null;
@@ -1341,9 +1509,16 @@ export class DashboardService {
     const activity = await this.requireSupervisionActivity(activityId);
     const nextStatus = this.toSupervisionStatus(input.status);
     const requestedCompletedAt = this.parseCompletedAtInput(input.completedAt);
+    const trimmedLocation = input.location?.trim();
+    const requestedLocation = trimmedLocation ? trimmedLocation : activity.location;
+    const targetActivity =
+      requestedLocation && requestedLocation !== activity.location
+        ? await this.resolveSupervisionActivityByLocation(activity, requestedLocation)
+        : activity;
+    const location = requestedLocation ?? targetActivity.location;
 
     const completedAt =
-      nextStatus === 'BELUM_TERLAKSANA' ? null : requestedCompletedAt ?? activity.completedAt ?? new Date();
+      nextStatus === 'BELUM_TERLAKSANA' ? null : requestedCompletedAt ?? targetActivity.completedAt ?? new Date();
     const trimmedCompletionNote = input.completionNote?.trim();
     const completionNote =
       nextStatus === 'BELUM_TERLAKSANA'
@@ -1355,7 +1530,7 @@ export class DashboardService {
             : null;
     const normalizedInspectorNames =
       input.inspectorNames === undefined
-        ? activity.inspectorNames
+        ? targetActivity.inspectorNames
         : Array.from(
             new Set(
               (input.inspectorNames ?? [])
@@ -1369,16 +1544,70 @@ export class DashboardService {
       UPDATE "SupervisionActivity"
       SET
         "status" = ${nextStatus}::"SupervisionStatus",
+        "location" = ${location},
         "completedAt" = ${completedAt},
         "completionNote" = ${completionNote},
         "inspectorNames" = ${normalizedInspectorNames},
         "updatedAt" = NOW()
-      WHERE "id" = ${activity.id}
+      WHERE "id" = ${targetActivity.id}
     `);
 
-    const updatedActivity = await this.requireSupervisionActivity(activity.id);
+    const updatedActivity = await this.requireSupervisionActivity(targetActivity.id);
 
     return this.toTestItem(updatedActivity);
+  }
+
+  private async resolveSupervisionActivityByLocation(
+    activity: SupervisionActivityWithRelations,
+    location: string
+  ) {
+    const existingActivity = await this.prisma.supervisionActivity.findFirst({
+      where: {
+        id: {
+          not: activity.id,
+        },
+        title: activity.title,
+        category: activity.category,
+        scheduleLabel: activity.scheduleLabel,
+        scheduleYear: activity.scheduleYear,
+        scheduleMonth: activity.scheduleMonth,
+        scheduleWeek: activity.scheduleWeek,
+        location,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (existingActivity) {
+      return this.requireSupervisionActivity(existingActivity.id);
+    }
+
+    const slug = await this.createUniqueSupervisionSlug(
+      this.slugify(
+        `${activity.title}-${location}-${activity.scheduleYear}-${activity.scheduleMonth ?? 'na'}-${activity.scheduleWeek ?? 'na'}`
+      )
+    );
+
+    const createdActivity = await this.prisma.supervisionActivity.create({
+      data: {
+        slug,
+        title: activity.title,
+        category: activity.category,
+        location,
+        inspectorNames: activity.inspectorNames,
+        scheduleLabel: activity.scheduleLabel,
+        scheduleYear: activity.scheduleYear,
+        scheduleMonth: activity.scheduleMonth,
+        scheduleWeek: activity.scheduleWeek,
+        sourceDocument: activity.sourceDocument,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return this.requireSupervisionActivity(createdActivity.id);
   }
 
   async uploadSupervisionEvidence(

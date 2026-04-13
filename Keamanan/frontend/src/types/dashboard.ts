@@ -91,7 +91,7 @@ export interface LicenseItem {
 export interface TestItem {
   id: string;
   title: string;
-  category: 'Audit' | 'Inspeksi' | 'Pengunjungan';
+  category: 'Audit' | 'Inspeksi' | 'Tes Keamanan';
   owner: string;
   location: string | null;
   inspector: string;
@@ -118,6 +118,7 @@ export interface TestEvidenceItem {
 
 export interface DocumentItem {
   id: string;
+  sourceType: 'manual' | 'evidence';
   title: string;
   owner: string;
   version: string;

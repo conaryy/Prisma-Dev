@@ -73,6 +73,30 @@ export class AppController {
     };
   }
 
+  @Delete('personnel/:slug')
+  async deletePersonnel(@Param('slug') slug: string): Promise<{ data: unknown }> {
+    return {
+      data: await this.dashboardService.deletePersonnel(slug),
+    };
+  }
+
+  @Delete('documents')
+  async clearDocuments(): Promise<{ data: unknown }> {
+    return {
+      data: await this.dashboardService.clearDocuments(),
+    };
+  }
+
+  @Delete('documents/:sourceType/:id')
+  async deleteDocument(
+    @Param('sourceType') sourceType: 'manual' | 'evidence',
+    @Param('id') id: string
+  ): Promise<{ data: unknown }> {
+    return {
+      data: await this.dashboardService.deleteDocument(sourceType, id),
+    };
+  }
+
   @Post('personnel/:slug/photo')
   @UseInterceptors(
     FileInterceptor('photo', {
@@ -129,12 +153,20 @@ export class AppController {
     };
   }
 
+  @Delete('facilities/:id')
+  async deleteFacility(@Param('id') id: string): Promise<{ data: unknown }> {
+    return {
+      data: await this.dashboardService.deleteFacility(id),
+    };
+  }
+
   @Patch('supervision-activities/:activityId/status')
   async updateSupervisionStatus(
     @Param('activityId') activityId: string,
     @Body()
     body: {
       status?: 'Terlaksana' | 'Perlu Tindak Lanjut';
+      location?: string | null;
       completedAt?: string | null;
       completionNote?: string | null;
       inspectorNames?: string[] | null;
@@ -147,6 +179,7 @@ export class AppController {
     return {
       data: await this.dashboardService.updateSupervisionStatus(activityId, {
         status: body.status,
+        location: body.location,
         completedAt: body.completedAt,
         completionNote: body.completionNote,
         inspectorNames: body.inspectorNames,

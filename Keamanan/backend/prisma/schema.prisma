@@ -77,6 +77,19 @@ model SecurityFacility {
   @@index([status, updatedAt])
 }
 
+model SecurityDocument {
+  id        String         @id @default(cuid())
+  slug      String         @unique
+  title     String
+  owner     String
+  version   String
+  status    DocumentStatus @default(AKTIF)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @default(now())
+
+  @@index([status, updatedAt])
+}
+
 model SupervisionActivity {
   id             String                @id @default(cuid())
   slug           String                @unique
@@ -125,6 +138,12 @@ enum FacilityStatus {
   OPTIMAL
   PERLU_SERVIS
   TERJADWAL
+}
+
+enum DocumentStatus {
+  AKTIF
+  REVIEW
+  REVISI
 }
 
 enum SupervisionCategory {

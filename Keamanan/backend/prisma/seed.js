@@ -1,4 +1,4 @@
-const { PrismaClient, PersonnelStatus } = require('@prisma/client');
+const { PersonnelStatus, PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
@@ -30,6 +30,41 @@ const securityFacilitySeed = [
     zone: 'Zona Restricted',
     status: 'TERJADWAL',
     coveragePercent: 88,
+  },
+];
+
+const securityDocumentSeed = [
+  {
+    slug: 'sop-respons-insiden-airside',
+    title: 'SOP Respons Insiden Airside',
+    owner: 'Unit Operasional',
+    version: 'v3.2',
+    status: 'AKTIF',
+    updatedAt: new Date('2026-03-27T08:00:00.000Z'),
+  },
+  {
+    slug: 'checklist-harian-cctv',
+    title: 'Checklist Harian CCTV',
+    owner: 'Control Room',
+    version: 'v1.8',
+    status: 'AKTIF',
+    updatedAt: new Date('2026-03-30T08:00:00.000Z'),
+  },
+  {
+    slug: 'prosedur-escalation-alarm',
+    title: 'Prosedur Escalation Alarm',
+    owner: 'Security Lead',
+    version: 'v2.0',
+    status: 'REVIEW',
+    updatedAt: new Date('2026-03-18T08:00:00.000Z'),
+  },
+  {
+    slug: 'matriks-lisensi-personel',
+    title: 'Matriks Lisensi Personel',
+    owner: 'HR Security',
+    version: 'v4.1',
+    status: 'REVISI',
+    updatedAt: new Date('2026-03-26T08:00:00.000Z'),
   },
 ];
 
@@ -652,7 +687,7 @@ const supervisionActivitySeed = [
     testScheduleMonths.map(({ month, label }) => ({
       id: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
       slug: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
-      title: 'Pengujian (Test) Keamanan',
+      title: 'Tes Keamanan',
       category: 'TEST',
       location,
       inspectorNames,
@@ -684,6 +719,20 @@ async function main() {
         zone: item.zone,
         status: item.status,
         coveragePercent: item.coveragePercent,
+      },
+      create: item,
+    });
+  }
+
+  for (const item of securityDocumentSeed) {
+    await prisma.securityDocument.upsert({
+      where: { slug: item.slug },
+      update: {
+        title: item.title,
+        owner: item.owner,
+        version: item.version,
+        status: item.status,
+        updatedAt: item.updatedAt,
       },
       create: item,
     });
@@ -781,7 +830,7 @@ async function main() {
   }
 
   console.log(
-    `Seed keamanan selesai: ${securityFacilitySeed.length} fasilitas, ${personnelSeed.length} personel, ${supervisionActivitySeed.length} agenda pengawasan.`
+    `Seed keamanan selesai: ${securityFacilitySeed.length} fasilitas, ${securityDocumentSeed.length} dokumen, ${personnelSeed.length} personel, ${supervisionActivitySeed.length} agenda pengawasan.`
   );
 }
 

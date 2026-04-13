@@ -2,8 +2,8 @@ import { Fragment, useDeferredValue, useEffect, useRef, useState, type ChangeEve
 import Lottie from 'lottie-react';
 import successAnimation from '@/assets/Success.json';
 import {
-  BellIcon,
   ChevronDownIcon,
+  CloseIcon,
   LogoutIcon,
   MenuIcon,
   PortalChecklistIcon,
@@ -11,12 +11,17 @@ import {
   PortalNotebookIcon,
   SearchIcon,
   ShieldIcon,
+  TrashIcon,
   UserIcon,
 } from '@/components/icons';
 import { Sidebar } from '@/components/Sidebar';
 import { SupervisionProgramSection } from '@/components/SupervisionProgramSection';
 import {
   createFacility,
+  deleteFacility,
+  deleteDocument,
+  deleteDocumentsTable,
+  deletePersonnel,
   createPersonnel,
   deletePersonnelTable,
   fetchDashboard,
@@ -133,7 +138,7 @@ type SupervisionHeatmapMarker = {
   slotIndex: number;
   level: SupervisionHeatmapLevel;
 };
-type SupervisionHeatmapCategory = 'Audit' | 'Inspeksi' | 'Pengunjungan';
+type SupervisionHeatmapCategory = 'Audit' | 'Inspeksi' | 'Tes Keamanan';
 type SupervisionHeatmapRow = {
   id: string;
   category?: SupervisionHeatmapCategory;
@@ -175,11 +180,11 @@ const TIMELINE_SLOT_LABELS = ['I', 'II', 'III', 'IV'] as const;
 const TIMELINE_SLOTS_PER_MONTH = 4;
 const TIMELINE_TOTAL_COLUMNS = YEAR_TIMELINE_MONTHS.length * TIMELINE_SLOTS_PER_MONTH;
 const HEATMAP_LEGEND_LEVELS: SupervisionHeatmapLevel[] = [1];
-const SUPERVISION_CATEGORY_FILTERS: SupervisionHeatmapCategory[] = ['Audit', 'Inspeksi', 'Pengunjungan'];
+const SUPERVISION_CATEGORY_FILTERS: SupervisionHeatmapCategory[] = ['Audit', 'Inspeksi', 'Tes Keamanan'];
 const SUPERVISION_BRANCHES_BY_CATEGORY: Record<SupervisionHeatmapCategory, SupervisionBranchFilter[]> = {
   Audit: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Malang', 'KCP Sumenep'],
   Inspeksi: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Malang', 'KCP Sumenep', 'Penyedia Personel AVSEC'],
-  Pengunjungan: ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'],
+  'Tes Keamanan': ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'],
 };
 const BIMONTHLY_TEST_MONTHS = [1, 3, 5, 7, 9, 11] as const;
 const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
@@ -208,7 +213,7 @@ const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
   {
     kind: 'testing',
     id: 'testing',
-    title: 'Pengunjungan',
+    title: 'Tes Keamanan',
     frequency: 'Tiap 2 bulan',
     done: 3,
     total: 6,
@@ -232,10 +237,10 @@ function createInspectionEntries(
 }
 
 function createTestingEntries(year: number): SupervisionScheduleEntry[] {
-  return SUPERVISION_BRANCHES_BY_CATEGORY.Pengunjungan.flatMap((branch) =>
+  return SUPERVISION_BRANCHES_BY_CATEGORY['Tes Keamanan'].flatMap((branch) =>
     BIMONTHLY_TEST_MONTHS.map((monthIndex) => ({
       id: `testing-${year}-${branch}-${monthIndex}`,
-      category: 'Pengunjungan' as const,
+      category: 'Tes Keamanan' as const,
       branch,
       year,
       monthIndex,
@@ -372,14 +377,14 @@ const SUPERVISION_HEATMAP_ROWS: SupervisionHeatmapRow[] = [
   },
   {
     id: 'heatmap-testing-group',
-    category: 'Pengunjungan',
-    label: 'Pengunjungan',
+    category: 'Tes Keamanan',
+    label: 'Tes Keamanan',
     cells: buildSupervisionHeatmapCells([]),
     isGroup: true,
   },
   {
     id: 'heatmap-testing-surabaya',
-    category: 'Pengunjungan',
+    category: 'Tes Keamanan',
     label: 'Cabang Surabaya',
     cells: buildSupervisionHeatmapCells([
       { monthIndex: 1, slotIndex: 0, level: 4 },
@@ -393,7 +398,7 @@ const SUPERVISION_HEATMAP_ROWS: SupervisionHeatmapRow[] = [
   },
   {
     id: 'heatmap-testing-banyuwangi',
-    category: 'Pengunjungan',
+    category: 'Tes Keamanan',
     label: 'KCP Banyuwangi',
     cells: buildSupervisionHeatmapCells([
       { monthIndex: 1, slotIndex: 0, level: 4 },
@@ -407,7 +412,7 @@ const SUPERVISION_HEATMAP_ROWS: SupervisionHeatmapRow[] = [
   },
   {
     id: 'heatmap-testing-sumenep',
-    category: 'Pengunjungan',
+    category: 'Tes Keamanan',
     label: 'KCP Sumenep',
     cells: buildSupervisionHeatmapCells([
       { monthIndex: 1, slotIndex: 0, level: 4 },
@@ -701,12 +706,6 @@ function buildFacilityMetrics(items: FacilityItem[]): MetricCard[] {
       delta: 'Prioritas vendor',
       description: 'Perangkat yang perlu tindak lanjut maintenance atau penggantian komponen.',
     },
-    {
-      label: 'Jadwal Aktif',
-      value: String(counts.Terjadwal ?? 0),
-      delta: 'Servis terencana',
-      description: 'Fasilitas yang sudah masuk rencana inspeksi atau perawatan berikutnya.',
-    },
   ];
 }
 
@@ -776,8 +775,8 @@ function getRouteHero(
       return {
         eyebrow: 'Program Pengawasan Keamanan',
         title: 'Agenda pengawasan dan tindak lanjut operasional.',
-        subtitle: `Kelola ${visibleTests.length} agenda audit, inspeksi, dan pengunjungan lengkap dengan evidence dan status pelaksanaan.`,
-        chips: ['Audit', 'Inspeksi', 'Pengunjungan'],
+        subtitle: `Kelola ${visibleTests.length} agenda audit, inspeksi, dan tes keamanan lengkap dengan evidence dan status pelaksanaan.`,
+        chips: ['Audit', 'Inspeksi', 'Tes Keamanan'],
       };
     case 'dokumen':
       return {
@@ -1064,6 +1063,394 @@ function parsePersonnelImportFile(input: string): NewPersonnelInput[] {
   return nextItems;
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildPersonnelExportDocument(licenses: LicenseItem[], generatedAtLabel: string) {
+  const columns = [
+    { label: 'No', className: 'col-no' },
+    { label: 'Nama Personil', className: 'col-name' },
+    { label: 'Cabang / Lokasi', className: 'col-location' },
+    { label: 'Periode Dokumen', className: 'col-period' },
+    { label: 'Nomor License', className: 'col-license' },
+    { label: 'Tempat, Tanggal Lahir', className: 'col-birth' },
+    { label: 'Status', className: 'col-status' },
+    { label: 'Agama', className: 'col-religion' },
+    { label: 'Status Rekam Jejak', className: 'col-record' },
+  ];
+
+  const rows = licenses
+    .map((item, index) => {
+      const cells = [
+        { value: String(index + 1), className: 'cell-center' },
+        { value: item.name, className: 'cell-strong' },
+        { value: item.location, className: '' },
+        { value: item.documentPeriod, className: '' },
+        { value: item.licenseNumber || '-', className: '' },
+        { value: item.birthPlaceDate || '-', className: '' },
+        { value: item.maritalStatus || '-', className: '' },
+        { value: item.religion || '-', className: '' },
+        { value: item.status || '-', className: 'cell-center' },
+      ];
+
+      return `<tr>${cells
+        .map((cell) => `<td class="${cell.className}">${escapeHtml(cell.value)}</td>`)
+        .join('')}</tr>`;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
+<html
+  lang="id"
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns:w="urn:schemas-microsoft-com:office:word"
+  xmlns="http://www.w3.org/TR/REC-html40"
+>
+  <head>
+    <meta charset="utf-8" />
+    <title>Dokumen Rekap Personil Keamanan</title>
+    <!--[if gte mso 9]>
+    <xml>
+      <w:WordDocument>
+        <w:View>Print</w:View>
+        <w:Zoom>90</w:Zoom>
+      </w:WordDocument>
+    </xml>
+    <![endif]-->
+    <style>
+      @page Section1 {
+        size: 595.35pt 841.95pt;
+        mso-page-orientation: portrait;
+        margin: 1.2cm;
+      }
+
+      body {
+        font-family: "Times New Roman", serif;
+        margin: 0;
+        color: #111111;
+        font-size: 10.5pt;
+      }
+      .document-shell {
+        width: 100%;
+      }
+      div.Section1 {
+        page: Section1;
+      }
+      .document-header {
+        margin-bottom: 18px;
+        text-align: center;
+      }
+      .document-title {
+        margin: 0;
+        font-size: 22pt;
+        font-weight: 700;
+      }
+      .document-organization {
+        margin: 10px 0 0;
+        font-size: 16pt;
+        font-weight: 700;
+        text-decoration: underline;
+        text-decoration-color: #c1121f;
+        text-underline-offset: 4px;
+      }
+      .document-subtitle {
+        margin: 10px 0 0;
+        font-size: 13pt;
+        font-weight: 700;
+      }
+      .document-meta {
+        margin: 0 0 14px;
+        font-size: 10.5pt;
+        line-height: 1.6;
+      }
+      .document-meta strong {
+        display: inline-block;
+        min-width: 140px;
+      }
+      .section-caption {
+        margin: 0;
+        padding: 8px 10px;
+        border: 1px solid #b6bfce;
+        border-bottom: 0;
+        background: #f7f8fb;
+        font-size: 11pt;
+        font-weight: 700;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        border: 1px solid #b6bfce;
+      }
+      th,
+      td {
+        border: 1px solid #b6bfce;
+        padding: 8px 9px;
+        font-size: 9.5pt;
+        vertical-align: top;
+        word-break: break-word;
+      }
+      th {
+        background: #dde2ea;
+        text-align: left;
+        font-weight: 700;
+      }
+      .col-no {
+        width: 4%;
+      }
+      .col-name {
+        width: 17%;
+      }
+      .col-location {
+        width: 12%;
+      }
+      .col-period {
+        width: 11%;
+      }
+      .col-license {
+        width: 15%;
+      }
+      .col-birth {
+        width: 15%;
+      }
+      .col-status {
+        width: 9%;
+      }
+      .col-religion {
+        width: 7%;
+      }
+      .col-record {
+        width: 10%;
+      }
+      .cell-center {
+        text-align: center;
+        vertical-align: middle;
+      }
+      .cell-strong {
+        font-weight: 700;
+      }
+      tbody tr:nth-child(even) td {
+        background: #fbfcfe;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="Section1 document-shell">
+      <div class="document-header">
+        <h1 class="document-title">Dokumen Rekap Personil Keamanan</h1>
+        <div class="document-organization">Perum LPPNPI Cabang Surabaya</div>
+        <div class="document-subtitle">Identitas Dokumen Personel</div>
+      </div>
+
+      <div class="document-meta">
+        <div><strong>Tanggal Export</strong>: ${escapeHtml(generatedAtLabel)}</div>
+        <div><strong>Total Personil</strong>: ${licenses.length}</div>
+      </div>
+
+      <p class="section-caption">Tabel Rekap Identitas Personel Keamanan</p>
+      <table>
+        <thead>
+          <tr>${columns
+            .map((column) => `<th class="${column.className}">${escapeHtml(column.label)}</th>`)
+            .join('')}</tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>`;
+}
+
+function buildFacilityExportDocument(facilities: FacilityItem[], generatedAtLabel: string) {
+  const columns = [
+    { label: 'No', className: 'col-no' },
+    { label: 'Fasilitas', className: 'col-name' },
+    { label: 'Zona', className: 'col-location' },
+    { label: 'Status', className: 'col-status' },
+    { label: 'Coverage', className: 'col-coverage' },
+    { label: 'Pembaruan', className: 'col-updated' },
+  ];
+
+  const rows = facilities
+    .map((item, index) => {
+      const cells = [
+        { value: String(index + 1), className: 'cell-center' },
+        { value: item.name, className: 'cell-strong' },
+        { value: item.zone, className: '' },
+        { value: item.status, className: 'cell-center' },
+        { value: item.coverage, className: 'cell-center' },
+        { value: item.updatedAt, className: '' },
+      ];
+
+      return `<tr>${cells
+        .map((cell) => `<td class="${cell.className}">${escapeHtml(cell.value)}</td>`)
+        .join('')}</tr>`;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
+<html
+  lang="id"
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns:w="urn:schemas-microsoft-com:office:word"
+  xmlns="http://www.w3.org/TR/REC-html40"
+>
+  <head>
+    <meta charset="utf-8" />
+    <title>Dokumen Rekap Fasilitas Keamanan</title>
+    <!--[if gte mso 9]>
+    <xml>
+      <w:WordDocument>
+        <w:View>Print</w:View>
+        <w:Zoom>90</w:Zoom>
+      </w:WordDocument>
+    </xml>
+    <![endif]-->
+    <style>
+      @page Section1 {
+        size: 841.95pt 595.35pt;
+        mso-page-orientation: landscape;
+        margin: 1.2cm;
+      }
+
+      body {
+        font-family: "Times New Roman", serif;
+        margin: 0;
+        color: #111111;
+        font-size: 10.5pt;
+      }
+      div.Section1 {
+        page: Section1;
+      }
+      .document-shell {
+        width: 100%;
+      }
+      .document-header {
+        margin-bottom: 18px;
+        text-align: center;
+      }
+      .document-title {
+        margin: 0;
+        font-size: 22pt;
+        font-weight: 700;
+      }
+      .document-organization {
+        margin: 10px 0 0;
+        font-size: 16pt;
+        font-weight: 700;
+        text-decoration: underline;
+        text-decoration-color: #c1121f;
+        text-underline-offset: 4px;
+      }
+      .document-subtitle {
+        margin: 10px 0 0;
+        font-size: 13pt;
+        font-weight: 700;
+      }
+      .document-meta {
+        margin: 0 0 14px;
+        font-size: 10.5pt;
+        line-height: 1.6;
+      }
+      .document-meta strong {
+        display: inline-block;
+        min-width: 140px;
+      }
+      .section-caption {
+        margin: 0;
+        padding: 8px 10px;
+        border: 1px solid #b6bfce;
+        border-bottom: 0;
+        background: #f7f8fb;
+        font-size: 11pt;
+        font-weight: 700;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        border: 1px solid #b6bfce;
+      }
+      th,
+      td {
+        border: 1px solid #b6bfce;
+        padding: 8px 9px;
+        font-size: 9.5pt;
+        vertical-align: top;
+        word-break: break-word;
+      }
+      th {
+        background: #dde2ea;
+        text-align: left;
+        font-weight: 700;
+      }
+      .col-no {
+        width: 5%;
+      }
+      .col-name {
+        width: 28%;
+      }
+      .col-location {
+        width: 22%;
+      }
+      .col-status {
+        width: 14%;
+      }
+      .col-coverage {
+        width: 12%;
+      }
+      .col-updated {
+        width: 19%;
+      }
+      .cell-center {
+        text-align: center;
+        vertical-align: middle;
+      }
+      .cell-strong {
+        font-weight: 700;
+      }
+      tbody tr:nth-child(even) td {
+        background: #fbfcfe;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="Section1 document-shell">
+      <div class="document-header">
+        <h1 class="document-title">Dokumen Rekap Fasilitas Keamanan</h1>
+        <div class="document-organization">Perum LPPNPI Cabang Surabaya</div>
+        <div class="document-subtitle">Status Perangkat Lapangan</div>
+      </div>
+
+      <div class="document-meta">
+        <div><strong>Tanggal Export</strong>: ${escapeHtml(generatedAtLabel)}</div>
+        <div><strong>Total Fasilitas</strong>: ${facilities.length}</div>
+      </div>
+
+      <p class="section-caption">Tabel Rekap Fasilitas Keamanan</p>
+      <table>
+        <thead>
+          <tr>${columns
+            .map((column) => `<th class="${column.className}">${escapeHtml(column.label)}</th>`)
+            .join('')}</tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>`;
+}
+
 function EmptyRows({ copy }: { copy: string }) {
   return <div className="empty-inline">{copy}</div>;
 }
@@ -1077,7 +1464,7 @@ function getSupervisionCategoryBadgeClass(category: TestItem['category']) {
     return 'summary-category is-inspeksi';
   }
 
-  return 'summary-category is-pengunjungan';
+  return 'summary-category is-tes';
 }
 
 function PortalLinkIcon({ kind, className }: { kind: PortalIconKind; className?: string }) {
@@ -1371,6 +1758,21 @@ export default function App() {
     await refreshDashboardData();
   }
 
+  async function handleDeletePerson(slug: string) {
+    await deletePersonnel(slug);
+    await refreshDashboardData();
+  }
+
+  async function handleDeleteDocumentsTable() {
+    await deleteDocumentsTable();
+    await refreshDashboardData();
+  }
+
+  async function handleDeleteDocument(sourceType: DocumentItem['sourceType'], id: string) {
+    await deleteDocument(sourceType, id);
+    await refreshDashboardData();
+  }
+
   async function handleImportPersonnel(items: NewPersonnelInput[]): Promise<PersonnelImportResult> {
     let imported = 0;
     const failed: string[] = [];
@@ -1414,20 +1816,29 @@ export default function App() {
     await refreshDashboardData();
   }
 
+  async function handleDeleteFacility(id: string) {
+    await deleteFacility(id);
+    await refreshDashboardData();
+  }
+
   async function handleUpdateSupervisionActivity(input: {
     activityId: string;
     status: 'Terlaksana' | 'Perlu Tindak Lanjut';
+    location?: string | null;
     completedAt?: string | null;
     completionNote?: string | null;
     inspectorNames?: string[] | null;
-  }) {
-    await updateSupervisionStatus(input.activityId, {
+  }): Promise<TestItem> {
+    const payload = (await updateSupervisionStatus(input.activityId, {
       status: input.status,
+      location: input.location,
       completedAt: input.completedAt,
       completionNote: input.completionNote,
       inspectorNames: input.inspectorNames,
-    });
-    await refreshDashboardData();
+    })) as { data: TestItem };
+    const refreshedDashboard = await refreshDashboardData();
+
+    return refreshedDashboard.tests.find((item) => item.id === payload.data.id) ?? payload.data;
   }
 
   async function handleUploadSupervisionActivityEvidence(activityId: string, files: File[]) {
@@ -1543,14 +1954,11 @@ export default function App() {
       : activeId === 'fasilitas-keamanan'
         ? 'Fasilitas Keamanan'
         : activeId === 'personil-keamanan'
-          ? selectedPerson?.name ?? 'Personil Keamanan'
+          ? 'Personil Keamanan'
           : activeId === 'tes-keamanan'
             ? 'Program Pengawasan Keamanan'
             : 'Dokumen';
-  const topbarCaption =
-    activeId === 'personil-keamanan' && selectedPerson
-      ? `${selectedPerson.location} · ${selectedPerson.documentPeriod}`
-      : dashboard.organization.branch;
+  const topbarCaption = dashboard.organization.branch;
 
   return (
     <div className="app-shell">
@@ -1649,9 +2057,6 @@ export default function App() {
                 </div>
               ) : null}
             </div>
-            <button type="button" className="icon-button" aria-label="Notifikasi">
-              <BellIcon className="mini-icon" />
-            </button>
             <div ref={profileMenuRef} className="topbar-action-group">
               <button
                 type="button"
@@ -1709,12 +2114,16 @@ export default function App() {
 
         {activeId === 'fasilitas-keamanan' ? (
           <>
-            <section className="metrics-grid">
+            <section className="metrics-grid metrics-grid--facilities">
               {facilityMetrics.map((metric) => (
                 <MetricCard key={metric.label} metric={metric} />
               ))}
             </section>
-            <FacilitiesSection facilities={visibleFacilities} onAddFacility={handleAddFacility} />
+            <FacilitiesSection
+              facilities={visibleFacilities}
+              onAddFacility={handleAddFacility}
+              onDeleteFacility={handleDeleteFacility}
+            />
           </>
         ) : null}
 
@@ -1725,6 +2134,7 @@ export default function App() {
             subtitle="Pastikan ketersediaan lisensi kritis dan coverage setiap shift operasional."
             licenses={visibleLicenses}
             onAddPerson={handleAddPerson}
+            onDeletePerson={handleDeletePerson}
             onDeletePersonnelTable={handleDeletePersonnelTable}
             onImportPersonnel={handleImportPersonnel}
             onSelectPerson={handleSelectPerson}
@@ -1750,7 +2160,14 @@ export default function App() {
           />
         ) : null}
 
-        {activeId === 'dokumen' ? <DocumentsSection documents={visibleDocuments} generatedAt={generatedAt} /> : null}
+        {activeId === 'dokumen' ? (
+          <DocumentsSection
+            documents={visibleDocuments}
+            generatedAt={generatedAt}
+            onDeleteDocument={handleDeleteDocument}
+            onDeleteDocumentsTable={handleDeleteDocumentsTable}
+          />
+        ) : null}
       </main>
     </div>
   );
@@ -2150,15 +2567,19 @@ function ActivityPanel({
 function FacilitiesSection({
   facilities,
   onAddFacility,
+  onDeleteFacility,
 }: {
   facilities: FacilityItem[];
   onAddFacility: (input: NewFacilityInput) => Promise<void>;
+  onDeleteFacility: (id: string) => Promise<void>;
 }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [photoPreview, setPhotoPreview] = useState('');
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<null | { id: string; name: string }>(null);
   const [formState, setFormState] = useState<NewFacilityInput>({
     name: '',
     zone: '',
@@ -2180,6 +2601,24 @@ function FacilitiesSection({
       URL.revokeObjectURL(nextPreview);
     };
   }, [formState.photo]);
+
+  useEffect(() => {
+    if (!deleteTarget) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !isDeleting) {
+        setDeleteTarget(null);
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [deleteTarget, isDeleting]);
 
   function handleFormChange<Key extends keyof NewFacilityInput>(key: Key, value: NewFacilityInput[Key]) {
     setFormState((current) => ({
@@ -2204,6 +2643,23 @@ function FacilitiesSection({
     }
   }
 
+  async function handleConfirmDelete() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      setSubmitError('');
+      await onDeleteFacility(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Gagal menghapus alat keamanan.');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
     if (!file) {
@@ -2225,6 +2681,38 @@ function FacilitiesSection({
     if (photoInputRef.current) {
       photoInputRef.current.value = '';
     }
+  }
+
+  function handleExportDocument() {
+    if (!facilities.length) {
+      return;
+    }
+
+    const now = new Date();
+    const dateFormatter = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const labelFormatter = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      dateStyle: 'long',
+      timeStyle: 'short',
+    });
+    const exportDate = dateFormatter.format(now);
+    const documentContent = buildFacilityExportDocument(facilities, labelFormatter.format(now));
+    const blob = new Blob(['\ufeff', documentContent], {
+      type: 'application/msword;charset=utf-8',
+    });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `rekap-fasilitas-keamanan-${exportDate}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -2272,7 +2760,20 @@ function FacilitiesSection({
             <p className="panel-copy">Pantau cakupan perangkat dan jadwal servis dari satu tabel.</p>
           </div>
           <div className="panel-head-actions">
-            <button type="button" className="action-pill is-primary" onClick={() => setIsAddOpen(true)}>
+            <button
+              type="button"
+              className="action-pill is-ghost"
+              onClick={handleExportDocument}
+              disabled={!facilities.length || isSubmitting || isDeleting}
+            >
+              Export dokumen
+            </button>
+            <button
+              type="button"
+              className="action-pill is-primary"
+              onClick={() => setIsAddOpen(true)}
+              disabled={isDeleting}
+            >
               Tambah Alat
             </button>
           </div>
@@ -2287,6 +2788,7 @@ function FacilitiesSection({
                 <col className="facility-table-col facility-table-col--status" />
                 <col className="facility-table-col facility-table-col--coverage" />
                 <col className="facility-table-col facility-table-col--updated" />
+                <col className="facility-table-col facility-table-col--action" />
               </colgroup>
               <thead>
                 <tr>
@@ -2295,6 +2797,7 @@ function FacilitiesSection({
                   <th>Status</th>
                   <th>Coverage</th>
                   <th>Pembaruan</th>
+                  <th className="personnel-actions-head">Aksi</th>
                 </tr>
               </thead>
               <tbody>
@@ -2315,6 +2818,18 @@ function FacilitiesSection({
                     </td>
                     <td>{item.coverage}</td>
                     <td>{item.updatedAt}</td>
+                    <td className="personnel-actions-cell">
+                      <button
+                        type="button"
+                        className="personnel-row-delete"
+                        onClick={() => setDeleteTarget({ id: item.id, name: item.name })}
+                        disabled={isDeleting || isSubmitting}
+                        aria-label={`Hapus ${item.name}`}
+                        title={`Hapus ${item.name}`}
+                      >
+                        <TrashIcon className="mini-icon personnel-row-delete-icon" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -2341,7 +2856,19 @@ function FacilitiesSection({
                     </strong>
                     <p>{item.zone}</p>
                   </div>
-                  <StatusBadge status={item.status} />
+                  <div className="records-mobile-actions">
+                    <StatusBadge status={item.status} />
+                    <button
+                      type="button"
+                      className="personnel-row-delete"
+                      onClick={() => setDeleteTarget({ id: item.id, name: item.name })}
+                      disabled={isDeleting || isSubmitting}
+                      aria-label={`Hapus ${item.name}`}
+                      title={`Hapus ${item.name}`}
+                    >
+                      <TrashIcon className="mini-icon personnel-row-delete-icon" />
+                    </button>
+                  </div>
                 </div>
 
                 <dl className="records-mobile-meta">
@@ -2380,6 +2907,56 @@ function FacilitiesSection({
           />
         </div>
       </article>
+
+      {deleteTarget ? (
+        <div className="personnel-modal-overlay" onClick={() => (isDeleting ? null : setDeleteTarget(null))}>
+          <div
+            className="delete-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-facility-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="delete-confirm-close"
+              aria-label="Tutup dialog hapus"
+              onClick={() => setDeleteTarget(null)}
+              disabled={isDeleting}
+            >
+              <CloseIcon className="mini-icon" />
+            </button>
+
+            <div className="delete-confirm-copy">
+              <h3 id="delete-facility-title" className="delete-confirm-title">
+                Hapus {deleteTarget.name}?
+              </h3>
+              <p className="delete-confirm-text">
+                Data alat keamanan yang dipilih beserta foto tersimpan akan dihapus permanen.
+              </p>
+            </div>
+
+            <div className="delete-confirm-actions">
+              <button
+                type="button"
+                className="action-pill is-ghost delete-confirm-cancel"
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeleting}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                className="action-pill action-pill--danger delete-confirm-submit"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Menghapus...' : 'Hapus Alat'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isAddOpen ? (
         <div className="personnel-modal-overlay" onClick={closeModal}>
@@ -2438,7 +3015,6 @@ function FacilitiesSection({
                   >
                     <option value="Optimal">Optimal</option>
                     <option value="Perlu Servis">Perlu Servis</option>
-                    <option value="Terjadwal">Terjadwal</option>
                   </select>
                 </label>
 
@@ -2510,6 +3086,7 @@ function PersonnelSection({
   subtitle,
   licenses,
   onAddPerson,
+  onDeletePerson,
   onDeletePersonnelTable,
   onImportPersonnel,
   onSelectPerson,
@@ -2519,6 +3096,7 @@ function PersonnelSection({
   subtitle: string;
   licenses: LicenseItem[];
   onAddPerson: (input: NewPersonnelInput) => Promise<void>;
+  onDeletePerson: (slug: string) => Promise<void>;
   onDeletePersonnelTable: () => Promise<void>;
   onImportPersonnel: (items: NewPersonnelInput[]) => Promise<PersonnelImportResult>;
   onSelectPerson: (slug: string) => void;
@@ -2529,10 +3107,19 @@ function PersonnelSection({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<null | { mode: 'all' } | { mode: 'item'; slug: string; name: string }>(
+    null
+  );
   const [submitError, setSubmitError] = useState('');
   const [importError, setImportError] = useState('');
   const [importMessage, setImportMessage] = useState('');
+  const [importSuccess, setImportSuccess] = useState<{
+    key: number;
+    title: string;
+    message: string;
+  } | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const importSuccessTimeoutRef = useRef<number | null>(null);
   const [formState, setFormState] = useState<NewPersonnelInput>({
     name: '',
     location: '',
@@ -2565,6 +3152,49 @@ function PersonnelSection({
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, totalPages));
   }, [totalPages]);
+
+  useEffect(() => {
+    return () => {
+      if (importSuccessTimeoutRef.current) {
+        window.clearTimeout(importSuccessTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!deleteTarget) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !isDeleting) {
+        setDeleteTarget(null);
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [deleteTarget, isDeleting]);
+
+  function triggerImportSuccess(title: string, message: string) {
+    if (importSuccessTimeoutRef.current) {
+      window.clearTimeout(importSuccessTimeoutRef.current);
+    }
+
+    setImportSuccess((current) => ({
+      key: (current?.key ?? 0) + 1,
+      title,
+      message,
+    }));
+
+    importSuccessTimeoutRef.current = window.setTimeout(() => {
+      setImportSuccess(null);
+      importSuccessTimeoutRef.current = null;
+    }, 2200);
+  }
 
   function handleFormChange<Key extends keyof NewPersonnelInput>(key: Key, value: NewPersonnelInput[Key]) {
     setFormState((current) => ({
@@ -2605,6 +3235,9 @@ function PersonnelSection({
         : '';
 
       setImportMessage(`${result.imported} personel berhasil diimpor dari ${file.name}.${failedCopy}`);
+      if (result.imported > 0) {
+        triggerImportSuccess('Import dokumen berhasil', `${result.imported} personel berhasil ditambahkan dari ${file.name}.`);
+      }
       setCurrentPage(1);
     } catch (error) {
       setImportError(error instanceof Error ? error.message : 'Gagal mengimpor dokumen personel.');
@@ -2614,12 +3247,8 @@ function PersonnelSection({
     }
   }
 
-  async function handleDeleteTable() {
-    const confirmed = window.confirm(
-      'Hapus seluruh data pada tabel personil keamanan? Tindakan ini akan menghapus data personel beserta foto yang tersimpan.'
-    );
-
-    if (!confirmed) {
+  async function handleConfirmDelete() {
+    if (!deleteTarget) {
       return;
     }
 
@@ -2627,11 +3256,23 @@ function PersonnelSection({
       setIsDeleting(true);
       setImportError('');
       setImportMessage('');
-      await onDeletePersonnelTable();
-      setCurrentPage(1);
-      setImportMessage('Seluruh data pada tabel personil keamanan berhasil dihapus.');
+      if (deleteTarget.mode === 'all') {
+        await onDeletePersonnelTable();
+        setCurrentPage(1);
+        setImportMessage('Seluruh data pada tabel personil keamanan berhasil dihapus.');
+      } else {
+        await onDeletePerson(deleteTarget.slug);
+        setImportMessage(`${deleteTarget.name} berhasil dihapus dari tabel personil keamanan.`);
+      }
+      setDeleteTarget(null);
     } catch (error) {
-      setImportError(error instanceof Error ? error.message : 'Gagal menghapus tabel personil keamanan.');
+      setImportError(
+        error instanceof Error
+          ? error.message
+          : deleteTarget.mode === 'all'
+            ? 'Gagal menghapus tabel personil keamanan.'
+            : 'Gagal menghapus personil keamanan.'
+      );
     } finally {
       setIsDeleting(false);
     }
@@ -2657,6 +3298,39 @@ function PersonnelSection({
     }
   }
 
+  function handleExportDocument() {
+    if (!licenses.length) {
+      return;
+    }
+
+    const now = new Date();
+    const dateFormatter = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const labelFormatter = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      dateStyle: 'long',
+      timeStyle: 'short',
+    });
+    const exportDate = dateFormatter.format(now);
+    const documentContent = buildPersonnelExportDocument(licenses, labelFormatter.format(now));
+    const blob = new Blob(['\ufeff', documentContent], {
+      type: 'application/msword;charset=utf-8',
+    });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `rekap-personil-keamanan-${exportDate}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    triggerImportSuccess('Export dokumen berhasil', 'Data personil keamanan berhasil diekspor ke dokumen Word.');
+  }
+
   return (
     <section className="section-grid section-grid--single">
       <article className="panel">
@@ -2677,7 +3351,7 @@ function PersonnelSection({
             <button
               type="button"
               className="action-pill action-pill--danger"
-              onClick={handleDeleteTable}
+              onClick={() => setDeleteTarget({ mode: 'all' })}
               disabled={!licenses.length || isDeleting || isImporting}
             >
               {isDeleting ? 'Menghapus...' : 'Hapus'}
@@ -2689,6 +3363,14 @@ function PersonnelSection({
               disabled={isImporting || isDeleting}
             >
               {isImporting ? 'Mengimpor...' : 'Import dokumen'}
+            </button>
+            <button
+              type="button"
+              className="action-pill is-ghost"
+              onClick={handleExportDocument}
+              disabled={!licenses.length || isImporting || isDeleting}
+            >
+              Export dokumen
             </button>
             <button
               type="button"
@@ -2711,11 +3393,13 @@ function PersonnelSection({
                 <colgroup>
                   <col className="personnel-table-col personnel-table-col--name" />
                   <col className="personnel-table-col personnel-table-col--location" />
+                  <col className="personnel-table-col personnel-table-col--action" />
                 </colgroup>
                 <thead>
                   <tr>
                     <th>Nama</th>
                     <th>Lokasi</th>
+                    <th className="personnel-actions-head">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2732,6 +3416,18 @@ function PersonnelSection({
                         </button>
                       </td>
                       <td className="personnel-location">{item.location}</td>
+                      <td className="personnel-actions-cell">
+                        <button
+                          type="button"
+                          className="personnel-row-delete"
+                          onClick={() => setDeleteTarget({ mode: 'item', slug: item.slug, name: item.name })}
+                          disabled={isDeleting || isImporting}
+                          aria-label={`Hapus ${item.name}`}
+                          title={`Hapus ${item.name}`}
+                        >
+                          <TrashIcon className="mini-icon personnel-row-delete-icon" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -2782,6 +3478,58 @@ function PersonnelSection({
           )}
         </div>
       </article>
+
+      {deleteTarget ? (
+        <div className="personnel-modal-overlay" onClick={() => (isDeleting ? null : setDeleteTarget(null))}>
+          <div
+            className="delete-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-personnel-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="delete-confirm-close"
+              aria-label="Tutup dialog hapus"
+              onClick={() => setDeleteTarget(null)}
+              disabled={isDeleting}
+            >
+              <CloseIcon className="mini-icon" />
+            </button>
+
+            <div className="delete-confirm-copy">
+              <h3 id="delete-personnel-title" className="delete-confirm-title">
+                {deleteTarget.mode === 'all' ? 'Hapus semua personil?' : `Hapus ${deleteTarget.name}?`}
+              </h3>
+              <p className="delete-confirm-text">
+                {deleteTarget.mode === 'all'
+                  ? 'Semua data personil keamanan beserta foto yang sudah tersimpan akan dihapus permanen.'
+                  : 'Data personil yang dipilih beserta foto yang sudah tersimpan akan dihapus permanen.'}
+              </p>
+            </div>
+
+            <div className="delete-confirm-actions">
+              <button
+                type="button"
+                className="action-pill is-ghost delete-confirm-cancel"
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeleting}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                className="action-pill action-pill--danger delete-confirm-submit"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Menghapus...' : deleteTarget.mode === 'all' ? 'Hapus Semua' : 'Hapus Personil'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isAddOpen ? (
         <div className="personnel-modal-overlay" onClick={closeModal}>
@@ -2878,6 +3626,20 @@ function PersonnelSection({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {importSuccess ? (
+        <div className="upload-success-overlay" aria-live="polite" aria-atomic="true">
+          <div className="upload-success-indicator">
+            <div className="upload-success-lottie">
+              <Lottie key={importSuccess.key} animationData={successAnimation} loop={false} />
+            </div>
+            <div className="upload-success-copy">
+              <strong>{importSuccess.title}</strong>
+              <span>{importSuccess.message}</span>
+            </div>
           </div>
         </div>
       ) : null}
@@ -3484,7 +4246,7 @@ function TestsSection() {
               Dashboard Jadwal Pengawasan Internal
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500 sm:text-[15px] md:text-base">
-              Monitoring pelaksanaan Audit, Inspeksi, dan Pengujian secara terpusat untuk
+              Monitoring pelaksanaan Audit, Inspeksi, dan Tes Keamanan secara terpusat untuk
               membantu tim internal melihat status utama dengan cepat.
             </p>
           </div>
@@ -3657,7 +4419,7 @@ function TestsSection() {
               </h3>
               <p className="mt-3 text-sm leading-7 text-slate-500 md:text-base">
                 Tampilan heatmap tahunan untuk melihat persebaran pelaksanaan Audit, Inspeksi,
-                dan Pengujian dalam satu panel monitoring.
+                dan Tes Keamanan dalam satu panel monitoring.
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <div ref={timelineFilterRef} className="relative w-full max-w-[278px] sm:max-w-[290px]">
@@ -4080,10 +4842,71 @@ function TestsSection() {
 function DocumentsSection({
   documents,
   generatedAt,
+  onDeleteDocument,
+  onDeleteDocumentsTable,
 }: {
   documents: DocumentItem[];
   generatedAt: string;
+  onDeleteDocument: (sourceType: DocumentItem['sourceType'], id: string) => Promise<void>;
+  onDeleteDocumentsTable: () => Promise<void>;
 }) {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteMessage, setDeleteMessage] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<
+    null | { mode: 'all' } | { mode: 'item'; id: string; title: string; sourceType: DocumentItem['sourceType'] }
+  >(null);
+
+  useEffect(() => {
+    if (!deleteTarget) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !isDeleting) {
+        setDeleteTarget(null);
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [deleteTarget, isDeleting]);
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      setDeleteError('');
+      setDeleteMessage('');
+
+      if (deleteTarget.mode === 'all') {
+        await onDeleteDocumentsTable();
+        setDeleteMessage('Seluruh data dokumen keamanan berhasil dihapus.');
+      } else {
+        await onDeleteDocument(deleteTarget.sourceType, deleteTarget.id);
+        setDeleteMessage(`${deleteTarget.title} berhasil dihapus dari daftar dokumen keamanan.`);
+      }
+
+      setDeleteTarget(null);
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error
+          ? error.message
+          : deleteTarget.mode === 'all'
+            ? 'Gagal menghapus seluruh dokumen keamanan.'
+            : 'Gagal menghapus dokumen keamanan.'
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <section className="section-grid section-grid--single">
       <article className="panel">
@@ -4097,8 +4920,19 @@ function DocumentsSection({
           </div>
           <div className="panel-head-actions">
             <span className="data-chip">Sinkron {generatedAt}</span>
+            <button
+              type="button"
+              className="action-pill action-pill--danger"
+              onClick={() => setDeleteTarget({ mode: 'all' })}
+              disabled={!documents.length || isDeleting}
+            >
+              {isDeleting ? 'Menghapus...' : 'Hapus'}
+            </button>
           </div>
         </div>
+
+        {deleteMessage ? <div className="program-feedback is-success">{deleteMessage}</div> : null}
+        {deleteError ? <div className="personnel-form-error">{deleteError}</div> : null}
 
         <div className="table-shell records-table-desktop">
           {documents.length ? (
@@ -4109,11 +4943,12 @@ function DocumentsSection({
                   <th>Pemilik</th>
                   <th>Versi</th>
                   <th>Pembaruan</th>
+                  <th className="personnel-actions-head">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {documents.map((item) => (
-                  <tr key={item.id}>
+                  <tr key={`${item.sourceType}-${item.id}`}>
                     <td>
                       {item.url ? (
                         <a href={item.url} target="_blank" rel="noreferrer" className="font-semibold text-slate-900 underline-offset-4 hover:underline">
@@ -4126,6 +4961,25 @@ function DocumentsSection({
                     <td>{item.owner}</td>
                     <td>{item.version}</td>
                     <td>{item.updatedAt}</td>
+                    <td className="personnel-actions-cell">
+                      <button
+                        type="button"
+                        className="personnel-row-delete"
+                        onClick={() =>
+                          setDeleteTarget({
+                            mode: 'item',
+                            id: item.id,
+                            title: item.title,
+                            sourceType: item.sourceType,
+                          })
+                        }
+                        disabled={isDeleting}
+                        aria-label={`Hapus ${item.title}`}
+                        title={`Hapus ${item.title}`}
+                      >
+                        <TrashIcon className="mini-icon personnel-row-delete-icon" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -4138,18 +4992,37 @@ function DocumentsSection({
         <div className="records-mobile-list">
           {documents.length ? (
             documents.map((item) => (
-              <article key={item.id} className="records-mobile-card">
-                <div className="records-mobile-copy">
-                  {item.url ? (
-                    <strong>
-                      <a href={item.url} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
-                        {item.title}
-                      </a>
-                    </strong>
-                  ) : (
-                    <strong>{item.title}</strong>
-                  )}
-                  <p>{item.owner}</p>
+              <article key={`${item.sourceType}-${item.id}`} className="records-mobile-card">
+                <div className="records-mobile-top">
+                  <div className="records-mobile-copy">
+                    {item.url ? (
+                      <strong>
+                        <a href={item.url} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
+                          {item.title}
+                        </a>
+                      </strong>
+                    ) : (
+                      <strong>{item.title}</strong>
+                    )}
+                    <p>{item.owner}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="personnel-row-delete"
+                    onClick={() =>
+                      setDeleteTarget({
+                        mode: 'item',
+                        id: item.id,
+                        title: item.title,
+                        sourceType: item.sourceType,
+                      })
+                    }
+                    disabled={isDeleting}
+                    aria-label={`Hapus ${item.title}`}
+                    title={`Hapus ${item.title}`}
+                  >
+                    <TrashIcon className="mini-icon personnel-row-delete-icon" />
+                  </button>
                 </div>
 
                 <dl className="records-mobile-meta">
@@ -4169,6 +5042,58 @@ function DocumentsSection({
           )}
         </div>
       </article>
+
+      {deleteTarget ? (
+        <div className="personnel-modal-overlay" onClick={() => (isDeleting ? null : setDeleteTarget(null))}>
+          <div
+            className="delete-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-document-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="delete-confirm-close"
+              aria-label="Tutup dialog hapus dokumen"
+              onClick={() => setDeleteTarget(null)}
+              disabled={isDeleting}
+            >
+              <CloseIcon className="mini-icon" />
+            </button>
+
+            <div className="delete-confirm-copy">
+              <h3 id="delete-document-title" className="delete-confirm-title">
+                {deleteTarget.mode === 'all' ? 'Hapus semua dokumen?' : `Hapus ${deleteTarget.title}?`}
+              </h3>
+              <p className="delete-confirm-text">
+                {deleteTarget.mode === 'all'
+                  ? 'Semua dokumen keamanan beserta file evidence yang sudah tersimpan akan dihapus permanen.'
+                  : 'Dokumen yang dipilih akan dihapus permanen dari daftar dokumen keamanan.'}
+              </p>
+            </div>
+
+            <div className="delete-confirm-actions">
+              <button
+                type="button"
+                className="action-pill is-ghost delete-confirm-cancel"
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeleting}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                className="action-pill action-pill--danger delete-confirm-submit"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Menghapus...' : deleteTarget.mode === 'all' ? 'Hapus Semua' : 'Hapus Dokumen'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
