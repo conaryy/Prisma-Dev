@@ -3,6 +3,7 @@ import { Download, FolderOpen, RefreshCw, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { toast } from '@/hooks/use-toast';
 import {
   Table,
   TableBody,
@@ -18,6 +19,7 @@ import {
   fetchSelfAssessmentSessions,
   type SelfAssessmentSession,
 } from '@/lib/selfAssessment';
+import { downloadFromSignedUrl } from '@/lib/download';
 import { resolveApiUrl } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -420,9 +422,18 @@ function ResultList({
                               <a
                                 key={file.id}
                                 href={resolveApiUrl(file.url)}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  void downloadFromSignedUrl(file.url, file.name).catch((error) => {
+                                    toast({
+                                      title: 'Gagal mengunduh file.',
+                                      description:
+                                        error instanceof Error ? error.message : undefined,
+                                      variant: 'destructive',
+                                    });
+                                  });
+                                }}
                                 className={cn(
                                   'inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-100'
                                 )}

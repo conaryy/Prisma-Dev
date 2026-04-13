@@ -329,7 +329,10 @@ export function resolveApiUrl(input: string) {
     try {
       const url = new URL(input);
       const baseUrl = new URL(base);
-      if (url.hostname === baseUrl.hostname && url.port !== baseUrl.port) {
+      if (
+        url.hostname === baseUrl.hostname &&
+        (url.port !== baseUrl.port || url.protocol !== baseUrl.protocol)
+      ) {
         return `${base}${url.pathname}${url.search}${url.hash}`;
       }
     } catch {

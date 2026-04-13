@@ -204,7 +204,7 @@ class SelfAssessmentEvidenceController extends ApiController
         }
 
         $absolutePath = Storage::disk('public')->path($relativePath);
-        return response()->file($absolutePath);
+        return response()->download($absolutePath, $evidence->name ?: basename($relativePath));
     }
 
     private function signedDownloadUrl(SelfAssessmentEvidence $evidence): string

@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { FormField, FormSection } from '@/components/shared/Form';
 import { toast } from '@/hooks/use-toast';
 import { resolveApiUrl } from '@/lib/api';
+import { downloadFromSignedUrl } from '@/lib/download';
 import { resolveTime } from '@/lib/monitoringReview';
 import {
   fetchSelfAssessmentCap,
@@ -457,9 +458,18 @@ export function MonitoringSelfAssessmentDetail() {
                           >
                             <a
                               href={resolveApiUrl(file.url)}
-                              target="_blank"
-                              rel="noreferrer"
                               className="truncate text-blue-600 underline"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                void downloadFromSignedUrl(file.url, file.name).catch((error) => {
+                                  toast({
+                                    title: 'Gagal mengunduh file.',
+                                    description:
+                                      error instanceof Error ? error.message : undefined,
+                                    variant: 'destructive',
+                                  });
+                                });
+                              }}
                             >
                               {file.name}
                             </a>

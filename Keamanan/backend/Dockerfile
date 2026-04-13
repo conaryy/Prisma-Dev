@@ -17,6 +17,8 @@ COPY backend ./backend
 COPY frontend ./frontend
 COPY --from=backend-deps /app/backend/node_modules ./backend/node_modules
 COPY --from=frontend-deps /app/frontend/node_modules ./frontend/node_modules
+WORKDIR /app/frontend
+RUN npm run build
 WORKDIR /app/backend
 RUN npm run prisma:generate
 RUN npm run build

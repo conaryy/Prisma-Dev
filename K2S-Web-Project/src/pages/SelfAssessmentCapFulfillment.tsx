@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { ApiError, getAuthUser } from '@/lib/api';
+import { downloadFromSignedUrl } from '@/lib/download';
 import { resolveTime } from '@/lib/monitoringReview';
 import { canManageExternalDnp } from '@/lib/permissions';
 import {
@@ -1079,10 +1080,19 @@ export function SelfAssessmentCapFulfillment({
                             <div className="min-w-0 flex-1">
                               <a
                                 href={file.url}
-                                target="_blank"
-                                rel="noreferrer"
                                 title={file.name}
                                 className="block truncate text-xs text-blue-600 hover:underline"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  void downloadFromSignedUrl(file.url, file.name).catch((error) => {
+                                    toast({
+                                      title: 'Gagal mengunduh file.',
+                                      description:
+                                        error instanceof Error ? error.message : undefined,
+                                      variant: 'destructive',
+                                    });
+                                  });
+                                }}
                               >
                                 {file.name}
                               </a>

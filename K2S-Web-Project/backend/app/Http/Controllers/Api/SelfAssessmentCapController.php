@@ -637,7 +637,7 @@ class SelfAssessmentCapController extends ApiController
             return response()->json(['error' => 'File tidak ditemukan.'], 404);
         }
         $absolute = Storage::disk('public')->path($relative);
-        return response()->file($absolute);
+        return response()->download($absolute, $file->name ?: basename($relative));
     }
 
     public function downloadExtensionFileSigned(Request $request, SelfAssessmentCapExtension $extension)
@@ -647,7 +647,7 @@ class SelfAssessmentCapController extends ApiController
             return response()->json(['error' => 'File tidak ditemukan.'], 404);
         }
         $absolute = Storage::disk('public')->path($relative);
-        return response()->file($absolute);
+        return response()->download($absolute, $extension->file_name ?: basename($relative));
     }
 
     public function adminIndex(Request $request)

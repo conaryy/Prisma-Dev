@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\SelfAssessmentAnswer;
-use App\Models\SelfAssessmentEvidence;
 use App\Models\SystemNotification;
 use App\Models\User;
 use App\Services\Whatsapp\SelfAssessmentWhatsappNotificationService;
@@ -63,17 +62,6 @@ class SelfAssessmentAnswerController extends ApiController
 
         $userId = $request->user()->id;
         $saved = [];
-
-        $missingEvidenceQuestionCodes = $this->findMissingEvidenceQuestionCodes(
-            $validated['items'],
-            $userId
-        );
-        if (!empty($missingEvidenceQuestionCodes)) {
-            return response()->json([
-                'error' => 'Upload evidence wajib sebelum kirim PQ untuk: '
-                    .implode(', ', $missingEvidenceQuestionCodes).'.',
-            ], 422);
-        }
 
         $submittedAnswerIds = [];
         foreach ($validated['items'] as $item) {
@@ -180,55 +168,5 @@ class SelfAssessmentAnswerController extends ApiController
         }
 
         return $this->respondData(['saved' => $saved]);
-    }
-
-    /**
-     * @param array<int, array<string, mixed>> $items
-     * @return array<int, string>
-     */
-    private function findMissingEvidenceQuestionCodes(array $items, string $userId): array
-    {
-        $requiredPairs = collect($items)
-            ->filter(fn (array $item) => (bool) ($item['submit'] ?? true))
-            ->map(function (array $item) {
-                return [
-                    'session_area_id' => (string) $item['sessionAreaId'],
-                    'question_code' => (string) $item['questionCode'],
-                    'pair_key' => (string) $item['sessionAreaId'].'::'.(string) $item['questionCode'],
-                ];
-            })
-            ->unique('pair_key')
-            ->values();
-
-        if ($requiredPairs->isEmpty()) {
-            return [];
-        }
-
-        $evidenceQuery = SelfAssessmentEvidence::query()
-            ->where('user_id', $userId)
-            ->where(function ($query) use ($requiredPairs) {
-                foreach ($requiredPairs as $pair) {
-                    $query->orWhere(function ($inner) use ($pair) {
-                        $inner->where('session_area_id', $pair['session_area_id'])
-                            ->where('question_code', $pair['question_code']);
-                    });
-                }
-            });
-
-        $existingPairKeys = $evidenceQuery
-            ->get(['session_area_id', 'question_code'])
-            ->map(fn (SelfAssessmentEvidence $item) => $item->session_area_id.'::'.$item->question_code)
-            ->unique()
-            ->values()
-            ->all();
-
-        $existingLookup = array_fill_keys($existingPairKeys, true);
-
-        return $requiredPairs
-            ->filter(fn (array $pair) => !isset($existingLookup[$pair['pair_key']]))
-            ->map(fn (array $pair) => $pair['question_code'])
-            ->unique()
-            ->values()
-            ->all();
     }
 }

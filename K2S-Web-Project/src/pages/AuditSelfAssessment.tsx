@@ -20,6 +20,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { resolveApiUrl } from '@/lib/api';
 import { formatDateRangeIndonesian } from '@/lib/date';
+import { downloadFromSignedUrl } from '@/lib/download';
 import {
   SELF_ASSESSMENT_MONTH_OPTIONS as MONTH_OPTIONS,
   SELF_ASSESSMENT_YEAR_OPTIONS_WITH_ALL as YEAR_OPTIONS,
@@ -1051,9 +1052,18 @@ export function AuditSelfAssessment({
                             >
                               <a
                                 href={resolveApiUrl(item.url)}
-                                target="_blank"
-                                rel="noreferrer"
                                 className="truncate text-blue-600 underline"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  void downloadFromSignedUrl(item.url, item.name).catch((error) => {
+                                    toast({
+                                      title: 'Gagal mengunduh file.',
+                                      description:
+                                        error instanceof Error ? error.message : undefined,
+                                      variant: 'destructive',
+                                    });
+                                  });
+                                }}
                               >
                                 {item.name}
                               </a>

@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { toast } from '@/hooks/use-toast';
 import {
   Table,
   TableBody,
@@ -13,6 +14,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { resolveApiUrl } from '@/lib/api';
+import { downloadFromSignedUrl } from '@/lib/download';
 import {
   QUESTION_SECTION_LABELS,
   formatMonitoringDateTime as formatDateTime,
@@ -417,9 +419,18 @@ export function MonitoringResultDetail() {
                           <TableCell className="text-xs text-blue-600">
                             <a
                               href={resolveApiUrl(file.url)}
-                              target="_blank"
-                              rel="noreferrer"
                               className="hover:underline"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                void downloadFromSignedUrl(file.url, file.name).catch((error) => {
+                                  toast({
+                                    title: 'Gagal mengunduh file.',
+                                    description:
+                                      error instanceof Error ? error.message : undefined,
+                                    variant: 'destructive',
+                                  });
+                                });
+                              }}
                             >
                               {file.name}
                             </a>

@@ -311,7 +311,7 @@ class SelfAssessmentResultController extends ApiController
             return response()->json(['error' => 'File tidak ditemukan.'], 404);
         }
         $absolute = Storage::disk('public')->path($relative);
-        return response()->file($absolute);
+        return response()->download($absolute, $file->name ?: basename($relative));
     }
 
     public function downloadMonitoringFileSigned(Request $request, SelfAssessmentMonitoringResultFile $file)
@@ -321,6 +321,6 @@ class SelfAssessmentResultController extends ApiController
             return response()->json(['error' => 'File tidak ditemukan.'], 404);
         }
         $absolute = Storage::disk('public')->path($relative);
-        return response()->file($absolute);
+        return response()->download($absolute, $file->name ?: basename($relative));
     }
 }
