@@ -131,6 +131,12 @@ export type SelfAssessmentExportDnpImportJobStatus =
   | 'succeeded'
   | 'failed';
 
+export type SelfAssessmentImportDnpInjectJobStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed';
+
 export type SelfAssessmentExportDnpImportJobResponse = {
   jobId: string;
   status: SelfAssessmentExportDnpImportJobStatus;
@@ -197,6 +203,7 @@ export async function submitAdminSelfAssessmentAnswers(payload: {
     comment?: string;
     evidenceNote?: string;
   }>;
+  overrideFinalLock?: boolean;
 }) {
   const response = await apiFetch<{ data: { saved: string[] } }>(
     '/api/admin/self-assessment/answers/bulk',
@@ -212,10 +219,14 @@ export async function submitAdminSelfAssessmentAnswers(payload: {
 export async function uploadAdminSelfAssessmentEvidence(params: {
   answerId: string;
   file: File;
+  overrideFinalLock?: boolean;
 }) {
   const formData = new FormData();
   formData.append('answerId', params.answerId);
   formData.append('file', params.file);
+  if (params.overrideFinalLock) {
+    formData.append('overrideFinalLock', '1');
+  }
 
   const response = await apiFetch<{ data: SelfAssessmentEvidence }>(
     '/api/admin/self-assessment/evidence',
@@ -227,9 +238,16 @@ export async function uploadAdminSelfAssessmentEvidence(params: {
   return response.data;
 }
 
-export async function deleteAdminSelfAssessmentEvidence(id: string) {
+export async function deleteAdminSelfAssessmentEvidence(
+  id: string,
+  options?: { overrideFinalLock?: boolean }
+) {
+  const query = new URLSearchParams();
+  if (options?.overrideFinalLock) {
+    query.set('overrideFinalLock', '1');
+  }
   const response = await apiFetch<{ data: { success: boolean } }>(
-    `/api/admin/self-assessment/evidence/${id}`,
+    `/api/admin/self-assessment/evidence/${id}${query.toString() ? `?${query.toString()}` : ''}`,
     { method: 'DELETE' }
   );
   return response.data;
@@ -333,6 +351,7 @@ export async function exportAdminSelfAssessmentToDnp(payload: {
   userId: string;
   sessionId: string;
   answerIds?: string[];
+  skipDuplicateFileNames?: boolean;
 }) {
   const response = await apiFetch<{ data: {
     summary: {
@@ -361,6 +380,46 @@ export async function exportAdminSelfAssessmentToDnp(payload: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  return response.data;
+}
+
+export async function injectAdminSelfAssessmentFromDnp(payload: {
+  sessionAreaId: string;
+  userId: string;
+  includeEvidence?: boolean;
+  matches: Array<{
+    answerId: string;
+    dnpSnapshotItemId: string;
+  }>;
+}) {
+  const response = await apiFetch<{ data: {
+    jobId: string;
+    status: SelfAssessmentImportDnpInjectJobStatus;
+    message: string;
+  } }>('/api/admin/self-assessment/import-dnp/inject', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return response.data;
+}
+
+export async function fetchAdminSelfAssessmentImportDnpInjectJob(jobId: string) {
+  const response = await apiFetch<{ data: {
+    jobId: string;
+    status: SelfAssessmentImportDnpInjectJobStatus;
+    message?: string | null;
+    error?: string | null;
+    summary?: {
+      injectedCount: number;
+      evidenceImportedCount?: number;
+      evidenceSkippedCount?: number;
+      message: string;
+    } | null;
+    startedAt?: string | null;
+    finishedAt?: string | null;
+    createdAt?: string | null;
+  } }>(`/api/admin/self-assessment/import-dnp/jobs/${jobId}`);
   return response.data;
 }
 
@@ -425,11 +484,13 @@ export async function fetchAdminSelfAssessmentSubmissions(params: {
   scope?: SelfAssessmentScope;
   month?: string;
   year?: string;
+  mode?: 'default' | 'importDnp';
 }) {
   const query = new URLSearchParams();
   if (params.scope) query.set('scope', params.scope);
   if (params.month) query.set('month', params.month);
   if (params.year) query.set('year', params.year);
+  if (params.mode) query.set('mode', params.mode);
   const response = await apiFetch<{ data: Array<{
     sessionAreaId: string;
     user: { id: string; name: string; email?: string } | null;
@@ -448,7 +509,14 @@ export async function fetchAdminSelfAssessmentSubmissions(params: {
 export async function fetchAdminSelfAssessmentSubmissionDetail(params: {
   sessionAreaId: string;
   userId: string;
+  mode?: 'default' | 'importDnp';
 }) {
+  const query = new URLSearchParams({
+    userId: params.userId,
+  });
+  if (params.mode) {
+    query.set('mode', params.mode);
+  }
   const response = await apiFetch<{ data: {
     sessionAreaId: string;
     area: string;
@@ -476,6 +544,13 @@ export async function fetchAdminSelfAssessmentSubmissionDetail(params: {
     dnpImportJob?: {
       jobId: string;
       status: SelfAssessmentExportDnpImportJobStatus;
+      message?: string | null;
+      createdAt?: string | null;
+      startedAt?: string | null;
+    } | null;
+    dnpInjectJob?: {
+      jobId: string;
+      status: SelfAssessmentImportDnpInjectJobStatus;
       message?: string | null;
       createdAt?: string | null;
       startedAt?: string | null;
@@ -509,7 +584,7 @@ export async function fetchAdminSelfAssessmentSubmissionDetail(params: {
       } | null;
     }>;
   } }>(
-    `/api/admin/self-assessment/submissions/${params.sessionAreaId}?userId=${params.userId}`
+    `/api/admin/self-assessment/submissions/${params.sessionAreaId}?${query.toString()}`
   );
   return response.data;
 }

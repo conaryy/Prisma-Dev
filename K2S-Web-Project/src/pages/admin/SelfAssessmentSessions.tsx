@@ -908,7 +908,7 @@ export function SelfAssessmentSessions({
               onChange={(event) =>
                 setSessionForm((prev) => ({ ...prev, teamAudity: event.target.value }))
               }
-              placeholder="Audity (satu nama per baris)"
+              placeholder="Auditee (satu nama per baris)"
               rows={3}
               required
             />

@@ -429,6 +429,37 @@ def _build_selfassessment_compare_item(scope, area_group_id, area, datatable_ite
     }
 
 
+def _fetch_selfassessment_live_files(s, scope, plan_id, pq_id, area_group_id):
+    main_path_segment = _build_selfassessment_main_path(scope)
+    if not main_path_segment:
+        return {'error': f'Scope selfassessment tidak valid: {scope}'}
+
+    plan_id = str(plan_id or '').strip()
+    pq_id = str(pq_id or '').strip()
+    area_group_id = str(area_group_id or '').strip()
+    if not plan_id or not pq_id:
+        return {'error': 'plan_id dan pq_id wajib diisi.'}
+
+    fill_url = f"{WEB2_URL}/{main_path_segment}/fill/{plan_id}/{area_group_id}" if area_group_id else f"{WEB2_URL}/{main_path_segment}"
+    pair_key, detail_payload = _fetch_plan_pq_detail(
+        s,
+        f"{WEB2_URL}/{main_path_segment}/get_plan_pq",
+        _ajax_headers(fill_url),
+        (plan_id, pq_id),
+    )
+    if detail_payload.get('error'):
+        return detail_payload
+
+    data_output = detail_payload.get('data_output') or {}
+    data_files = data_output.get('data_files') or []
+    return {
+        'plan_id': pair_key[0],
+        'pq_id': pair_key[1],
+        'files': data_files if isinstance(data_files, list) else [],
+        'raw_detail': detail_payload,
+    }
+
+
 def _resolve_selfassessment_data_id(s, scope, plan_id, pq_id, area_group_id):
     main_path_segment = _build_selfassessment_main_path(scope)
     if not main_path_segment:
@@ -699,6 +730,15 @@ def _scrape_selfassessment_fill(s, scope, year, code1, code2, area, debug_log):
         rows.append({
             'kategori': kategori,
             'prefix': prefix,
+            'pqNo': ' '.join(
+                str(
+                    (
+                        ((detail.get('content') or {}).get('data_output') or {}).get('data_pq') or {}
+                    ).get('pq_no')
+                    or detail.get('datatable_pq_no')
+                    or ''
+                ).split()
+            ),
             'pertanyaan': pertanyaan,
             'deskripsi': deskripsi_value,
         })
@@ -1201,6 +1241,72 @@ def automation_download_file():
         output.headers['Content-Disposition'] = disposition
     return output
 
+
+@app.route('/automation-selfassessment-download-file')
+def automation_selfassessment_download_file():
+    if not _is_internal_authorized():
+        return _reject_internal()
+
+    session_id = (request.args.get('session_id') or '').strip()
+    scope = (request.args.get('scope') or '').strip().lower()
+    file_id = (request.args.get('file_id') or '').strip()
+
+    if not session_id or session_id not in user_sessions:
+        return jsonify({'error': 'Session tidak valid'}), 403
+    if scope not in ['audit', 'inspeksi', 'surveillance']:
+        return jsonify({'error': 'Scope tidak valid'}), 422
+    if not file_id:
+        return jsonify({'error': 'file_id wajib diisi'}), 422
+
+    s = user_sessions[session_id]
+    meta = session_meta.get(session_id, {})
+    if not meta.get('authenticated'):
+        return jsonify({
+            'error': 'Session belum login. Jalankan login DNP terlebih dahulu.',
+            'need_new_session': True,
+        }), 401
+
+    main_path_segment = _build_selfassessment_main_path(scope)
+    if not main_path_segment:
+        return jsonify({'error': f'Scope tidak valid: {scope}'}), 422
+
+    url = f"{WEB2_URL}/{main_path_segment}/download_file/{file_id}"
+
+    try:
+        res = s.get(
+            url,
+            headers={'User-Agent': USER_AGENT, 'Accept': '*/*'},
+            allow_redirects=False,
+            timeout=120,
+        )
+    except Exception as exc:
+        return jsonify({'error': f'Gagal download file self assessment: {exc}'}), 502
+
+    content_type = (res.headers.get('Content-Type') or '').lower()
+    if res.status_code >= 400:
+        return jsonify({'error': f'DNP merespons {res.status_code} saat download file.'}), 502
+    if 'text/html' in content_type and 'login' in (res.url or '').lower():
+        return jsonify({
+            'error': 'Session DNP kedaluwarsa. Login ulang diperlukan.',
+            'need_new_session': True,
+        }), 401
+    if 300 <= res.status_code < 400 and not res.content:
+        return jsonify({
+            'error': f'DNP merespons redirect {res.status_code} tanpa body file.',
+            'location': res.headers.get('Location'),
+        }), 502
+
+    disposition = res.headers.get('Content-Disposition')
+    output = send_file(
+        io.BytesIO(res.content),
+        mimetype=res.headers.get('Content-Type') or 'application/octet-stream',
+        as_attachment=True,
+        download_name=f"dnp-selfassessment-file-{file_id}",
+    )
+    if disposition:
+        output.headers['Content-Disposition'] = disposition
+    return output
+
 @app.route('/automation-run', methods=['POST'])
 def automation_run():
     if not _is_internal_authorized():
@@ -1365,6 +1471,21 @@ def automation_run():
             return jsonify({
                 'results': {'selfassessment': compare_payload},
                 'debug_log': debug_log,
+            })
+
+        if action == 'selfassessment_fetch_files':
+            files_payload = _fetch_selfassessment_live_files(
+                s=s,
+                scope=audit_type,
+                plan_id=(incoming.get('plan_id') or '').strip(),
+                pq_id=(incoming.get('pq_id') or '').strip(),
+                area_group_id=(incoming.get('area_group_id') or '').strip(),
+            )
+            if files_payload.get('error'):
+                return jsonify({'error': files_payload['error']}), 502
+
+            return jsonify({
+                'results': {'selfassessment': files_payload},
             })
 
         return jsonify({'error': f'Aksi tidak didukung untuk selfassessment: {action}'}), 422

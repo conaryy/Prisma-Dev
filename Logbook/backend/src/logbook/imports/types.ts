@@ -3,6 +3,7 @@ export type ImportLogbookParams = {
   buffer: Buffer;
   sourcePeriod?: string;
   importedBy?: string;
+  allowReimport?: boolean;
 };
 
 export type RowParseError = {

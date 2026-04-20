@@ -9,8 +9,10 @@ import {
   Post,
   UploadedFile,
   UseInterceptors,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { AdminAuthGuard } from './auth/admin-auth.guard';
 import { DashboardService } from './dashboard.service';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -39,6 +41,7 @@ export class AppController {
   }
 
   @Post('personnel')
+  @UseGuards(AdminAuthGuard)
   async createPersonnel(
     @Body()
     body: {
@@ -67,6 +70,7 @@ export class AppController {
   }
 
   @Delete('personnel')
+  @UseGuards(AdminAuthGuard)
   async clearPersonnel(): Promise<{ data: unknown }> {
     return {
       data: await this.dashboardService.clearPersonnel(),
@@ -74,6 +78,7 @@ export class AppController {
   }
 
   @Delete('personnel/:slug')
+  @UseGuards(AdminAuthGuard)
   async deletePersonnel(@Param('slug') slug: string): Promise<{ data: unknown }> {
     return {
       data: await this.dashboardService.deletePersonnel(slug),
@@ -81,6 +86,7 @@ export class AppController {
   }
 
   @Delete('documents')
+  @UseGuards(AdminAuthGuard)
   async clearDocuments(): Promise<{ data: unknown }> {
     return {
       data: await this.dashboardService.clearDocuments(),
@@ -88,6 +94,7 @@ export class AppController {
   }
 
   @Delete('documents/:sourceType/:id')
+  @UseGuards(AdminAuthGuard)
   async deleteDocument(
     @Param('sourceType') sourceType: 'manual' | 'evidence',
     @Param('id') id: string
@@ -98,6 +105,7 @@ export class AppController {
   }
 
   @Post('personnel/:slug/photo')
+  @UseGuards(AdminAuthGuard)
   @UseInterceptors(
     FileInterceptor('photo', {
       storage: memoryStorage(),
@@ -125,6 +133,7 @@ export class AppController {
   }
 
   @Post('facilities')
+  @UseGuards(AdminAuthGuard)
   @UseInterceptors(
     FileInterceptor('photo', {
       storage: memoryStorage(),
@@ -154,6 +163,7 @@ export class AppController {
   }
 
   @Delete('facilities/:id')
+  @UseGuards(AdminAuthGuard)
   async deleteFacility(@Param('id') id: string): Promise<{ data: unknown }> {
     return {
       data: await this.dashboardService.deleteFacility(id),
@@ -161,6 +171,7 @@ export class AppController {
   }
 
   @Patch('supervision-activities/:activityId/status')
+  @UseGuards(AdminAuthGuard)
   async updateSupervisionStatus(
     @Param('activityId') activityId: string,
     @Body()
@@ -188,6 +199,7 @@ export class AppController {
   }
 
   @Post('supervision-activities/:activityId/evidence')
+  @UseGuards(AdminAuthGuard)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),

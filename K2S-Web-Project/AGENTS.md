@@ -7,6 +7,10 @@
   - `backend`: Laravel 12 API
   - `backend/wrapping`: service Python wrapper untuk integrasi external DNP
   - `backend/whatsapp_api`: service Python bridge WAHA/WhatsApp
+- Dokumen arsitektur yang perlu dibaca developer baru:
+  - `arsitekltur.md` untuk arsitektur frontend
+  - `backend/arsitektur.md` untuk arsitektur backend Laravel API
+  - `refactor_process.md` untuk jejak refactor frontend K2S yang sedang berjalan
 - Jalur container aktif di `docker-compose.central.yml`:
   - `backend-init`
   - `backend`
@@ -17,6 +21,7 @@
   - `frontend`
 - Area fungsional besar saat ini:
   - auth lokal + SSO
+  - menu `Informasi`, termasuk master `Kelompok Fasilitas` di modul `Fasilitas`
   - self assessment, review, CAP, monitoring
   - admin `Review Unit Safety` dan `Export DNP` berbagi komponen list awal dengan menu user self assessment
   - guide manual / signed download
@@ -28,6 +33,8 @@
 ## Export DNP Notes
 - Menu admin `Self Assessment > Export DNP` sekarang bukan hanya compare/baseline, tetapi sudah punya jalur pairing lokal->DNP dan draft export ke DNP.
 - UI aktif memakai `SelfAssessmentReviews.tsx` dalam mode `detailPanelMode="assessment"` dan reuse shell/list/table/filter yang sama dengan halaman self assessment utama.
+- Sejak refactor frontend 2026-04-17, `SelfAssessmentReviews.tsx` tidak lagi menjadi satu file UI besar. File itu sekarang lebih berperan sebagai orchestration page yang menyusun hook dan panel presentational di `src/components/self-assessment`.
+- Jejak refactor bertahap untuk area ini dicatat di `refactor_process.md`; baca file itu dulu sebelum melanjutkan refactor frontend K2S agar tidak mengulang work yang sama.
 - Jalur `Export DNP` sekarang:
   - `POST /api/admin/self-assessment/export-dnp/init`
   - `POST /api/admin/self-assessment/export-dnp/areas`
@@ -57,6 +64,8 @@
   - evidence note
   - semua file evidence yang terkait `question_code`
   lalu mengirimkannya ke slot pertanyaan DNP yang dipilih admin.
+- Sebelum upload file evidence pada `Export DNP`, backend sekarang mencoba mengambil daftar file target secara live dari DNP lewat `get_plan_pq`, lalu fallback ke snapshot compare jika live fetch gagal.
+- Dedup nama file pada `Export DNP` sekarang membandingkan nama file lokal dengan nama tampilan file DNP, dengan prioritas key metadata `file_judul` bila tersedia, bukan hanya `file_name` internal DNP.
 - Session login DNP untuk `Export DNP` tidak dipersist permanen; session HTTP/cookies tetap hidup di memory wrapper Python, sedangkan Laravel hanya menyimpan `session_id` ke cache selama 6 jam.
 - Cache session `Export DNP` mengikuti pola `External DNP`:
   - key global per user
@@ -71,6 +80,7 @@
 - Wrapper `backend/wrapping/app.py` untuk jalur self assessment compare sudah diparalelkan dan sebagian disamakan dengan referensi `folder_referensi/test5`, termasuk:
   - `selfassessment_fill`
   - `selfassessment_compare`
+  - `selfassessment_fetch_files`
   - `selfassessment_save_draft`
   - `selfassessment_upload_file`
   - helper `_ajax_headers(...)`
@@ -78,6 +88,74 @@
   - payload compare yang membawa `draft_payload`, `raw_detail`, `ref_data`, dan `data_id_lookup` bila diperlukan
 - Jika sesudah perubahan fitur export muncul error lama yang tidak nyambung dengan kode terbaru, curigai proses `wrapper` atau `backend` masih memakai kode lama; recreate/restart service aktif terlebih dulu.
 - Jika jalur `Export DNP` bermasalah, bandingkan dulu dengan referensi `folder_referensi/test5/app.py`; referensi itu adalah basis perilaku scrape/export self assessment DNP yang paling dekat dengan kebutuhan fitur ini.
+
+## Self Assessment Question Admin Notes
+- Menu admin `Self Assessment > Pertanyaan Self Assessment` sekarang punya 3 jalur impor:
+  - tambah manual per pertanyaan
+  - import CSV
+  - import pertanyaan dari DNP
+- Jalur `Import Pertanyaan dari DNP` sekarang memakai `get_datatable` lalu `get_plan_pq` per item untuk mengambil detail pertanyaan.
+- Wrapper `backend/wrapping/app.py` sekarang ikut meneruskan `pqNo` dari DNP ke backend import.
+- Backend `SelfAssessmentQuestionController::importQuestionRows()` sekarang memprioritaskan `pqNo` DNP sebagai `code` lokal, misalnya `B.68`, jika formatnya valid.
+- Jika `pqNo` DNP kosong atau tidak valid, import pertanyaan fallback ke pola lokal lama `prefix + nextNumber`.
+- Jika import menemukan `code` yang sama dengan pertanyaan lokal yang isinya sama, item tersebut akan di-skip agar re-import area yang sama tidak menggandakan pertanyaan.
+- Jika import menemukan `code` yang sama tetapi isi pertanyaannya berbeda, import menandainya sebagai bentrok dan mengembalikan error per baris.
+- Karena alur import DNP pertanyaan memakai queue dan wrapper, perubahan pada fitur ini minimum perlu verifikasi:
+  - `php artisan queue:work` aktif
+  - `python app.py` wrapper sudah direstart bila route/payload wrapper berubah
+- Halaman admin pertanyaan sekarang juga mendukung aksi `Hapus Area`.
+- `Hapus Area` menghapus entri area yang dipilih sekaligus seluruh pertanyaan pada area tersebut, dan harus selalu diperlakukan sebagai operasi destruktif.
+- UI `Hapus Area` memakai modal konfirmasi terpisah yang secara eksplisit menyebut area dan seluruh pertanyaannya akan dihapus.
+
+## Import Jawaban DNP Notes
+- Menu admin `Self Assessment > Import Jawaban DNP` reuse snapshot compare DNP yang sama dengan `Export DNP`, tetapi arah penulisannya kebalik: data DNP diinjeksi ke jawaban lokal.
+- `Inject Semua Pairing` dan inject per pertanyaan sekarang berjalan async melalui queue, bukan request sinkron panjang.
+- Job inject DNP memakai:
+  - model `SelfAssessmentImportDnpInjectJob`
+  - queue worker `RunSelfAssessmentImportDnpInject`
+  - endpoint status `GET /api/admin/self-assessment/import-dnp/jobs/{job}`
+- Karena inject DNP sekarang async, UI admin melakukan polling status job sampai selesai dan dapat melanjutkan polling lagi setelah reload detail jika job masih `queued/running`.
+- Jalur inject DNP tetap dapat mengikutkan import file evidence dari DNP bila opsi `includeEvidence` aktif, tetapi beban proses itu sekarang ditangani oleh queue job, bukan request frontend tunggal.
+- Jika fitur `Import Jawaban DNP` terlihat berhenti di status `queued` atau `running`, hal pertama yang harus dicek adalah `php artisan queue:work`.
+
+## Frontend Refactor Notes
+- Area frontend K2S yang sedang dirapikan bertahap saat ini berpusat di:
+  - `src/pages/admin/SelfAssessmentReviews.tsx`
+  - `src/lib/selfAssessment.ts`
+  - `src/contexts/AppDataContext.tsx`
+- Developer baru yang masuk ke area frontend wajib baca:
+  - `arsitekltur.md`
+  - `refactor_process.md`
+- Untuk `SelfAssessmentReviews.tsx`, panel-panel besar sudah dipisah ke komponen berikut:
+  - `SelfAssessmentDnpLoginPanel`
+  - `SelfAssessmentDnpSnapshotPanel`
+  - `SelfAssessmentDnpAnswerPairingPanel`
+  - `SelfAssessmentAssessmentEditorPanel`
+  - `SelfAssessmentReviewDetailPanel`
+  - `SelfAssessmentResultSubmissionPanel`
+- Hook/frontend util bersama yang sudah diekstrak untuk area DNP:
+  - `useAsyncJobPolling`
+  - `useDnpSessionAreaFlow`
+  - `useDnpMatchSelection`
+  - `selfAssessmentDnpMatching`
+- Jika tugas menyentuh area ini, utamakan melanjutkan pola komponen presentational + hook reusable, bukan menambah logic baru langsung ke `SelfAssessmentReviews.tsx`.
+- Jangan pindahkan lagi logic DNP ke inline helper lokal di page selama hook/util bersama yang ada masih mencukupi.
+
+## Backend Architecture Notes
+- Developer baru yang masuk ke area backend Laravel wajib baca:
+  - `backend/arsitektur.md`
+- Dokumen itu menjadi acuan utama untuk:
+  - struktur folder backend
+  - boundary route/controller/service/model
+  - standar API response
+  - middleware, keamanan, dan env
+  - onboarding backend
+- Karena backend K2S masih campuran antara controller tipis dan controller legacy yang cukup padat, gunakan `backend/arsitektur.md` sebagai target konsistensi saat menambah atau merapikan code baru.
+- Khusus modul `Informasi > Fasilitas`:
+  - daftar `Kelompok Fasilitas` sekarang dikelola terpisah sebagai master data di tabel `facility_groups`
+  - data item fasilitas tetap berada di tabel `facilities`
+  - fitur `Tambah Kelompok Fasilitas` menulis ke master `facility_groups`
+  - fitur `Hapus Kelompok Fasilitas` saat ini menghapus master grup sekaligus semua item `facilities` yang masih memakai grup tersebut
 
 ## Build And Test Commands
 - Frontend:
@@ -150,6 +228,12 @@
   - uji `Export Pertanyaan Ini` dan `Export Semua Pairing Area Ini`
   - verifikasi draft jawaban DNP berubah sesuai status/comment/evidence note lokal
   - verifikasi file evidence lokal ikut terupload ke draft DNP
+- Jika menyentuh `Import Jawaban DNP`:
+  - uji inject satu pertanyaan
+  - uji `Inject Semua Pairing`
+  - pastikan `php artisan queue:work` aktif karena inject sekarang berjalan async
+  - verifikasi polling job selesai dan detail jawaban lokal ter-refresh
+  - bila opsi file evidence aktif, verifikasi evidence lokal hasil import benar-benar tersimpan
 - Jika menyentuh external DNP:
   - uji sync init/start/run/status
   - uji export document `items`, `generate`, dan `download`

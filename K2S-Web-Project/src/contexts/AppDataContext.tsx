@@ -3,6 +3,7 @@ import {
   AgendaItem,
   AuditItem,
   FacilityItem,
+  FacilityGroupItem,
   FacilityCondition,
   Finding,
   FollowUp,
@@ -36,6 +37,7 @@ import { apiFetch, getAuthToken, getAuthUser } from '@/lib/api';
 interface AppDataContextType {
   instansi: InstansiProfile;
   facilities: FacilityItem[];
+  facilityGroups: FacilityGroupItem[];
   organizations: OrganizationItem[];
   personil: PersonilItem[];
   certificates: CertificateItem[];
@@ -49,6 +51,8 @@ interface AppDataContextType {
   addFacility: (item: Omit<FacilityItem, 'id'>) => void;
   updateFacility: (id: string, changes: Partial<FacilityItem>) => void;
   removeFacility: (id: string) => void;
+  addFacilityGroup: (name: string) => Promise<FacilityGroupItem | null>;
+  removeFacilityGroup: (id: string) => Promise<boolean>;
   addOrganization: (item: Omit<OrganizationItem, 'id'>) => void;
   updateOrganization: (id: string, changes: Partial<OrganizationItem>) => void;
   removeOrganization: (id: string) => void;
@@ -128,6 +132,13 @@ const mapFacilityFromApi = (data: Record<string, unknown>): FacilityItem => ({
   frequency: (data.frequency ?? '') as string,
   ident: (data.ident ?? '') as string,
   condition: (data.condition_status ?? data.condition ?? 'Normal') as FacilityCondition,
+});
+
+const mapFacilityGroupFromApi = (
+  data: Record<string, unknown>
+): FacilityGroupItem => ({
+  id: data.id as string,
+  name: (data.name ?? '') as string,
 });
 
 const mapOrganizationFromApi = (data: Record<string, unknown>): OrganizationItem => ({
@@ -238,6 +249,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     scopedStorageKey(STORAGE_KEYS.facilities, storageScope),
     seedFacilities
   );
+  const [facilityGroups, setFacilityGroups] = useState<FacilityGroupItem[]>([]);
   const [organizations, setOrganizations] = useLocalStorageState(
     scopedStorageKey(STORAGE_KEYS.organizations, storageScope),
     seedOrganizations
@@ -295,6 +307,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         const [
           instansiRes,
           facilitiesRes,
+          facilityGroupsRes,
           organizationsRes,
           personilRes,
           certificatesRes,
@@ -307,6 +320,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         ] = await Promise.all([
           apiFetch<{ data: Array<Record<string, unknown>> }>('/api/instansi?limit=200'),
           apiFetch<{ data: Array<Record<string, unknown>> }>('/api/facilities?limit=500'),
+          apiFetch<{ data: Array<Record<string, unknown>> }>('/api/facility-groups?limit=500'),
           apiFetch<{ data: Array<Record<string, unknown>> }>('/api/organizations?limit=500'),
           apiFetch<{ data: Array<Record<string, unknown>> }>('/api/personil?limit=500'),
           apiFetch<{ data: Array<Record<string, unknown>> }>('/api/certificates?limit=500'),
@@ -323,6 +337,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         }
         if (facilitiesRes.data) {
           setFacilities(facilitiesRes.data.map(mapFacilityFromApi));
+        }
+        if (facilityGroupsRes.data) {
+          setFacilityGroups(facilityGroupsRes.data.map(mapFacilityGroupFromApi));
         }
         if (organizationsRes.data) {
           setOrganizations(organizationsRes.data.map(mapOrganizationFromApi));
@@ -361,6 +378,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, [
     setInstansiState,
     setFacilities,
+    setFacilityGroups,
     setOrganizations,
     setPersonil,
     setCertificates,
@@ -520,6 +538,59 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         handleApiError('Hapus fasilitas gagal', error);
       }
     })();
+  };
+
+  const addFacilityGroup = async (name: string) => {
+    const token = getAuthToken();
+    if (!token) {
+      console.warn('Missing auth token, facility group add skipped.');
+      return null;
+    }
+
+    try {
+      const response = await apiFetch<{ data: Record<string, unknown> }>(
+        '/api/facility-groups',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        }
+      );
+      const nextGroup = mapFacilityGroupFromApi(response.data);
+      setFacilityGroups((prev) =>
+        [...prev.filter((group) => group.id !== nextGroup.id), nextGroup].sort((left, right) =>
+          left.name.localeCompare(right.name, 'id-ID')
+        )
+      );
+      return nextGroup;
+    } catch (error) {
+      console.warn('Failed to add facility group', error);
+      handleApiError('Tambah kelompok fasilitas gagal', error);
+      return null;
+    }
+  };
+
+  const removeFacilityGroup = async (id: string) => {
+    const token = getAuthToken();
+    if (!token) {
+      console.warn('Missing auth token, facility group delete skipped.');
+      return false;
+    }
+
+    try {
+      await apiFetch(`/api/facility-groups/${id}`, { method: 'DELETE' });
+      const [refreshedFacilities, refreshedGroups] = await Promise.all([
+        apiFetch<{ data: Array<Record<string, unknown>> }>('/api/facilities?limit=500'),
+        apiFetch<{ data: Array<Record<string, unknown>> }>('/api/facility-groups?limit=500'),
+      ]);
+      setFacilities(refreshedFacilities.data.map(mapFacilityFromApi));
+      setFacilityGroups(refreshedGroups.data.map(mapFacilityGroupFromApi));
+      return true;
+    } catch (error) {
+      console.warn('Failed to remove facility group', error);
+      handleApiError('Hapus kelompok fasilitas gagal', error);
+      return false;
+    }
   };
 
   const addOrganization = (item: Omit<OrganizationItem, 'id'>) => {
@@ -1301,6 +1372,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       value={{
         instansi,
         facilities,
+        facilityGroups,
         organizations,
         personil,
         certificates,
@@ -1314,6 +1386,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         addFacility,
         updateFacility,
         removeFacility,
+        addFacilityGroup,
+        removeFacilityGroup,
         addOrganization,
         updateOrganization,
         removeOrganization,

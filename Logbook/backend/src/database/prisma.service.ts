@@ -24,6 +24,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         facility TEXT NOT NULL,
         call_sign TEXT NOT NULL,
         description TEXT NOT NULL,
+        import_batch_id TEXT NULL,
         source_type TEXT NOT NULL DEFAULT 'manual',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -40,6 +41,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         facility TEXT NOT NULL,
         call_sign TEXT NOT NULL,
         description TEXT NOT NULL,
+        import_batch_id TEXT NULL,
         source_type TEXT NOT NULL DEFAULT 'manual',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -67,6 +69,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         id TEXT PRIMARY KEY,
         source_category TEXT NOT NULL,
         source_period TEXT NULL,
+        reimport_of_batch_id TEXT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
         source_file_name TEXT NOT NULL,
         status TEXT NOT NULL,
         total_rows INTEGER NOT NULL DEFAULT 0,
@@ -78,6 +82,78 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         completed_at TIMESTAMPTZ NULL
       );
+    `);
+
+    await this.$executeRaw(Prisma.sql`
+      ALTER TABLE logbook_import_batches
+      ADD COLUMN IF NOT EXISTS reimport_of_batch_id TEXT NULL;
+    `);
+
+    await this.$executeRaw(Prisma.sql`
+      ALTER TABLE logbook_import_batches
+      ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+
+    await this.$executeRaw(Prisma.sql`
+      CREATE TABLE IF NOT EXISTS logbook_import_sources (
+        id TEXT PRIMARY KEY,
+        batch_id TEXT NOT NULL,
+        sheet_name TEXT NOT NULL,
+        row_number INTEGER NOT NULL,
+        raw_date_value TEXT NULL,
+        raw_time_value TEXT NULL,
+        raw_payload TEXT NOT NULL
+      );
+    `);
+
+    await this.$executeRaw(Prisma.sql`
+      CREATE TABLE IF NOT EXISTS logbook_import_errors (
+        id TEXT PRIMARY KEY,
+        batch_id TEXT NOT NULL,
+        sheet_name TEXT NOT NULL,
+        row_number INTEGER NOT NULL,
+        field_name TEXT NOT NULL,
+        error_code TEXT NOT NULL,
+        error_message TEXT NOT NULL,
+        raw_payload TEXT NOT NULL
+      );
+    `);
+
+    await this.$executeRaw(Prisma.sql`
+      CREATE TABLE IF NOT EXISTS logbook_audit_trails (
+        id TEXT PRIMARY KEY,
+        actor_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NULL,
+        batch_id TEXT NULL,
+        metadata TEXT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await this.$executeRaw(Prisma.sql`
+      CREATE TABLE IF NOT EXISTS logbook_integrity_records (
+        id TEXT PRIMARY KEY,
+        batch_id TEXT NULL,
+        record_type TEXT NOT NULL,
+        record_ref TEXT NULL,
+        hash_type TEXT NOT NULL,
+        hash_value TEXT NOT NULL,
+        anchored BOOLEAN NOT NULL DEFAULT FALSE,
+        anchored_at TIMESTAMPTZ NULL,
+        anchor_ref TEXT NULL
+      );
+    `);
+
+    await this.$executeRaw(Prisma.sql`
+      ALTER TABLE tower_logbook_entries
+      ADD COLUMN IF NOT EXISTS import_batch_id TEXT NULL;
+    `);
+
+    await this.$executeRaw(Prisma.sql`
+      ALTER TABLE app_logbook_entries
+      ADD COLUMN IF NOT EXISTS import_batch_id TEXT NULL;
     `);
 
     await this.$executeRaw(Prisma.sql`
@@ -101,12 +177,44 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       ON teknik_logbook_entries (entry_date DESC, entry_time DESC);
     `);
     await this.$executeRaw(Prisma.sql`
+      CREATE INDEX IF NOT EXISTS idx_tower_logbook_import_batch
+      ON tower_logbook_entries (import_batch_id);
+    `);
+    await this.$executeRaw(Prisma.sql`
+      CREATE INDEX IF NOT EXISTS idx_app_logbook_import_batch
+      ON app_logbook_entries (import_batch_id);
+    `);
+    await this.$executeRaw(Prisma.sql`
       CREATE INDEX IF NOT EXISTS idx_teknik_logbook_import_batch
       ON teknik_logbook_entries (import_batch_id);
     `);
     await this.$executeRaw(Prisma.sql`
       CREATE INDEX IF NOT EXISTS idx_logbook_import_batches_category_created
       ON logbook_import_batches (source_category, started_at DESC);
+    `);
+    await this.$executeRaw(Prisma.sql`
+      CREATE INDEX IF NOT EXISTS idx_logbook_import_batches_category_period_active
+      ON logbook_import_batches (source_category, source_period, is_active);
+    `);
+    await this.$executeRaw(Prisma.sql`
+      CREATE INDEX IF NOT EXISTS idx_logbook_import_batches_status_created
+      ON logbook_import_batches (status, started_at DESC);
+    `);
+    await this.$executeRaw(Prisma.sql`
+      CREATE INDEX IF NOT EXISTS idx_logbook_import_sources_batch_row
+      ON logbook_import_sources (batch_id, row_number);
+    `);
+    await this.$executeRaw(Prisma.sql`
+      CREATE INDEX IF NOT EXISTS idx_logbook_import_errors_batch_row
+      ON logbook_import_errors (batch_id, row_number);
+    `);
+    await this.$executeRaw(Prisma.sql`
+      CREATE INDEX IF NOT EXISTS idx_logbook_audit_trails_batch_created
+      ON logbook_audit_trails (batch_id, created_at);
+    `);
+    await this.$executeRaw(Prisma.sql`
+      CREATE INDEX IF NOT EXISTS idx_logbook_integrity_records_batch
+      ON logbook_integrity_records (batch_id);
     `);
   }
 

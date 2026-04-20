@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Param,
   Post,
   Query,
   UploadedFile,
@@ -15,6 +16,9 @@ import { CurrentUserDecorator } from '../auth/current-user.decorator';
 import { SsoAuthGuard } from '../auth/sso-auth.guard';
 import type { CurrentUser } from '../common/current-user';
 import { ImportLogbookTeknikDto } from './dto/import-logbook-teknik.dto';
+import { QueryImportBatchDetailDto } from './dto/query-import-batch-detail.dto';
+import { QueryImportBatchErrorsDto } from './dto/query-import-batch-errors.dto';
+import { QueryImportBatchesDto } from './dto/query-import-batches.dto';
 import { QueryLogbookDto } from './dto/query-logbook.dto';
 import { LogbookService } from './logbook.service';
 
@@ -77,9 +81,106 @@ export class LogbookController {
     };
   }
 
+  @Get('import-batches')
+  async listImportBatches(@Query() query: QueryImportBatchesDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const search = query.search?.trim() ?? '';
+
+    const result = await this.logbookService.listImportBatches({
+      category: query.category,
+      status: query.status,
+      page,
+      pageSize,
+      search,
+    });
+
+    return {
+      data: result.data,
+      meta: {
+        total: result.total,
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(result.total / pageSize)),
+        category: query.category ?? null,
+        status: query.status ?? null,
+        search,
+      },
+    };
+  }
+
+  @Get('import-batches/:batchId')
+  async getImportBatchDetail(
+    @Param('batchId') batchId: string,
+    @Query() query: QueryImportBatchDetailDto
+  ) {
+    const sourcePage = query.sourcePage ?? 1;
+    const sourcePageSize = query.sourcePageSize ?? 10;
+    const auditPage = query.auditPage ?? 1;
+    const auditPageSize = query.auditPageSize ?? 5;
+    const result = await this.logbookService.getImportBatchDetail(batchId, {
+      sourcePage,
+      sourcePageSize,
+      auditPage,
+      auditPageSize,
+    });
+
+    return {
+      data: result,
+      meta: {
+        sourceRows: {
+          total: result.summary.sourceRows,
+          page: sourcePage,
+          pageSize: sourcePageSize,
+          totalPages: Math.max(1, Math.ceil(result.summary.sourceRows / sourcePageSize)),
+        },
+        auditTrail: {
+          total: result.summary.auditCount,
+          page: auditPage,
+          pageSize: auditPageSize,
+          totalPages: Math.max(1, Math.ceil(result.summary.auditCount / auditPageSize)),
+        },
+      },
+    };
+  }
+
+  @Get('import-batches/:batchId/errors')
+  async listImportBatchErrors(
+    @Param('batchId') batchId: string,
+    @Query() query: QueryImportBatchErrorsDto
+  ) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 10;
+    const result = await this.logbookService.listImportBatchErrors(batchId, {
+      page,
+      pageSize,
+    });
+
+    return {
+      data: result.data,
+      meta: {
+        total: result.total,
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(result.total / pageSize)),
+      },
+    };
+  }
+
+  @Post('import-batches/:batchId/rollback')
+  async rollbackImportBatch(
+    @Param('batchId') batchId: string,
+    @CurrentUserDecorator() user: CurrentUser | undefined
+  ) {
+    return {
+      message: 'Batch archived berhasil diaktifkan kembali.',
+      data: await this.logbookService.rollbackImportBatch(batchId, user?.sub),
+    };
+  }
+
   @Delete('purge')
-  async purgeAllLogbookData() {
-    const result = await this.logbookService.purgeAllLogbookData();
+  async purgeAllLogbookData(@CurrentUserDecorator() user: CurrentUser | undefined) {
+    const result = await this.logbookService.purgeAllLogbookData(user?.sub);
 
     return {
       message: result.message,
@@ -115,6 +216,7 @@ export class LogbookController {
       buffer: file.buffer,
       sourcePeriod: body.sourcePeriod,
       importedBy: user?.sub,
+      allowReimport: body.allowReimport,
     });
 
     return {
@@ -151,6 +253,7 @@ export class LogbookController {
       buffer: file.buffer,
       sourcePeriod: body.sourcePeriod,
       importedBy: user?.sub,
+      allowReimport: body.allowReimport,
     });
 
     return {
@@ -187,6 +290,7 @@ export class LogbookController {
       buffer: file.buffer,
       sourcePeriod: body.sourcePeriod,
       importedBy: user?.sub,
+      allowReimport: body.allowReimport,
     });
 
     return {

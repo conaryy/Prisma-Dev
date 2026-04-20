@@ -6,6 +6,7 @@
   - `backend`: NestJS + Prisma + PostgreSQL
 - Backend berjalan dengan global prefix `api/v1`.
 - Backend memvalidasi access token SSO melalui `SsoJwtStrategy` dan `SsoAuthGuard`.
+- Backend kini punya skeleton module resmi `src/semantic-search` untuk integrasi search runtime.
 - Domain logbook aktif:
   - frontend `logbook.ryvidia.my.id`
   - backend `apilogbook.ryvidia.my.id`
@@ -14,6 +15,28 @@
   - `app`
   - `teknik`
 - Import parser dipisah per kategori di `src/logbook/imports`.
+- Import management yang sudah aktif:
+  - `logbook_import_batches`
+  - `logbook_import_sources`
+  - `logbook_import_errors`
+  - `logbook_audit_trails`
+  - `logbook_integrity_records`
+- Lifecycle batch saat ini:
+  - `pending`
+  - `processing`
+  - `completed`
+  - `failed`
+- Model operasional import saat ini berbasis `active batch`:
+  - query logbook harian hanya membaca batch `completed` yang `is_active = true`
+  - reimport aman memakai `sourcePeriod`
+  - rollback sederhana sudah tersedia untuk mengaktifkan kembali batch archived
+  - row lama tidak dihapus secara fisik saat revisi; status aktif ditentukan oleh batch
+- Frontend sekarang punya halaman `Import Center` untuk observability batch, error parsing, sample source row, dan audit trail.
+- Frontend halaman kategori sekarang memakai input operator:
+  - tombol `Tambah Data Baru`
+  - tombol `Upload Revisi`
+  - `Tambah Data Baru` = auto split file ke batch bulanan baru
+  - `Upload Revisi` = pilih `tahun` dan `bulan` spesifik
 
 ## Build And Test Commands
 - Frontend:
@@ -32,11 +55,15 @@
   - `npm run build`
 - Docker central dari root repo:
   - `docker compose --env-file .env.central -f docker-compose.central.yml up -d --build`
+- Jika menambah kolom/table untuk import management:
+  - jalankan `cd Logbook/backend && npm run prisma:generate && npm run prisma:push`
 
 ## Code Style Guidelines
 - Frontend:
   - gunakan pola yang ada di `components/layout`, `components/ui`, `lib`, `hooks`, dan `pages`
   - SSO client ada di `frontend/src/lib/sso.ts`; jangan ubah flow callback tanpa cek integrasi auth portal
+  - halaman import management ada di `frontend/src/pages/ImportManagement.tsx`; pertahankan pola data-fetch sekarang sebelum menambah state manager baru
+  - halaman kategori `LogbookHarian.tsx` sengaja memakai istilah awam; jangan kembalikan UX ke input `sourcePeriod` mentah tanpa alasan kuat
 - Backend:
   - pertahankan pemisahan:
     - `src/auth` untuk auth guard/strategy/current-user
@@ -44,11 +71,21 @@
     - `src/health` untuk health endpoint
     - `src/logbook` untuk domain utama
   - import parser kategori baru harus ditaruh di `src/logbook/imports`, bukan menambah beban `logbook.service.ts`
+  - semantic search runtime resmi diletakkan di `src/semantic-search`; `backend/semantic_search_referensi` tetap hanya referensi
   - query utama memang memakai kombinasi Prisma schema dan raw SQL; bila schema berubah, cek keduanya
+  - jangan bypass konsep `sourcePeriod`, `reimport_of_batch_id`, dan `is_active` saat mengubah flow import/reimport/rollback
+  - perubahan pada read path harus mempertahankan filter batch aktif agar reimport tidak memunculkan data ganda
+  - untuk file Excel tabel panjang lintas bulan, `Tambah Data Baru` sekarang memecah file ke batch per bulan berdasarkan tanggal row
+  - `Upload Revisi` tetap spesifik per `sourcePeriod`
+  - consumer eksternal seperti seed Qdrant, export, atau ETL wajib join/filter ke `logbook_import_batches.is_active = true`
+  - endpoint status semantic search ada di `GET /api/v1/logbook/search/semantic/status` dan bisa dipakai frontend untuk feature gating
+  - endpoint query semantic search resmi saat ini ada di `POST /api/v1/logbook/search/semantic`
 - Schema/database:
   - perubahan database tetap harus lewat `prisma/schema.prisma`
   - perhatikan mapping `@map(...)` dan nama kolom snake_case yang dipakai raw SQL
   - service sengaja mengembalikan `DATE` sebagai text untuk menghindari timezone shift; jangan ubah itu tanpa uji data nyata
+  - kolom `import_batch_id` pada tabel entry adalah penghubung utama antara data hasil parse dan lifecycle batch
+  - status aktif tidak disimpan di setiap row entry; status aktif ditentukan dari batch induknya
 
 ## Testing Instructions
 - Minimum check:
@@ -60,15 +97,26 @@
   - `GET /api/v1/health`
   - `GET /api/v1/logbook/me`
   - `GET /api/v1/logbook/entries`
+  - `GET /api/v1/logbook/import-batches`
+  - `GET /api/v1/logbook/import-batches/:batchId`
+  - `GET /api/v1/logbook/import-batches/:batchId/errors`
+  - `GET /api/v1/logbook/search/semantic/status`
+  - `POST /api/v1/logbook/search/semantic`
   - `POST /api/v1/logbook/import/teknik`
   - `POST /api/v1/logbook/import/app`
   - `POST /api/v1/logbook/import/tower`
+  - `POST /api/v1/logbook/import-batches/:batchId/rollback`
   - `DELETE /api/v1/logbook/purge`
 - End-to-end minimum:
   - redirect login ke auth portal
   - callback ke `/auth/callback`
   - request entries tidak `401`
   - filter tahun/bulan tetap konsisten
+  - import kategori dengan `sourcePeriod` tersimpan benar
+  - `Tambah Data Baru` membuat beberapa batch bulanan baru dan melewati periode yang sudah ada
+  - `Upload Revisi` membentuk periode internal dari input `tahun/bulan`
+  - reimport periode yang sama mengarsipkan batch aktif lama
+  - rollback mengaktifkan ulang batch archived yang dipilih
 - Verifikasi deploy:
   - bundle frontend tidak memuat `localhost` atau dev secret
   - `oauth_clients.logbook-web` harus cocok dengan env deploy logbook dan auth backend
@@ -77,5 +125,8 @@
 - Access token frontend disimpan client-side; hindari perubahan yang memperluas risiko XSS.
 - Backend wajib memvalidasi `iss`, `aud`, dan JWKS dengan benar.
 - Endpoint purge adalah operasi destruktif total; perlakukan perubahan di sana sebagai high risk.
+- Endpoint reimport dan rollback juga termasuk operasi berisiko karena mengubah batch aktif.
 - Import Excel harus tetap menjaga pembacaan tanggal serial workbook mentah.
 - Parser `app` dan `tower` memakai pola carry-forward row; perubahan heuristic harus diuji dengan data contoh nyata.
+- Parser `teknik` juga sensitif terhadap variasi format tanggal lokal seperti singkatan bulan non-Inggris.
+- Untuk migrasi awal atau backfill historis, jalur `Tambah Data Baru` sekarang menjadi mode default karena file panjang akan dipecah ke batch bulanan.

@@ -63,6 +63,10 @@ function getActiveMenuTitle(pathname: string) {
     return 'Dashboard';
   }
 
+  if (pathname === '/import-management') {
+    return 'Import Center';
+  }
+
   const parts = pathname.split('/').filter(Boolean);
   const category = parts[0] ? toTitleCase(parts[0]) : '';
   const page = parts[1] ?? '';

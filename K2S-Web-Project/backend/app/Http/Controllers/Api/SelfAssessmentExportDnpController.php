@@ -246,7 +246,9 @@ class SelfAssessmentExportDnpController extends ApiController
             'sessionId' => ['required', 'string'],
             'answerIds' => ['nullable', 'array'],
             'answerIds.*' => ['required', 'uuid'],
+            'skipDuplicateFileNames' => ['nullable', 'boolean'],
         ]);
+        $skipDuplicateFileNames = (bool) ($validated['skipDuplicateFileNames'] ?? true);
 
         $snapshot = SelfAssessmentExportDnpSnapshot::query()
             ->where('session_area_id', $validated['sessionAreaId'])
@@ -381,7 +383,30 @@ class SelfAssessmentExportDnpController extends ApiController
 
             $evidenceItems = $answerEvidence->get($answer->question_code, collect());
             $uploadResults = [];
+            $liveDnpFileNames = $this->fetchLiveDnpFileNames(
+                snapshot: $snapshot,
+                snapshotItem: $snapshotItem,
+                sessionId: (string) $validated['sessionId']
+            );
+            $existingDnpFileNames = $liveDnpFileNames !== null
+                ? $liveDnpFileNames
+                : $this->extractSnapshotFileNames($snapshotItem->files ?? []);
             foreach ($evidenceItems as $evidence) {
+                $normalizedLocalFileName = $this->normalizeFileName((string) ($evidence->name ?? ''));
+                if (
+                    $skipDuplicateFileNames &&
+                    $normalizedLocalFileName !== '' &&
+                    in_array($normalizedLocalFileName, $existingDnpFileNames, true)
+                ) {
+                    $uploadResults[] = [
+                        'evidenceId' => $evidence->id,
+                        'fileName' => $evidence->name,
+                        'status' => 'skipped',
+                        'message' => 'Nama file sudah ada di target DNP, upload dilewati.',
+                    ];
+                    continue;
+                }
+
                 $relativePath = $this->resolveEvidenceStoragePath((string) ($evidence->url ?? ''));
                 if (!$relativePath || !Storage::disk('public')->exists($relativePath)) {
                     $uploadResults[] = [
@@ -432,6 +457,9 @@ class SelfAssessmentExportDnpController extends ApiController
                         ? 'File evidence berhasil diupload ke DNP.'
                         : ((is_array($uploadPayload) ? ($uploadPayload['error'] ?? null) : null) ?? 'Gagal upload file evidence ke DNP.'),
                 ];
+                if ($uploadResponse->ok() && $normalizedLocalFileName !== '') {
+                    $existingDnpFileNames[] = $normalizedLocalFileName;
+                }
             }
 
             $results[array_key_last($results)]['uploads'] = $uploadResults;
@@ -807,6 +835,77 @@ class SelfAssessmentExportDnpController extends ApiController
             'not aplicable', 'not applicable' => 'NA',
             default => 'SA',
         };
+    }
+
+    private function extractSnapshotFileNames(mixed $files): array
+    {
+        if (!is_array($files)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($files as $file) {
+            if (!is_array($file)) {
+                continue;
+            }
+
+            foreach (['file_judul', 'file_name', 'filename', 'name', 'judul', 'title'] as $key) {
+                $normalized = $this->normalizeFileName((string) ($file[$key] ?? ''));
+                if ($normalized !== '') {
+                    $result[] = $normalized;
+                    break;
+                }
+            }
+        }
+
+        return array_values(array_unique($result));
+    }
+
+    private function fetchLiveDnpFileNames(
+        SelfAssessmentExportDnpSnapshot $snapshot,
+        SelfAssessmentExportDnpSnapshotItem $snapshotItem,
+        string $sessionId
+    ): ?array {
+        if ($sessionId === '' || $snapshot->scope === '') {
+            return null;
+        }
+
+        try {
+            $response = $this->wrapperHttp(120)->post($this->wrapperUrl().'/automation-run', [
+                'action' => 'selfassessment_fetch_files',
+                'type' => $snapshot->scope,
+                'stage' => 'selfassessment',
+                'year' => (string) $snapshot->year,
+                'session_id' => $sessionId,
+                'plan_id' => (string) ($snapshotItem->plan_id ?? ''),
+                'pq_id' => (string) ($snapshotItem->pq_id ?? ''),
+                'area_group_id' => (string) ($snapshotItem->area_group_id ?? ''),
+            ]);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if (!$response->ok()) {
+            return null;
+        }
+
+        $payload = $response->json();
+        $files = data_get($payload, 'results.selfassessment.files', []);
+        if (!is_array($files)) {
+            return null;
+        }
+
+        return $this->extractSnapshotFileNames($files);
+    }
+
+    private function normalizeFileName(string $value): string
+    {
+        $normalized = trim(mb_strtolower($value));
+        if ($normalized === '') {
+            return '';
+        }
+
+        return preg_replace('/\s+/', ' ', $normalized) ?: '';
     }
 
     private function resolveEvidenceStoragePath(string $url): ?string

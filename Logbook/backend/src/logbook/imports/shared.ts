@@ -32,6 +32,7 @@ const MONTH_ALIASES: Record<string, number> = {
   JULI: 7,
   AUG: 8,
   AGU: 8,
+  AGT: 8,
   AGUSTUS: 8,
   SEP: 9,
   SEPT: 9,

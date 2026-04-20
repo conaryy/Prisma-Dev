@@ -90,7 +90,16 @@ export const config = {
     postLogoutRedirectUri:
       process.env.AUTH_K3_POST_LOGOUT_URI || 'http://localhost:5176/',
   },
-  publicClientIds: toList(process.env.AUTH_PUBLIC_CLIENT_IDS || 'k2s-web,logbook-web,k3-web'),
+  defaultKeamananClient: {
+    clientId: process.env.AUTH_KEAMANAN_CLIENT_ID || 'keamanan-web',
+    clientSecret: process.env.AUTH_KEAMANAN_CLIENT_SECRET || 'dev-secret-keamanan',
+    redirectUri:
+      process.env.AUTH_KEAMANAN_REDIRECT_URI ||
+      'http://localhost:5177/auth/callback',
+    postLogoutRedirectUri:
+      process.env.AUTH_KEAMANAN_POST_LOGOUT_URI || 'http://localhost:5177/',
+  },
+  publicClientIds: toList(process.env.AUTH_PUBLIC_CLIENT_IDS || 'k2s-web,logbook-web,k3-web,keamanan-web'),
   allowedOrigins: toList(process.env.AUTH_ALLOWED_ORIGINS),
   sessionCookieName: process.env.AUTH_SESSION_COOKIE_NAME || 'auth_sid',
   sessionTtlSeconds: toInt(process.env.AUTH_SESSION_TTL_SECONDS, 8 * 60 * 60),

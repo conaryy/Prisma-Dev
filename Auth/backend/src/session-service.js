@@ -130,6 +130,39 @@ export function extractClientCredentials(req) {
   }
 }
 
+function normalizeRedirectUriForMatch(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+
+  try {
+    const url = new URL(raw);
+    if (url.pathname !== '/' && url.pathname.endsWith('/')) {
+      url.pathname = url.pathname.replace(/\/+$/, '');
+    }
+    if (url.pathname === '/') {
+      url.pathname = '';
+    }
+    return url.toString();
+  } catch {
+    return raw.replace(/\/+$/, '');
+  }
+}
+
+function findMatchingPostLogoutRedirect(requested, allowedUris) {
+  const normalizedRequested = normalizeRedirectUriForMatch(requested);
+  if (!normalizedRequested) {
+    return null;
+  }
+
+  return (
+    allowedUris.find(
+      (candidate) => normalizeRedirectUriForMatch(candidate) === normalizedRequested
+    ) ?? null
+  );
+}
+
 export async function resolvePostLogoutRedirect(req) {
   const requested = String(
     req.query.post_logout_redirect_uri || req.body?.post_logout_redirect_uri || ''
@@ -142,8 +175,11 @@ export async function resolvePostLogoutRedirect(req) {
   const clientId = String(req.query.client_id || req.body?.client_id || '').trim();
   if (clientId) {
     const client = await getClientById(clientId);
-    if (client && client.postLogoutRedirectUris.includes(requested)) {
-      return requested;
+    const matchedRedirect = client
+      ? findMatchingPostLogoutRedirect(requested, client.postLogoutRedirectUris)
+      : null;
+    if (matchedRedirect) {
+      return matchedRedirect;
     }
     return null;
   }
@@ -151,8 +187,11 @@ export async function resolvePostLogoutRedirect(req) {
   const allClients = await queryAll('SELECT * FROM oauth_clients');
   for (const raw of allClients) {
     const postLogoutUris = parseJson(raw.post_logout_redirect_uris_json, []);
-    if (Array.isArray(postLogoutUris) && postLogoutUris.includes(requested)) {
-      return requested;
+    const matchedRedirect = Array.isArray(postLogoutUris)
+      ? findMatchingPostLogoutRedirect(requested, postLogoutUris)
+      : null;
+    if (matchedRedirect) {
+      return matchedRedirect;
     }
   }
 

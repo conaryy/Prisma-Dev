@@ -40,6 +40,17 @@ import { type SelfAssessmentScope } from '@/types/selfAssessment';
 const selectClassName =
   'h-11 w-full rounded-xl border border-input bg-white/80 px-4 text-sm text-slate-700 shadow-sm transition-colors placeholder:text-slate-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus:border-blue-400 dark:focus:ring-blue-900/50 sm:w-60';
 
+const normalizeAssessmentStatus = (value: string | null | undefined) => {
+  const normalized = String(value ?? '').trim();
+  if (normalized === 'Not Aplicable' || normalized === 'Not Applicable') {
+    return 'Not Applicable';
+  }
+  if (normalized === 'Not Satisfactory') {
+    return 'Not Satisfactory';
+  }
+  return 'Satisfactory';
+};
+
 type ProtocolQuestion = {
   id: string;
   text: string;
@@ -385,7 +396,7 @@ export function AuditSelfAssessment({
         const nextSubmitted: Record<string, boolean> = {};
         items.forEach((item) => {
           nextAnswers[item.questionCode] = {
-            status: item.status,
+            status: normalizeAssessmentStatus(item.status),
             comment: item.comment ?? '',
             evidence: item.evidenceNote ?? '',
           };
@@ -667,7 +678,9 @@ export function AuditSelfAssessment({
     setAssessmentByQuestion((prev) => ({
       ...prev,
       [questionId]: {
-        status: nextValue.status ?? prev[questionId]?.status ?? 'Satisfactory',
+        status: normalizeAssessmentStatus(
+          nextValue.status ?? prev[questionId]?.status
+        ),
         comment: nextValue.comment ?? prev[questionId]?.comment ?? '',
         evidence: nextValue.evidence ?? prev[questionId]?.evidence ?? '',
       },
@@ -1120,7 +1133,7 @@ export function AuditSelfAssessment({
                           >
                             <option value="Satisfactory">Satisfactory</option>
                             <option value="Not Satisfactory">Not Satisfactory</option>
-                            <option value="Not Aplicable">Not Aplicable</option>
+                            <option value="Not Applicable">Not Applicable</option>
                           </select>
                         </FormField>
                         <FormField label="Comment">

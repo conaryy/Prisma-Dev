@@ -141,8 +141,10 @@ class SelfAssessmentAnswerController extends ApiController
             'items.*.status' => ['required', 'string'],
             'items.*.comment' => ['nullable', 'string'],
             'items.*.evidenceNote' => ['nullable', 'string'],
+            'overrideFinalLock' => ['nullable', 'boolean'],
         ]);
 
+        $overrideFinalLock = (bool) ($validated['overrideFinalLock'] ?? false);
         $saved = [];
         foreach ($validated['items'] as $item) {
             $answer = SelfAssessmentAnswer::query()
@@ -153,7 +155,7 @@ class SelfAssessmentAnswerController extends ApiController
                 return response()->json(['error' => 'Jawaban tidak ditemukan.'], 404);
             }
 
-            if ($answer->review && $answer->review->is_final) {
+            if (!$overrideFinalLock && $answer->review && $answer->review->is_final) {
                 return response()->json([
                     'error' => 'Jawaban sudah difinalisasi dan tidak bisa diubah.',
                 ], 403);

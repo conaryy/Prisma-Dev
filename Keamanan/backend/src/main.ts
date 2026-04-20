@@ -5,11 +5,29 @@ import type { Request, Response } from 'express';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
+function parseAllowedOrigins() {
+  return String(
+    process.env.KEAMANAN_CORS_ALLOW_ORIGINS ||
+      'http://localhost:5177,https://keamanan.ryvidia.my.id,https://auth.ryvidia.my.id'
+  )
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const allowedOrigins = parseAllowedOrigins();
 
   app.enableCors({
-    origin: true,
+    origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('CORS origin tidak diizinkan.'), false);
+    },
   });
 
   const server = app.getHttpAdapter().getInstance();

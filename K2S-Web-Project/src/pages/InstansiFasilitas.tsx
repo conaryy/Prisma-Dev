@@ -40,9 +40,12 @@ export function InstansiFasilitas() {
   const {
     instansi,
     facilities,
+    facilityGroups,
     addFacility,
     updateFacility,
     removeFacility,
+    addFacilityGroup,
+    removeFacilityGroup,
     apiError,
     clearApiError,
   } = useAppData();
@@ -52,11 +55,49 @@ export function InstansiFasilitas() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<FacilityItem, 'id'>>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [groupError, setGroupError] = useState<string | null>(null);
+  const [isSavingGroup, setIsSavingGroup] = useState(false);
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
 
   const groupOptions = useMemo(() => {
-    const unique = Array.from(new Set(facilities.map((item) => item.group)));
-    return unique.length > 0 ? unique.sort() : ['COMMUNICATION'];
-  }, [facilities]);
+    const names = new Set<string>();
+    const draftGroupName = form.group.trim();
+    if (draftGroupName) {
+      names.add(draftGroupName);
+    }
+    facilityGroups.forEach((item) => {
+      const normalizedName = item.name.trim();
+      if (normalizedName) {
+        names.add(normalizedName);
+      }
+    });
+
+    facilities.forEach((item) => {
+      const name = item.group.trim();
+      if (name) {
+        names.add(name);
+      }
+    });
+
+    return [...names].sort((left, right) => left.localeCompare(right, 'id-ID'));
+  }, [facilities, facilityGroups, form.group]);
+
+  const selectedGroupOption = useMemo(
+    () => facilityGroups.find((item) => item.name === form.group) ?? null,
+    [facilityGroups, form.group]
+  );
+  const normalizedNewGroupName = newGroupName.trim();
+  const isDuplicateGroupName = useMemo(() => {
+    if (!normalizedNewGroupName) {
+      return false;
+    }
+
+    return groupOptions.some(
+      (option) => option.toLowerCase() === normalizedNewGroupName.toLowerCase()
+    );
+  }, [groupOptions, normalizedNewGroupName]);
 
   const filteredFacilities = useMemo(() => {
     const nameQuery = appliedFilters.name.trim().toLowerCase();
@@ -120,6 +161,67 @@ export function InstansiFasilitas() {
     if (!form.name.trim()) nextErrors.name = 'Nama fasilitas wajib diisi.';
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
+  };
+
+  const openGroupModal = () => {
+    setGroupError(null);
+    setNewGroupName('');
+    setIsGroupModalOpen(true);
+  };
+
+  const handleGroupSelectChange = (value: string) => {
+    if (value === '__add_group__') {
+      openGroupModal();
+      return;
+    }
+
+    setForm((prev) => ({ ...prev, group: value }));
+  };
+
+  const handleSaveGroup = async () => {
+    const normalizedName = normalizedNewGroupName;
+    if (!normalizedName) {
+      setGroupError('Nama kelompok fasilitas wajib diisi.');
+      return;
+    }
+    if (isDuplicateGroupName) {
+      setGroupError('Kelompok fasilitas sudah ada.');
+      return;
+    }
+
+    setIsSavingGroup(true);
+    setGroupError(null);
+    const result = await addFacilityGroup(normalizedName);
+    setIsSavingGroup(false);
+
+    if (!result) {
+      setGroupError('Gagal menambah kelompok fasilitas.');
+      return;
+    }
+
+    setForm((prev) => ({ ...prev, group: result.name }));
+    setIsGroupModalOpen(false);
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!selectedGroupOption) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Hapus kelompok fasilitas "${selectedGroupOption.name}"? Semua fasilitas di kelompok ini juga akan ikut terhapus.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsDeletingGroup(true);
+    const success = await removeFacilityGroup(selectedGroupOption.id);
+    setIsDeletingGroup(false);
+
+    if (success) {
+      setForm((prev) => ({ ...prev, group: '' }));
+    }
   };
 
   const handleSave = () => {
@@ -326,6 +428,48 @@ export function InstansiFasilitas() {
       </div>
 
       <Modal
+        open={isGroupModalOpen}
+        onOpenChange={setIsGroupModalOpen}
+        title="Tambah Kelompok Fasilitas"
+      >
+        <div className="grid gap-4">
+          <FormField label="Nama Kelompok Fasilitas" required error={groupError ?? undefined}>
+            <Input
+              value={newGroupName}
+              onChange={(event) => {
+                setNewGroupName(event.target.value);
+                if (groupError) {
+                  setGroupError(null);
+                }
+              }}
+              placeholder="Contoh: NAVIGATION"
+            />
+          </FormField>
+          <div className="text-xs text-slate-500">
+            Kelompok yang ditambahkan akan langsung tersedia di pilihan fasilitas.
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsGroupModalOpen(false)}
+            disabled={isSavingGroup}
+          >
+            Batal
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSaveGroup}
+            disabled={isSavingGroup || !normalizedNewGroupName || isDuplicateGroupName}
+          >
+            {isSavingGroup ? 'Menyimpan...' : 'Simpan'}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
         title={editingId ? 'Edit Fasilitas' : 'Tambah Fasilitas'}
@@ -335,9 +479,7 @@ export function InstansiFasilitas() {
             <select
               className={selectBaseClass}
               value={form.group}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, group: event.target.value }))
-              }
+              onChange={(event) => handleGroupSelectChange(event.target.value)}
             >
               <option value="">Pilih Kelompok Fasilitas</option>
               {groupOptions.map((option) => (
@@ -345,7 +487,23 @@ export function InstansiFasilitas() {
                   {option}
                 </option>
               ))}
+              <option value="__add_group__">Tambah Kelompok Fasilitas</option>
             </select>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={openGroupModal}>
+                Tambah Kelompok
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                onClick={handleDeleteGroup}
+                disabled={!selectedGroupOption || isDeletingGroup}
+              >
+                {isDeletingGroup ? 'Menghapus...' : 'Hapus Kelompok'}
+              </Button>
+            </div>
           </FormField>
 
           <FormField label="Nama Fasilitas" required error={errors.name}>

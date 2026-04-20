@@ -685,6 +685,14 @@ table {
   padding: 20px 18px;
 }
 
+.hero-copy-block {
+  min-width: 0;
+}
+
+.hero-card--wide-copy .hero-copy-block {
+  flex: 1 1 auto;
+}
+
 .hero-title {
   font-size: clamp(1.64rem, 2.1vw, 2.3rem);
   max-width: 740px;
@@ -701,6 +709,7 @@ table {
   justify-content: flex-end;
   gap: 8px;
   min-width: 240px;
+  flex: 0 0 auto;
 }
 
 .action-pill {
@@ -789,6 +798,14 @@ table {
 
 .section-grid--single {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.section-grid--facilities {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.section-grid--facilities > .panel-span-full {
+  grid-column: 1 / -1;
 }
 
 .panel-chart,

@@ -56,6 +56,7 @@ class FacilityController extends ApiController
         }
 
         $payload['instansi_id'] = $instansiId;
+        FacilityGroupController::ensureGroupExists($instansiId, $validated['group'] ?? null);
         $item = Facility::create($payload);
 
         return $this->respondData($item, 201);
@@ -101,6 +102,7 @@ class FacilityController extends ApiController
             'group' => 'facility_group',
             'condition' => 'condition_status',
         ]);
+        FacilityGroupController::ensureGroupExists($instansiId, $validated['group'] ?? null);
         $facility->fill($payload)->save();
 
         return $this->respondData($facility);
@@ -120,4 +122,5 @@ class FacilityController extends ApiController
         $facility->delete();
         return $this->respondData(['success' => true]);
     }
+
 }

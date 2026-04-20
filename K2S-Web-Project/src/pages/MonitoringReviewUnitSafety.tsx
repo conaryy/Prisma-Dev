@@ -1398,7 +1398,7 @@ export function MonitoringReviewUnitSafety() {
                         Anggota
                       </TableHead>
                       <TableHead className="border-r border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:border-slate-700 dark:text-slate-300">
-                        Audity
+                        Auditee
                       </TableHead>
                     </TableRow>
                   </TableHeader>

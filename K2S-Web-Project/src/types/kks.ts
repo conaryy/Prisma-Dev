@@ -29,6 +29,11 @@ export interface InstansiProfile {
 
 export type FacilityCondition = 'Normal' | 'Single' | 'Unserviceable';
 
+export interface FacilityGroupItem {
+  id: string;
+  name: string;
+}
+
 export interface FacilityItem {
   id: string;
   group: string;

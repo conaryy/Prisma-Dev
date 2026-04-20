@@ -3,10 +3,26 @@ import {
   ChevronLeft,
   ClipboardCheck,
   FileText,
-  UploadCloud,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { FormField, FormSection } from '@/components/shared/Form';
+import {
+  SelfAssessmentAssessmentEditorPanel,
+} from '@/components/self-assessment/SelfAssessmentAssessmentEditorPanel';
+import {
+  SelfAssessmentDnpAnswerPairingPanel,
+} from '@/components/self-assessment/SelfAssessmentDnpAnswerPairingPanel';
+import {
+  SelfAssessmentDnpLoginPanel,
+} from '@/components/self-assessment/SelfAssessmentDnpLoginPanel';
+import {
+  SelfAssessmentDnpSnapshotPanel,
+} from '@/components/self-assessment/SelfAssessmentDnpSnapshotPanel';
+import {
+  SelfAssessmentResultSubmissionPanel,
+} from '@/components/self-assessment/SelfAssessmentResultSubmissionPanel';
+import {
+  SelfAssessmentReviewDetailPanel,
+} from '@/components/self-assessment/SelfAssessmentReviewDetailPanel';
 import {
   SelfAssessmentSubmissionTable,
   type SelfAssessmentSubmissionTableRow,
@@ -16,33 +32,36 @@ import {
   SelfAssessmentWorkspace,
 } from '@/components/self-assessment/SelfAssessmentWorkspace';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import { useAsyncJobPolling } from '@/hooks/useAsyncJobPolling';
+import {
+  restoreSelectedDnpMatches,
+  useDnpMatchSelection,
+} from '@/hooks/useDnpMatchSelection';
+import { useDnpSessionAreaFlow } from '@/hooks/useDnpSessionAreaFlow';
 import { resolveApiUrl } from '@/lib/api';
 import {
   SELF_ASSESSMENT_MONTH_OPTIONS as MONTH_OPTIONS,
   SELF_ASSESSMENT_YEAR_OPTIONS as YEAR_OPTIONS,
 } from '@/lib/selfAssessmentFilters';
 import {
-  fetchAdminSelfAssessmentExportDnpAreas,
   deleteAdminSelfAssessmentEvidence,
   deleteSelfAssessmentResultFile,
   fetchAdminSelfAssessmentExportDnpImportJob,
+  fetchAdminSelfAssessmentImportDnpInjectJob,
   fetchAdminSelfAssessmentSubmissionDetail,
   fetchAdminSelfAssessmentSubmissions,
   exportAdminSelfAssessmentToDnp,
   finalizeSelfAssessmentResult,
   importAdminSelfAssessmentExportDnp,
-  initAdminSelfAssessmentExportDnpSession,
+  injectAdminSelfAssessmentFromDnp,
   saveAdminSelfAssessmentExportDnpMatches,
   submitAdminSelfAssessmentAnswers,
   submitAdminSelfAssessmentReviews,
   uploadAdminSelfAssessmentEvidence,
   type SelfAssessmentExportDnpCompareSnapshot,
-  type SelfAssessmentExportDnpAreaTarget,
   type SelfAssessmentExportDnpImportJobResponse,
+  type SelfAssessmentImportDnpInjectJobStatus,
 } from '@/lib/selfAssessment';
 import type { SelfAssessmentScope } from '@/types/selfAssessment';
 
@@ -55,102 +74,19 @@ const SCOPE_OPTIONS = [
 ];
 const QUESTION_ITEMS_PER_PAGE = 5;
 const DEFAULT_DNP_MATCH_THRESHOLD = 70;
-const TOP_DNP_MATCH_CANDIDATES = 3;
 
-type QuestionMatchCandidate = {
-  id: string;
-  questionCode: string;
-  questionText: string;
-  reference?: string | null;
-  similarity: number;
-};
-
-type SimilarityPairCandidate = QuestionMatchCandidate & {
-  answerId: string;
-  localQuestionCode: string;
-  localQuestionText: string;
-};
-
-type SelectedDnpMatch = QuestionMatchCandidate & {
-  answerId: string;
-  localQuestionCode: string;
-  localQuestionText: string;
-};
-
-const normalizeQuestionForMatch = (value: string | null | undefined) =>
-  String(value ?? '')
-    .toLowerCase()
-    .replace(/\b[a-z]+\.\d+\b/g, ' ')
-    .replace(/\b[a-z]+\b(?=\s*-\s*)/g, ' ')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-const buildWordBigrams = (value: string) => {
-  const words = value.split(' ').filter(Boolean);
-  if (words.length <= 1) {
-    return words;
+const normalizeAssessmentStatus = (value: string | null | undefined) => {
+  const normalized = String(value ?? '').trim();
+  if (normalized === 'Not Aplicable') {
+    return 'Not Applicable';
   }
-
-  const pairs: string[] = [];
-  for (let index = 0; index < words.length - 1; index += 1) {
-    pairs.push(`${words[index]} ${words[index + 1]}`);
+  if (normalized === 'Not Applicable') {
+    return 'Not Applicable';
   }
-  return pairs;
-};
-
-const calculateQuestionSimilarity = (source: string, target: string) => {
-  const normalizedSource = normalizeQuestionForMatch(source);
-  const normalizedTarget = normalizeQuestionForMatch(target);
-
-  if (!normalizedSource || !normalizedTarget) {
-    return 0;
+  if (normalized === 'Not Satisfactory') {
+    return 'Not Satisfactory';
   }
-
-  if (normalizedSource === normalizedTarget) {
-    return 100;
-  }
-
-  const sourceTokens = normalizedSource.split(' ').filter(Boolean);
-  const targetTokens = normalizedTarget.split(' ').filter(Boolean);
-  const sourceTokenSet = new Set(sourceTokens);
-  const targetTokenSet = new Set(targetTokens);
-  const commonTokenCount = [...sourceTokenSet].filter((token) =>
-    targetTokenSet.has(token)
-  ).length;
-  const tokenScore =
-    (2 * commonTokenCount) / (sourceTokenSet.size + targetTokenSet.size || 1);
-
-  const sourceBigrams = buildWordBigrams(normalizedSource);
-  const targetBigrams = buildWordBigrams(normalizedTarget);
-  const sourceBigramSet = new Set(sourceBigrams);
-  const targetBigramSet = new Set(targetBigrams);
-  const commonBigramCount = [...sourceBigramSet].filter((token) =>
-    targetBigramSet.has(token)
-  ).length;
-  const bigramScore =
-    (2 * commonBigramCount) /
-    (sourceBigramSet.size + targetBigramSet.size || 1);
-
-  const coverageScore = sourceTokens.length
-    ? commonTokenCount / sourceTokens.length
-    : 0;
-
-  const weightedScore = tokenScore * 0.5 + bigramScore * 0.35 + coverageScore * 0.15;
-  return Math.max(0, Math.min(100, Math.round(weightedScore * 100)));
-};
-
-const getMatchTone = (similarity: number, threshold: number) => {
-  if (similarity >= Math.max(threshold, 85)) {
-    return 'border border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200';
-  }
-  if (similarity >= threshold) {
-    return 'border border-blue-200 bg-blue-100 text-blue-800 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-200';
-  }
-  if (similarity >= Math.max(50, threshold - 10)) {
-    return 'border border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200';
-  }
-  return 'border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-500/40 dark:bg-slate-500/15 dark:text-slate-200';
+  return 'Satisfactory';
 };
 
 const parseScheduleReleaseTime = (schedule: string | null) => {
@@ -192,7 +128,7 @@ type SelfAssessmentReviewsProps = {
   description?: string;
   reviewLabel?: string;
   showResultSubmissionSection?: boolean;
-  detailPanelMode?: 'review' | 'assessment';
+  detailPanelMode?: 'review' | 'assessment' | 'importDnp';
 };
 
 type SubmissionSummary = {
@@ -235,6 +171,13 @@ type SubmissionDetail = {
   dnpImportJob?: {
     jobId: string;
     status: 'queued' | 'running' | 'succeeded' | 'failed';
+    message?: string | null;
+    createdAt?: string | null;
+    startedAt?: string | null;
+  } | null;
+  dnpInjectJob?: {
+    jobId: string;
+    status: SelfAssessmentImportDnpInjectJobStatus;
     message?: string | null;
     createdAt?: string | null;
     startedAt?: string | null;
@@ -291,6 +234,7 @@ export function SelfAssessmentReviews({
   );
   const [month, setMonth] = useState(MONTH_OPTIONS[0].value);
   const [year, setYear] = useState(YEAR_OPTIONS[0]);
+  const [selectedUserId, setSelectedUserId] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [submissions, setSubmissions] = useState<SubmissionSummary[]>([]);
   const [selectedSubmission, setSelectedSubmission] =
@@ -338,14 +282,27 @@ export function SelfAssessmentReviews({
   const [isSaving, setIsSaving] = useState(false);
   const [autoSelected, setAutoSelected] = useState(false);
   const [dnpQuestionPage, setDnpQuestionPage] = useState(1);
-  const [dnpSessionId, setDnpSessionId] = useState('');
-  const [dnpCaptchaUrl, setDnpCaptchaUrl] = useState('');
-  const [dnpUsername, setDnpUsername] = useState('');
-  const [dnpPassword, setDnpPassword] = useState('');
-  const [dnpCaptcha, setDnpCaptcha] = useState('');
-  const [dnpYear, setDnpYear] = useState('');
-  const [dnpAreas, setDnpAreas] = useState<SelfAssessmentExportDnpAreaTarget[]>([]);
-  const [selectedDnpAreaKey, setSelectedDnpAreaKey] = useState('');
+  const {
+    sessionId: dnpSessionId,
+    setSessionId: setDnpSessionId,
+    captchaUrl: dnpCaptchaUrl,
+    setCaptchaUrl: setDnpCaptchaUrl,
+    username: dnpUsername,
+    setUsername: setDnpUsername,
+    password: dnpPassword,
+    setPassword: setDnpPassword,
+    captcha: dnpCaptcha,
+    setCaptcha: setDnpCaptcha,
+    year: dnpYear,
+    setYear: setDnpYear,
+    areas: dnpAreas,
+    setAreas: setDnpAreas,
+    selectedAreaKey: selectedDnpAreaKey,
+    setSelectedAreaKey: setSelectedDnpAreaKey,
+    selectedArea: selectedDnpArea,
+    initializeSession: initializeDnpSession,
+    loadAreas: loadDnpAreas,
+  } = useDnpSessionAreaFlow({ initialYear: '' });
   const [dnpImportError, setDnpImportError] = useState<string | null>(null);
   const [dnpImportMessage, setDnpImportMessage] = useState<string | null>(null);
   const [dnpImportDetail, setDnpImportDetail] = useState<string | null>(null);
@@ -354,13 +311,10 @@ export function SelfAssessmentReviews({
   const [dnpMatchThreshold, setDnpMatchThreshold] = useState(
     DEFAULT_DNP_MATCH_THRESHOLD
   );
-  const [selectedDnpMatches, setSelectedDnpMatches] = useState<
-    Record<string, SelectedDnpMatch>
-  >({});
-  const [collapsedDnpMatches, setCollapsedDnpMatches] = useState<
-    Record<string, boolean>
-  >({});
   const [isExportingToDnp, setIsExportingToDnp] = useState(false);
+  const [isInjectingFromDnp, setIsInjectingFromDnp] = useState(false);
+  const [includeDnpEvidenceOnInject, setIncludeDnpEvidenceOnInject] = useState(false);
+  const [skipDuplicateDnpFileNames, setSkipDuplicateDnpFileNames] = useState(true);
   const [dnpExportResult, setDnpExportResult] = useState<{
     summary: {
       total: number;
@@ -382,20 +336,46 @@ export function SelfAssessmentReviews({
       }>;
     }>;
   } | null>(null);
-  const dnpImportPollRef = useRef<number | null>(null);
   const selectedMonth =
     MONTH_OPTIONS.find((option) => option.value === month) ?? MONTH_OPTIONS[0];
   const badgeLabel = `${selectedMonth.shortLabel} ${year}`;
+  const userFilterOptions = useMemo(() => {
+    const uniqueUsers = new Map<string, { id: string; name: string }>();
+
+    submissions.forEach((item) => {
+      if (!item.user?.id) return;
+      uniqueUsers.set(item.user.id, {
+        id: item.user.id,
+        name: item.user.name?.trim() || item.user.email?.trim() || item.user.id,
+      });
+    });
+
+    return [
+      { value: 'all', label: 'Semua User' },
+      ...[...uniqueUsers.values()]
+        .sort((a, b) => a.name.localeCompare(b.name, 'id-ID'))
+        .map((user) => ({
+          value: user.id,
+          label: user.name,
+        })),
+    ];
+  }, [submissions]);
 
   const filteredSubmissions = useMemo(() => {
     const term = searchText.trim().toLowerCase();
-    const source = term
-      ? submissions.filter((item) =>
-          `${item.area} ${item.leader} ${item.user?.name ?? ''}`
-            .toLowerCase()
-            .includes(term)
-        )
-      : submissions;
+    const source = submissions.filter((item) => {
+      if (selectedUserId !== 'all' && item.user?.id !== selectedUserId) {
+        return false;
+      }
+
+      if (!term) {
+        return true;
+      }
+
+      return `${item.area} ${item.leader} ${item.user?.name ?? ''}`
+        .toLowerCase()
+        .includes(term);
+    });
 
     return [...source].sort((a, b) => {
       const scheduleDiff =
@@ -405,19 +385,19 @@ export function SelfAssessmentReviews({
       const submittedB = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
       return submittedB - submittedA;
     });
-  }, [submissions, searchText]);
+  }, [selectedUserId, submissions, searchText]);
   const submissionRows: SelfAssessmentSubmissionTableRow[] = filteredSubmissions.map(
     (item, index) => ({
       id: `${item.sessionAreaId}-${item.user?.id ?? index}`,
       scope: item.scope,
-      areas: [{ id: item.sessionAreaId, label: item.area }],
+      areas: [{ id: item.sessionAreaId, label: item.area, onClick: () => handleSelect(item) }],
       userName: item.user?.name ?? '-',
       leader: item.leader,
       members: item.dnp,
       auditees: item.kobo,
       schedule: formatScheduleDisplay(item.schedule, '-'),
       action: {
-        label: 'Review',
+        label: reviewLabel,
         onClick: () => handleSelect(item),
       },
     })
@@ -429,6 +409,7 @@ export function SelfAssessmentReviews({
       scope: scope === 'all' ? undefined : (scope as SelfAssessmentScope),
       month: month === 'ALL' ? undefined : month,
       year,
+      mode: detailPanelMode === 'importDnp' ? 'importDnp' : 'default',
     })
       .then((items) => {
         setSubmissions(items);
@@ -442,12 +423,104 @@ export function SelfAssessmentReviews({
       .finally(() => setIsLoading(false));
   };
 
-  const stopDnpImportPolling = () => {
-    if (dnpImportPollRef.current !== null) {
-      window.clearTimeout(dnpImportPollRef.current);
-      dnpImportPollRef.current = null;
-    }
-  };
+  const { startPolling: startDnpImportPolling, stopPolling: stopDnpImportPolling } =
+    useAsyncJobPolling<SelfAssessmentExportDnpImportJobResponse>({
+      poll: fetchAdminSelfAssessmentExportDnpImportJob,
+      isPending: (response) => {
+        if (response.status === 'queued' || response.status === 'running') {
+          setDnpImportMessage(
+            response.message || 'Pengambilan data export DNP masih berjalan.'
+          );
+          return true;
+        }
+        return false;
+      },
+      onSuccess: (response) => {
+        setIsImportingDnp(false);
+
+        const snapshot = response.summary?.snapshot ?? null;
+        if (snapshot) {
+          setDetail((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  dnpCompare: snapshot,
+                }
+              : prev
+          );
+          setDnpQuestionPage(1);
+          setIsDnpLoginCollapsed(true);
+        }
+        setDnpImportMessage(
+          response.message || 'Pengambilan data export DNP selesai.'
+        );
+        toast({
+          title: 'Data DNP berhasil diambil',
+          description: 'Snapshot pembanding DNP sudah tersimpan.',
+        });
+      },
+      onFailure: (response) => {
+        setIsImportingDnp(false);
+        setIsDnpLoginCollapsed(false);
+        setDnpImportError(
+          response.error || response.message || 'Gagal mengambil data export DNP.'
+        );
+        const detailParts: string[] = [];
+        if (response.detail) {
+          detailParts.push(
+            typeof response.detail === 'string'
+              ? response.detail
+              : JSON.stringify(response.detail, null, 2)
+          );
+        }
+        if (response.debugLog && response.debugLog.length > 0) {
+          detailParts.push(`Debug log:\n${response.debugLog.join('\n')}`);
+        }
+        setDnpImportDetail(detailParts.length > 0 ? detailParts.join('\n\n') : null);
+      },
+      onError: (error) => {
+        setIsImportingDnp(false);
+        setDnpImportError(error.message || 'Gagal mengambil data compare DNP.');
+      },
+    });
+
+  const { startPolling: startDnpInjectPolling, stopPolling: stopDnpInjectPolling } =
+    useAsyncJobPolling<Awaited<ReturnType<typeof fetchAdminSelfAssessmentImportDnpInjectJob>>>({
+      poll: fetchAdminSelfAssessmentImportDnpInjectJob,
+      isPending: (response) =>
+        response.status === 'queued' || response.status === 'running',
+      onSuccess: (response) => {
+        setIsInjectingFromDnp(false);
+        toast({
+          title: 'Import jawaban berhasil',
+          description:
+            response.summary?.message ||
+            response.message ||
+            'Inject jawaban DNP selesai diproses.',
+        });
+
+        if (selectedSubmission) {
+          loadDetail(selectedSubmission, { preferredAnswerId: activeAnswer?.id });
+        }
+      },
+      onFailure: (response) => {
+        setIsInjectingFromDnp(false);
+        toast({
+          title: 'Gagal import jawaban DNP',
+          description:
+            response.error ||
+            response.message ||
+            'Terjadi kesalahan saat inject jawaban DNP.',
+        });
+      },
+      onError: (error) => {
+        setIsInjectingFromDnp(false);
+        toast({
+          title: 'Gagal import jawaban DNP',
+          description: error.message || 'Terjadi kesalahan saat inject jawaban DNP.',
+        });
+      },
+    });
 
   useEffect(() => {
     loadSubmissions();
@@ -485,7 +558,10 @@ export function SelfAssessmentReviews({
     }
   }, [autoSelected, submissions, searchParams]);
 
-  const loadDetail = (submission: SubmissionSummary) => {
+  const loadDetail = (
+    submission: SubmissionSummary,
+    options?: { preferredAnswerId?: string | null }
+  ) => {
     if (!submission.user) {
       return;
     }
@@ -493,11 +569,26 @@ export function SelfAssessmentReviews({
     fetchAdminSelfAssessmentSubmissionDetail({
       sessionAreaId: submission.sessionAreaId,
       userId: submission.user.id,
+      mode: detailPanelMode === 'importDnp' ? 'importDnp' : 'default',
     })
       .then((data) => {
+        const preferredAnswerId = options?.preferredAnswerId ?? null;
+        const preferredAnswerIndex =
+          preferredAnswerId !== null
+            ? data.answers.findIndex((answer) => answer.id === preferredAnswerId)
+            : -1;
+        const resolvedActiveAnswer =
+          preferredAnswerIndex >= 0
+            ? data.answers[preferredAnswerIndex]
+            : data.answers[0] ?? null;
+
         setDetail(data);
-        setActiveAnswerId(data.answers[0]?.id ?? null);
-        setQuestionPage(1);
+        setActiveAnswerId(resolvedActiveAnswer?.id ?? null);
+        setQuestionPage(
+          preferredAnswerIndex >= 0
+            ? Math.floor(preferredAnswerIndex / QUESTION_ITEMS_PER_PAGE) + 1
+            : 1
+        );
         setFinalizeStatus(
           data.result?.status === 'final' ? 'final' : 'interim'
         );
@@ -533,36 +624,23 @@ export function SelfAssessmentReviews({
         setDnpYear(
           String(data.dnpSession?.year ?? data.dnpCompare?.year ?? derivedDnpYear)
         );
-        const restoredMatches = Object.fromEntries(
-          (data.dnpCompare?.selectedMatches ?? [])
-            .filter((item) => item.answerId && item.dnpSnapshotItemId)
-            .map((item) => [
-              item.answerId,
-              {
-                id: item.dnpSnapshotItemId,
-                questionCode: item.dnpQuestionCode ?? '-',
-                questionText: item.dnpQuestionText ?? '',
-                reference: item.dnpReference ?? '',
-                similarity: item.similarity ?? 0,
-                answerId: item.answerId,
-                localQuestionCode: item.localQuestionCode ?? '',
-                localQuestionText: item.localQuestionText ?? '',
-              },
-            ])
-        );
-        setSelectedDnpMatches(restoredMatches);
-        setCollapsedDnpMatches(
-          Object.fromEntries(Object.keys(restoredMatches).map((key) => [key, true]))
-        );
+        syncSelectedMatches(restoreSelectedDnpMatches(data.dnpCompare));
         if (data.dnpImportJob?.jobId && ['queued', 'running'].includes(data.dnpImportJob.status)) {
           setIsImportingDnp(true);
           setDnpImportMessage(
             data.dnpImportJob.message || 'Pengambilan data export DNP masih berjalan.'
           );
           stopDnpImportPolling();
-          void pollDnpImportJob(data.dnpImportJob.jobId);
+          void startDnpImportPolling(data.dnpImportJob.jobId);
         } else {
           setIsImportingDnp(false);
+        }
+        if (data.dnpInjectJob?.jobId && ['queued', 'running'].includes(data.dnpInjectJob.status)) {
+          setIsInjectingFromDnp(true);
+          stopDnpInjectPolling();
+          void startDnpInjectPolling(data.dnpInjectJob.jobId);
+        } else {
+          setIsInjectingFromDnp(false);
         }
         if (finalizeFileInputRef.current) {
           finalizeFileInputRef.current.value = '';
@@ -604,7 +682,7 @@ export function SelfAssessmentReviews({
         > = {};
         data.answers.forEach((answer) => {
           nextAssessmentInputs[answer.id] = {
-            status: answer.status ?? 'Satisfactory',
+            status: normalizeAssessmentStatus(answer.status),
             comment: answer.comment ?? '',
             evidenceNote: answer.evidenceNote ?? '',
           };
@@ -630,71 +708,74 @@ export function SelfAssessmentReviews({
     if (!selectedSubmission) {
       return;
     }
-    loadDetail(selectedSubmission);
+    loadDetail(selectedSubmission, { preferredAnswerId: activeAnswerId });
   };
 
   const activeAnswer = detail?.answers.find((answer) => answer.id === activeAnswerId);
   const activeDnpCompare = detail?.dnpCompare ?? null;
-  const dnpMatchesByAnswerId = useMemo(() => {
-    if (!detail?.answers.length || !activeDnpCompare?.items.length) {
-      return {} as Record<string, QuestionMatchCandidate[]>;
-    }
+  const isAssessmentMode = detailPanelMode === 'assessment';
+  const isImportDnpMode = detailPanelMode === 'importDnp';
+  const {
+    selectedDnpMatches,
+    collapsedDnpMatches,
+    dnpMatchesByAnswerId,
+    matchedAnswerCount,
+    totalSelectedEvidenceCount,
+    syncSelectedMatches,
+    autoPairDnpMatches,
+    chooseDnpMatch,
+    toggleDnpMatchCollapse,
+    clearDnpMatch,
+    clearAllDnpMatches,
+  } = useDnpMatchSelection({
+    answers: detail?.answers ?? [],
+    compareSnapshot: activeDnpCompare,
+    threshold: dnpMatchThreshold,
+    isImportMode: isImportDnpMode,
+    persistMatches: async (nextMatches, options) => {
+      if (!selectedSubmission?.user || !detail) {
+        return;
+      }
 
-    return detail.answers.reduce<Record<string, QuestionMatchCandidate[]>>(
-      (accumulator, answer) => {
-        const matches = activeDnpCompare.items
-          .map((item) => ({
-            id: item.id,
-            questionCode: item.questionCode ?? '-',
-            questionText: item.questionText ?? '',
-            reference: item.reference ?? '',
-            similarity: calculateQuestionSimilarity(
-              answer.questionText,
-              item.questionText ?? ''
-            ),
-          }))
-          .filter((item) => item.similarity > 0)
-          .sort((left, right) => right.similarity - left.similarity)
-          .slice(0, TOP_DNP_MATCH_CANDIDATES);
+      const response = await saveAdminSelfAssessmentExportDnpMatches({
+        sessionAreaId: selectedSubmission.sessionAreaId,
+        userId: selectedSubmission.user.id,
+        matches: Object.values(nextMatches).map((match) => ({
+          answerId: match.answerId,
+          localQuestionCode: match.localQuestionCode,
+          localQuestionText: match.localQuestionText,
+          dnpSnapshotItemId: match.id,
+          dnpQuestionCode: match.questionCode,
+          dnpQuestionText: match.questionText,
+          dnpReference: match.reference ?? '',
+          similarity: match.similarity,
+        })),
+      });
 
-        accumulator[answer.id] = matches;
-        return accumulator;
-      },
-      {}
-    );
-  }, [detail?.answers, activeDnpCompare?.items]);
-  const autoPairCandidates = useMemo(() => {
-    if (!detail?.answers.length || !activeDnpCompare?.items.length) {
-      return [] as SimilarityPairCandidate[];
-    }
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              dnpCompare: prev.dnpCompare
+                ? {
+                    ...prev.dnpCompare,
+                    selectedMatches: response.selectedMatches,
+                  }
+                : prev.dnpCompare,
+            }
+          : prev
+      );
 
-    return detail.answers
-      .flatMap((answer) =>
-        activeDnpCompare.items.map((item) => ({
-          id: item.id,
-          questionCode: item.questionCode ?? '-',
-          questionText: item.questionText ?? '',
-          reference: item.reference ?? '',
-          similarity: calculateQuestionSimilarity(
-            answer.questionText,
-            item.questionText ?? ''
-          ),
-          answerId: answer.id,
-          localQuestionCode: answer.questionCode,
-          localQuestionText: answer.questionText,
-        }))
-      )
-      .filter((item) => item.similarity >= dnpMatchThreshold)
-      .sort((left, right) => right.similarity - left.similarity);
-  }, [detail?.answers, activeDnpCompare?.items, dnpMatchThreshold]);
-  const matchedAnswerCount = useMemo(
-    () =>
-      detail?.answers.filter(
-        (answer) =>
-          (dnpMatchesByAnswerId[answer.id]?.[0]?.similarity ?? 0) >= dnpMatchThreshold
-      ).length ?? 0,
-    [detail?.answers, dnpMatchesByAnswerId, dnpMatchThreshold]
-  );
+      if (!options?.silent) {
+        toast({
+          title: isImportDnpMode ? 'Mapping import tersimpan' : 'Mapping export tersimpan',
+          description: isImportDnpMode
+            ? 'Pilihan sumber pertanyaan DNP berhasil disimpan.'
+            : 'Pilihan target pertanyaan DNP berhasil disimpan.',
+        });
+      }
+    },
+  });
   const activeAnswerMatches = activeAnswer
     ? dnpMatchesByAnswerId[activeAnswer.id] ?? []
     : [];
@@ -706,26 +787,16 @@ export function SelfAssessmentReviews({
     ? collapsedDnpMatches[activeAnswer.id] === true
     : false;
   const activeAnswerEvidenceCount = activeAnswer?.evidence.length ?? 0;
-  const totalSelectedEvidenceCount = useMemo(() => {
-    if (!detail?.answers.length) {
-      return 0;
-    }
-
-    return detail.answers.reduce((total, answer) => {
-      if (!selectedDnpMatches[answer.id]) {
-        return total;
-      }
-      return total + answer.evidence.length;
-    }, 0);
-  }, [detail?.answers, selectedDnpMatches]);
   const activeAssessmentInput = activeAnswer
     ? assessmentInputs[activeAnswer.id] ?? {
-        status: activeAnswer.status ?? 'Satisfactory',
+        status: normalizeAssessmentStatus(activeAnswer.status),
         comment: activeAnswer.comment ?? '',
         evidenceNote: activeAnswer.evidenceNote ?? '',
       }
     : null;
   const isAssessmentLocked = activeAnswer?.review?.isFinal ?? false;
+  const canOverrideAssessmentLock = detailPanelMode === 'assessment';
+  const isAssessmentInputDisabled = isAssessmentLocked && !canOverrideAssessmentLock;
   const derivedDnpYear = useMemo(() => {
     const schedule = detail?.schedule ?? selectedSubmission?.schedule ?? null;
     if (!schedule) {
@@ -776,228 +847,11 @@ export function SelfAssessmentReviews({
     setAssessmentInputs((prev) => ({
       ...prev,
       [answerId]: {
-        status: value.status ?? prev[answerId]?.status ?? 'Satisfactory',
+        status: normalizeAssessmentStatus(value.status ?? prev[answerId]?.status),
         comment: value.comment ?? prev[answerId]?.comment ?? '',
         evidenceNote: value.evidenceNote ?? prev[answerId]?.evidenceNote ?? '',
       },
     }));
-  };
-
-  const persistDnpMatches = async (
-    nextMatches: Record<string, SelectedDnpMatch>,
-    options?: { silent?: boolean }
-  ) => {
-    if (!selectedSubmission?.user || !detail) {
-      return;
-    }
-
-    const response = await saveAdminSelfAssessmentExportDnpMatches({
-      sessionAreaId: selectedSubmission.sessionAreaId,
-      userId: selectedSubmission.user.id,
-      matches: Object.values(nextMatches).map((match) => ({
-        answerId: match.answerId,
-        localQuestionCode: match.localQuestionCode,
-        localQuestionText: match.localQuestionText,
-        dnpSnapshotItemId: match.id,
-        dnpQuestionCode: match.questionCode,
-        dnpQuestionText: match.questionText,
-        dnpReference: match.reference ?? '',
-        similarity: match.similarity,
-      })),
-    });
-
-    setDetail((prev) =>
-      prev
-        ? {
-            ...prev,
-            dnpCompare: prev.dnpCompare
-              ? {
-                  ...prev.dnpCompare,
-                  selectedMatches: response.selectedMatches,
-                }
-              : prev.dnpCompare,
-          }
-        : prev
-    );
-
-    if (!options?.silent) {
-      toast({
-        title: 'Mapping export tersimpan',
-        description: 'Pilihan target pertanyaan DNP berhasil disimpan.',
-      });
-    }
-  };
-
-  const handleAutoPairDnpMatches = async () => {
-    if (!detail?.answers.length || !activeDnpCompare?.items.length) {
-      return;
-    }
-
-    const previousMatches = selectedDnpMatches;
-    const previousCollapsedMatches = collapsedDnpMatches;
-    const nextMatches: Record<string, SelectedDnpMatch> = { ...previousMatches };
-    const usedAnswerIds = new Set<string>(Object.keys(previousMatches));
-    const usedDnpItemIds = new Set<string>(
-      Object.values(previousMatches).map((match) => match.id)
-    );
-
-    for (const candidate of autoPairCandidates) {
-      if (usedAnswerIds.has(candidate.answerId) || usedDnpItemIds.has(candidate.id)) {
-        continue;
-      }
-
-      usedAnswerIds.add(candidate.answerId);
-      usedDnpItemIds.add(candidate.id);
-      nextMatches[candidate.answerId] = {
-        id: candidate.id,
-        questionCode: candidate.questionCode,
-        questionText: candidate.questionText,
-        reference: candidate.reference ?? '',
-        similarity: candidate.similarity,
-        answerId: candidate.answerId,
-        localQuestionCode: candidate.localQuestionCode,
-        localQuestionText: candidate.localQuestionText,
-      };
-
-      if (usedAnswerIds.size >= detail.answers.length) {
-        break;
-      }
-    }
-
-    if (Object.keys(nextMatches).length === 0) {
-      toast({
-        title: 'Auto pairing tidak menemukan kandidat',
-        description: `Tidak ada pasangan lokal-DNP yang memenuhi threshold ${dnpMatchThreshold}%.`,
-      });
-      return;
-    }
-
-    const addedMatchCount =
-      Object.keys(nextMatches).length - Object.keys(previousMatches).length;
-    if (addedMatchCount <= 0) {
-      toast({
-        title: 'Auto pairing tidak menambah mapping baru',
-        description:
-          'Semua kandidat yang memenuhi threshold sudah dipakai pada pairing yang ada.',
-      });
-      return;
-    }
-
-    setSelectedDnpMatches(nextMatches);
-    setCollapsedDnpMatches({
-      ...previousCollapsedMatches,
-      ...Object.fromEntries(Object.keys(nextMatches).map((key) => [key, true])),
-    });
-
-    try {
-      await persistDnpMatches(nextMatches, { silent: true });
-      toast({
-        title: 'Auto pairing selesai',
-        description: `${addedMatchCount} pairing baru ditambahkan. Total pairing aktif ${Object.keys(nextMatches).length} dari ${detail.answers.length} pertanyaan lokal.`,
-      });
-    } catch (error) {
-      setSelectedDnpMatches(previousMatches);
-      setCollapsedDnpMatches(previousCollapsedMatches);
-      toast({
-        title: 'Gagal menyimpan auto pairing',
-        description:
-          error instanceof Error && error.message
-            ? error.message
-            : 'Terjadi kesalahan.',
-      });
-    }
-  };
-
-  const handleChooseDnpMatch = async (
-    answer: SubmissionDetail['answers'][number],
-    match: QuestionMatchCandidate
-  ) => {
-    const previousMatch = selectedDnpMatches[answer.id];
-    const nextMatches = {
-      ...selectedDnpMatches,
-      [answer.id]: {
-        ...match,
-        answerId: answer.id,
-        localQuestionCode: answer.questionCode,
-        localQuestionText: answer.questionText,
-      },
-    };
-    setSelectedDnpMatches(nextMatches);
-    setCollapsedDnpMatches((prev) => ({
-      ...prev,
-      [answer.id]: true,
-    }));
-    try {
-      await persistDnpMatches(nextMatches, { silent: true });
-      toast({
-        title: 'Target export dipilih',
-        description: `${answer.questionCode} diarahkan ke PQ DNP ${match.questionCode}.`,
-      });
-    } catch (error) {
-      setSelectedDnpMatches((prev) => {
-        const fallback = { ...prev };
-        if (previousMatch) {
-          fallback[answer.id] = previousMatch;
-        } else {
-          delete fallback[answer.id];
-        }
-        return fallback;
-      });
-      setCollapsedDnpMatches((prev) => ({
-        ...prev,
-        [answer.id]: Boolean(previousMatch),
-      }));
-      toast({
-        title: 'Gagal menyimpan target export',
-        description:
-          error instanceof Error && error.message
-            ? error.message
-            : 'Terjadi kesalahan.',
-      });
-    }
-  };
-
-  const handleToggleDnpMatchCollapse = (answerId: string) => {
-    setCollapsedDnpMatches((prev) => ({
-      ...prev,
-      [answerId]: !prev[answerId],
-    }));
-  };
-
-  const handleClearDnpMatch = async (answerId: string) => {
-    const previousMatch = selectedDnpMatches[answerId];
-    const nextMatches = { ...selectedDnpMatches };
-    delete nextMatches[answerId];
-
-    setSelectedDnpMatches(nextMatches);
-    setCollapsedDnpMatches((prev) => ({
-      ...prev,
-      [answerId]: false,
-    }));
-
-    try {
-      await persistDnpMatches(nextMatches, { silent: true });
-      toast({
-        title: 'Pilihan target dibatalkan',
-        description: 'Pertanyaan lokal ini tidak lagi diarahkan ke PQ DNP.',
-      });
-    } catch (error) {
-      setSelectedDnpMatches((prev) => ({
-        ...prev,
-        ...(previousMatch ? { [answerId]: previousMatch } : {}),
-      }));
-      setCollapsedDnpMatches((prev) => ({
-        ...prev,
-        [answerId]: true,
-      }));
-      toast({
-        title: 'Gagal membatalkan target export',
-        description:
-          error instanceof Error && error.message
-            ? error.message
-            : 'Terjadi kesalahan.',
-      });
-    }
   };
 
   const runExportToDnp = async (answerIds?: string[]) => {
@@ -1017,6 +871,7 @@ export function SelfAssessmentReviews({
         userId: selectedSubmission.user.id,
         sessionId: dnpSessionId,
         answerIds,
+        skipDuplicateFileNames: skipDuplicateDnpFileNames,
       });
       setDnpExportResult(response);
       toast({
@@ -1036,6 +891,58 @@ export function SelfAssessmentReviews({
     }
   };
 
+  const runInjectFromDnp = async (answerIds?: string[]) => {
+    if (!selectedSubmission?.user) {
+      return;
+    }
+
+    const activeMatchEntries = Object.values(selectedDnpMatches).filter((match) =>
+      answerIds ? answerIds.includes(match.answerId) : true
+    );
+
+    if (activeMatchEntries.length === 0) {
+      toast({
+        title: 'Belum ada pairing import',
+        description: 'Pilih pasangan pertanyaan lokal dan DNP terlebih dahulu.',
+      });
+      return;
+    }
+
+    setIsInjectingFromDnp(true);
+    setDnpImportError(null);
+    try {
+      const response = await injectAdminSelfAssessmentFromDnp({
+        sessionAreaId: selectedSubmission.sessionAreaId,
+        userId: selectedSubmission.user.id,
+        includeEvidence: includeDnpEvidenceOnInject,
+        matches: activeMatchEntries.map((match) => ({
+          answerId: match.answerId,
+          dnpSnapshotItemId: match.id,
+        })),
+      });
+      if (!response.jobId) {
+        throw new Error('Job inject DNP tidak tersedia.');
+      }
+      toast({
+        title: 'Inject jawaban dimulai',
+        description:
+          response.message || 'Inject jawaban DNP sedang diproses di background.',
+      });
+      stopDnpInjectPolling();
+      await startDnpInjectPolling(response.jobId);
+    } catch (error) {
+      stopDnpInjectPolling();
+      setIsInjectingFromDnp(false);
+      toast({
+        title: 'Gagal import jawaban DNP',
+        description:
+          error instanceof Error && error.message
+            ? error.message
+            : 'Terjadi kesalahan.',
+      });
+    }
+  };
+
   const handleAssessmentSave = async () => {
     if (!activeAnswer) {
       return;
@@ -1052,6 +959,7 @@ export function SelfAssessmentReviews({
             evidenceNote: activeAssessmentInput?.evidenceNote ?? '',
           },
         ],
+        overrideFinalLock: canOverrideAssessmentLock,
       });
 
       toast({
@@ -1060,7 +968,7 @@ export function SelfAssessmentReviews({
       });
 
       if (selectedSubmission) {
-        loadDetail(selectedSubmission);
+        loadDetail(selectedSubmission, { preferredAnswerId: activeAnswer?.id });
       }
     } catch (error) {
       toast({
@@ -1090,11 +998,12 @@ export function SelfAssessmentReviews({
         await uploadAdminSelfAssessmentEvidence({
           answerId: activeAnswer.id,
           file,
+          overrideFinalLock: canOverrideAssessmentLock,
         });
       }
 
       if (selectedSubmission) {
-        loadDetail(selectedSubmission);
+        loadDetail(selectedSubmission, { preferredAnswerId: activeAnswer?.id });
       }
     } catch (error) {
       setEvidenceError(
@@ -1115,8 +1024,10 @@ export function SelfAssessmentReviews({
 
     setEvidenceError(null);
     try {
-      await deleteAdminSelfAssessmentEvidence(evidenceId);
-      loadDetail(selectedSubmission);
+      await deleteAdminSelfAssessmentEvidence(evidenceId, {
+        overrideFinalLock: canOverrideAssessmentLock,
+      });
+      loadDetail(selectedSubmission, { preferredAnswerId: activeAnswer?.id });
     } catch (error) {
       setEvidenceError(
         error instanceof Error && error.message
@@ -1135,10 +1046,7 @@ export function SelfAssessmentReviews({
     setSelectedDnpAreaKey('');
     setIsImportingDnp(true);
     try {
-      const data = await initAdminSelfAssessmentExportDnpSession();
-      setDnpSessionId(data.sessionId);
-      setDnpCaptchaUrl(data.captchaUrl);
-      setDnpCaptcha('');
+      await initializeDnpSession();
       toast({
         title: 'Sesi DNP siap',
         description: 'Captcha DNP berhasil dimuat.',
@@ -1167,26 +1075,9 @@ export function SelfAssessmentReviews({
     setIsDnpLoginCollapsed(false);
     setIsImportingDnp(true);
     try {
-      const yearNumber = Number(dnpYear || derivedDnpYear);
-      if (Number.isNaN(yearNumber) || yearNumber < 2000 || yearNumber > 2100) {
-        setDnpImportError('Tahun DNP tidak valid.');
-        setIsImportingDnp(false);
-        return;
-      }
-      const response = await fetchAdminSelfAssessmentExportDnpAreas({
+      await loadDnpAreas({
         sessionAreaId: selectedSubmission.sessionAreaId,
-        sessionId: dnpSessionId,
-        username: dnpUsername,
-        password: dnpPassword,
-        captcha: dnpCaptcha,
-        year: yearNumber,
       });
-      setDnpAreas(response.areas);
-      setSelectedDnpAreaKey(
-        response.areas[0]
-          ? `${response.areas[0].fillCode1}::${response.areas[0].fillCode2}`
-          : ''
-      );
       toast({
         title: 'Area DNP berhasil dimuat',
         description: 'Pilih area DNP untuk mengambil data export.',
@@ -1202,65 +1093,6 @@ export function SelfAssessmentReviews({
     }
   };
 
-  const pollDnpImportJob = async (jobId: string): Promise<void> => {
-    const response: SelfAssessmentExportDnpImportJobResponse =
-      await fetchAdminSelfAssessmentExportDnpImportJob(jobId);
-
-    if (response.status === 'queued' || response.status === 'running') {
-      setDnpImportMessage(
-        response.message || 'Pengambilan data export DNP masih berjalan.'
-      );
-      dnpImportPollRef.current = window.setTimeout(() => {
-        void pollDnpImportJob(jobId);
-      }, 3000);
-      return;
-    }
-
-    stopDnpImportPolling();
-    setIsImportingDnp(false);
-
-    if (response.status === 'failed') {
-      setIsDnpLoginCollapsed(false);
-      setDnpImportError(
-        response.error || response.message || 'Gagal mengambil data export DNP.'
-      );
-      const detailParts: string[] = [];
-      if (response.detail) {
-        detailParts.push(
-          typeof response.detail === 'string'
-            ? response.detail
-            : JSON.stringify(response.detail, null, 2)
-        );
-      }
-      if (response.debugLog && response.debugLog.length > 0) {
-        detailParts.push(`Debug log:\n${response.debugLog.join('\n')}`);
-      }
-      setDnpImportDetail(detailParts.length > 0 ? detailParts.join('\n\n') : null);
-      return;
-    }
-
-    const snapshot = response.summary?.snapshot ?? null;
-    if (snapshot) {
-      setDetail((prev) =>
-        prev
-          ? {
-              ...prev,
-              dnpCompare: snapshot,
-            }
-          : prev
-      );
-      setDnpQuestionPage(1);
-      setIsDnpLoginCollapsed(true);
-    }
-    setDnpImportMessage(
-      response.message || 'Pengambilan data export DNP selesai.'
-    );
-    toast({
-      title: 'Data DNP berhasil diambil',
-      description: 'Snapshot pembanding DNP sudah tersimpan.',
-    });
-  };
-
   const handleImportDnpCompare = async () => {
     if (!selectedSubmission?.user || !detail) {
       return;
@@ -1269,10 +1101,7 @@ export function SelfAssessmentReviews({
       setDnpImportError('Buat sesi DNP terlebih dahulu.');
       return;
     }
-    const selectedArea = dnpAreas.find(
-      (item) => `${item.fillCode1}::${item.fillCode2}` === selectedDnpAreaKey
-    );
-    if (!selectedArea) {
+    if (!selectedDnpArea) {
       setDnpImportError('Pilih area DNP terlebih dahulu.');
       return;
     }
@@ -1292,9 +1121,9 @@ export function SelfAssessmentReviews({
         password: dnpPassword,
         captcha: dnpCaptcha,
         year: yearNumber,
-        fillCode1: selectedArea.fillCode1,
-        fillCode2: selectedArea.fillCode2,
-        fillArea: selectedArea.area,
+        fillCode1: selectedDnpArea.fillCode1,
+        fillCode2: selectedDnpArea.fillCode2,
+        fillArea: selectedDnpArea.area,
       });
       if (!response.jobId) {
         throw new Error('Job import DNP tidak tersedia.');
@@ -1302,7 +1131,7 @@ export function SelfAssessmentReviews({
       setDnpImportMessage(
         response.message || 'Pengambilan data export DNP sedang diproses di background.'
       );
-      await pollDnpImportJob(response.jobId);
+      await startDnpImportPolling(response.jobId);
     } catch (error) {
       stopDnpImportPolling();
       setIsImportingDnp(false);
@@ -1311,14 +1140,8 @@ export function SelfAssessmentReviews({
           ? error.message
           : 'Gagal mengambil data compare DNP.'
       );
-    } finally {
-      if (dnpImportPollRef.current === null) {
-        setIsImportingDnp(false);
-      }
     }
   };
-
-  useEffect(() => () => stopDnpImportPolling(), []);
 
   const submitReviews = (answerIds: string[], action: 'draft' | 'send') => {
     if (!detail) {
@@ -1352,7 +1175,7 @@ export function SelfAssessmentReviews({
       })
       .then(() => {
         if (selectedSubmission) {
-          loadDetail(selectedSubmission);
+          loadDetail(selectedSubmission, { preferredAnswerId: activeAnswer?.id });
         }
       })
       .catch((error: Error) => {
@@ -1440,7 +1263,7 @@ export function SelfAssessmentReviews({
         finalizeFileInputRef.current.value = '';
       }
       setForceSendResult(false);
-      loadDetail(selectedSubmission);
+      loadDetail(selectedSubmission, { preferredAnswerId: activeAnswer?.id });
     } catch (error) {
       toast({
         title: 'Gagal mengirim hasil',
@@ -1451,6 +1274,41 @@ export function SelfAssessmentReviews({
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteResultFile = async (fileId: string) => {
+    if (isDeletingResultFile) return;
+    setIsDeletingResultFile(true);
+    try {
+      await deleteSelfAssessmentResultFile(fileId);
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              result: prev.result
+                ? {
+                    ...prev.result,
+                    files: prev.result.files.filter((item) => item.id !== fileId),
+                  }
+                : prev.result,
+            }
+          : prev
+      );
+      toast({
+        title: 'File dihapus',
+        description: 'File dokumen berhasil dihapus.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Gagal menghapus file',
+        description:
+          error instanceof Error && error.message
+            ? error.message
+            : 'Terjadi kesalahan.',
+      });
+    } finally {
+      setIsDeletingResultFile(false);
     }
   };
 
@@ -1471,16 +1329,6 @@ export function SelfAssessmentReviews({
       (safeQuestionPage - 1) * QUESTION_ITEMS_PER_PAGE,
       safeQuestionPage * QUESTION_ITEMS_PER_PAGE
     );
-    const totalDnpQuestionPages = Math.max(
-      1,
-      Math.ceil((activeDnpCompare?.items.length ?? 0) / QUESTION_ITEMS_PER_PAGE)
-    );
-    const safeDnpQuestionPage = Math.min(dnpQuestionPage, totalDnpQuestionPages);
-    const paginatedDnpItems = (activeDnpCompare?.items ?? []).slice(
-      (safeDnpQuestionPage - 1) * QUESTION_ITEMS_PER_PAGE,
-      safeDnpQuestionPage * QUESTION_ITEMS_PER_PAGE
-    );
-
     return (
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1635,1115 +1483,162 @@ export function SelfAssessmentReviews({
                 </div>
               </div>
             ) : null}
-            {detailPanelMode === 'assessment' ? (
-              <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="text-sm font-semibold text-slate-700">
-                      Login DNP Untuk Export
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      Area lokal: {selectedSubmission.area} • Tahun: {derivedDnpYear}
-                    </div>
-                    {isDnpLoginCollapsed ? (
-                      <div className="text-xs text-slate-500">
-                        Area DNP: {dnpAreas.find(
-                          (item) => `${item.fillCode1}::${item.fillCode2}` === selectedDnpAreaKey
-                        )?.area || '-'}
-                        {dnpSessionId ? ` • Session: ${dnpSessionId}` : ''}
-                      </div>
-                    ) : null}
-                    {detail?.dnpSession?.active ? (
-                      <div className="text-xs text-emerald-400">
-                        Sesi DNP aktif tersimpan dan siap direuse.
-                      </div>
-                    ) : null}
-                    {detail?.dnpImportJob && ['queued', 'running'].includes(detail.dnpImportJob.status) ? (
-                      <div className="text-xs text-amber-400">
-                        Sedang proses update data DNP.
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRefreshDnpState}
-                      disabled={isLoading}
-                    >
-                      Refresh
-                    </Button>
-                    {activeDnpCompare ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setIsDnpLoginCollapsed((prev) => !prev)}
-                      >
-                        {isDnpLoginCollapsed ? 'Login' : 'Minimize'}
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-                {!isDnpLoginCollapsed ? (
-                  <>
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <FormField label="Username DNP" required>
-                        <Input
-                          value={dnpUsername}
-                          onChange={(event) => setDnpUsername(event.target.value)}
-                          placeholder="Username DNP"
-                        />
-                      </FormField>
-                      <FormField label="Password DNP" required>
-                        <Input
-                          type="password"
-                          value={dnpPassword}
-                          onChange={(event) => setDnpPassword(event.target.value)}
-                          placeholder="Password DNP"
-                        />
-                      </FormField>
-                      <FormField label="Tahun DNP" required>
-                        <Input
-                          type="number"
-                          min={2000}
-                          max={2100}
-                          value={dnpYear}
-                          onChange={(event) => setDnpYear(event.target.value)}
-                          placeholder="Tahun"
-                        />
-                      </FormField>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleInitDnpSession}
-                        disabled={isImportingDnp}
-                      >
-                        Muat Captcha
-                      </Button>
-                      {dnpSessionId ? (
-                        <span className="text-xs text-slate-500">Session: {dnpSessionId}</span>
-                      ) : null}
-                    </div>
-                    {dnpCaptchaUrl ? (
-                      <div className="space-y-3">
-                        <img
-                          src={resolveApiUrl(dnpCaptchaUrl)}
-                          alt="Captcha DNP"
-                          className="h-16 rounded-lg border border-slate-200 bg-white px-3 py-2"
-                        />
-                        <FormField label="Captcha" required>
-                          <Input
-                            value={dnpCaptcha}
-                            onChange={(event) => setDnpCaptcha(event.target.value)}
-                            placeholder="Masukkan captcha"
-                          />
-                        </FormField>
-                      </div>
-                    ) : null}
-                    {dnpAreas.length > 0 ? (
-                      <FormField label="Area DNP" required>
-                        <select
-                          className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                          value={selectedDnpAreaKey}
-                          onChange={(event) => setSelectedDnpAreaKey(event.target.value)}
-                        >
-                          {dnpAreas.map((item) => (
-                            <option
-                              key={`${item.fillCode1}-${item.fillCode2}`}
-                              value={`${item.fillCode1}::${item.fillCode2}`}
-                            >
-                              {item.area}
-                            </option>
-                          ))}
-                        </select>
-                      </FormField>
-                    ) : null}
-                  </>
-                ) : null}
-                {dnpImportError ? (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
-                    {dnpImportError}
-                  </div>
-                ) : null}
-                {dnpImportDetail ? (
-                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
-                    {dnpImportDetail}
-                  </pre>
-                ) : null}
-                {dnpImportMessage ? (
-                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-                    {dnpImportMessage}
-                  </div>
-                ) : null}
-                {!isDnpLoginCollapsed ? (
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleLoadDnpAreas}
-                      disabled={
-                        isImportingDnp ||
-                        !dnpSessionId ||
-                        !dnpUsername.trim() ||
-                        !dnpPassword.trim() ||
-                        !dnpCaptcha.trim() ||
-                        !dnpYear.trim()
-                      }
-                    >
-                      Ambil Daftar Area
-                    </Button>
-                    <Button
-                      className="bg-blue-500 text-white hover:bg-blue-600"
-                      onClick={handleImportDnpCompare}
-                      disabled={
-                        isImportingDnp ||
-                        !dnpSessionId ||
-                        !dnpUsername.trim() ||
-                        !dnpPassword.trim() ||
-                        !dnpCaptcha.trim() ||
-                        !dnpYear.trim() ||
-                        !selectedDnpAreaKey
-                      }
-                    >
-                      {isImportingDnp ? 'Mengambil Data DNP...' : 'Ambil Data Area DNP'}
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
+            {isAssessmentMode || isImportDnpMode ? (
+              <SelfAssessmentDnpLoginPanel
+                isImportMode={isImportDnpMode}
+                localArea={selectedSubmission.area}
+                derivedDnpYear={derivedDnpYear}
+                isDnpLoginCollapsed={isDnpLoginCollapsed}
+                selectedDnpAreaKey={selectedDnpAreaKey}
+                dnpAreas={dnpAreas}
+                dnpSessionId={dnpSessionId}
+                hasStoredActiveSession={detail?.dnpSession?.active === true}
+                hasRunningImportJob={
+                  !!detail?.dnpImportJob &&
+                  ['queued', 'running'].includes(detail.dnpImportJob.status)
+                }
+                isLoading={isLoading}
+                dnpUsername={dnpUsername}
+                dnpPassword={dnpPassword}
+                dnpYear={dnpYear}
+                dnpCaptchaUrl={dnpCaptchaUrl}
+                dnpCaptcha={dnpCaptcha}
+                dnpImportError={dnpImportError}
+                dnpImportDetail={dnpImportDetail}
+                dnpImportMessage={dnpImportMessage}
+                isImportingDnp={isImportingDnp}
+                onRefreshDnpState={handleRefreshDnpState}
+                onToggleCollapsed={() => setIsDnpLoginCollapsed((prev) => !prev)}
+                onUsernameChange={setDnpUsername}
+                onPasswordChange={setDnpPassword}
+                onYearChange={setDnpYear}
+                onInitDnpSession={handleInitDnpSession}
+                onCaptchaChange={setDnpCaptcha}
+                onSelectedAreaKeyChange={setSelectedDnpAreaKey}
+                onLoadDnpAreas={handleLoadDnpAreas}
+                onImportDnpCompare={handleImportDnpCompare}
+                resolveUrl={resolveApiUrl}
+                hasCompareSnapshot={Boolean(activeDnpCompare)}
+              />
             ) : null}
-            {detailPanelMode === 'assessment' && activeDnpCompare ? (
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-700">Pertanyaan DNP</div>
-                    <div className="text-xs text-slate-500">
-                      Target: {activeDnpCompare.fillArea || '-'} • Import:{' '}
-                      {activeDnpCompare.importedAt || '-'}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                      {activeDnpCompare.items.length} item
-                    </span>
-                    <span className="rounded-full border border-emerald-200 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200">
-                      Match {matchedAnswerCount} / {detail.answers.length}
-                    </span>
-                  </div>
-                </div>
-                <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 md:grid-cols-[1fr_auto] md:items-end">
-                  <FormField label="Threshold Kecocokan Pertanyaan">
-                    <div className="space-y-2">
-                      <input
-                        type="range"
-                        min={40}
-                        max={100}
-                        step={5}
-                        value={dnpMatchThreshold}
-                        onChange={(event) =>
-                          setDnpMatchThreshold(Number(event.target.value))
-                        }
-                        className="w-full accent-blue-500"
-                      />
-                      <div className="text-xs text-slate-500">
-                        Pertanyaan dianggap cocok bila similarity minimal{' '}
-                        <span className="font-semibold text-slate-700">
-                          {dnpMatchThreshold}%
-                        </span>
-                        .
-                      </div>
-                    </div>
-                  </FormField>
-                  <div className="space-y-2">
-                    <div className="rounded-xl bg-white px-3 py-2 text-xs text-slate-500">
-                      Auto pairing akan mengambil similarity terbesar untuk tiap pertanyaan lokal.
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="w-full bg-blue-500 text-white hover:bg-blue-600"
-                      onClick={() => void handleAutoPairDnpMatches()}
-                      disabled={!detail.answers.length || !activeDnpCompare.items.length}
-                    >
-                      Auto Pairing Berdasarkan Threshold
-                    </Button>
-                    <div className="text-xs text-slate-500">
-                      Maksimal pairing mengikuti jumlah pertanyaan lokal dan target DNP tidak dipakai ganda.
-                    </div>
-                  </div>
-                </div>
-                {paginatedDnpItems.length > 0 ? (
-                  <div className="overflow-hidden divide-y rounded-xl border border-slate-200">
-                    {paginatedDnpItems.map((item) => {
-                      const bestLocalMatch = detail.answers
-                        .map((answer) => ({
-                          answer,
-                          similarity: calculateQuestionSimilarity(
-                            answer.questionText,
-                            item.questionText ?? ''
-                          ),
-                        }))
-                        .sort((left, right) => right.similarity - left.similarity)[0];
-                      const assignedLocalMatches = Object.values(selectedDnpMatches).filter(
-                        (match) => match.id === item.id
-                      );
-
-                      return (
-                        <div
-                          key={item.id}
-                          className="flex items-start gap-3 bg-slate-50 px-3 py-3 text-sm"
-                        >
-                          <span className="mt-1 text-xs font-semibold text-slate-500">
-                            {item.questionCode || '-'}
-                          </span>
-                          <div className="min-w-0 flex-1 space-y-2">
-                            <div className="text-slate-700">{item.questionText || '-'}</div>
-                            {assignedLocalMatches.length > 0 ? (
-                              <div className="flex flex-wrap items-center gap-2 text-xs">
-                                {assignedLocalMatches.map((match) => (
-                                  <span
-                                    key={`${item.id}-${match.answerId}`}
-                                    className="rounded-full border border-blue-200 bg-blue-100 px-2 py-1 font-semibold text-blue-800 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-200"
-                                  >
-                                    Cocok dengan {match.localQuestionCode}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
-                            {bestLocalMatch ? (
-                              <div className="flex flex-wrap items-center gap-2 text-xs">
-                                <span
-                                  className={`rounded-full px-2 py-1 font-semibold ${getMatchTone(
-                                    bestLocalMatch.similarity,
-                                    dnpMatchThreshold
-                                  )}`}
-                                >
-                                  {bestLocalMatch.similarity}%
-                                </span>
-                                <span className="text-slate-500">
-                                  Kandidat lokal: {bestLocalMatch.answer.questionCode} -{' '}
-                                  {bestLocalMatch.answer.questionText}
-                                </span>
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-sm text-slate-500">
-                    Belum ada item pertanyaan DNP yang tersimpan.
-                  </div>
-                )}
-                {activeDnpCompare.items.length > QUESTION_ITEMS_PER_PAGE ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-xs text-slate-500">
-                      Halaman {safeDnpQuestionPage} dari {totalDnpQuestionPages}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setDnpQuestionPage((prev) => Math.max(1, prev - 1))}
-                        disabled={safeDnpQuestionPage === 1}
-                      >
-                        Sebelumnya
-                      </Button>
-                      {Array.from({ length: totalDnpQuestionPages }, (_, index) => {
-                        const page = index + 1;
-                        const isActive = page === safeDnpQuestionPage;
-                        return (
-                          <Button
-                            key={page}
-                            size="sm"
-                            variant={isActive ? 'default' : 'outline'}
-                            className={
-                              isActive ? 'bg-blue-500 text-white hover:bg-blue-600' : undefined
-                            }
-                            onClick={() => setDnpQuestionPage(page)}
-                          >
-                            {page}
-                          </Button>
-                        );
-                      })}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setDnpQuestionPage((prev) => Math.min(totalDnpQuestionPages, prev + 1))
-                        }
-                        disabled={safeDnpQuestionPage === totalDnpQuestionPages}
-                      >
-                        Selanjutnya
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+            {(isAssessmentMode || isImportDnpMode) && activeDnpCompare ? (
+              <SelfAssessmentDnpSnapshotPanel
+                compareSnapshot={activeDnpCompare}
+                answers={detail.answers}
+                isAssessmentMode={isAssessmentMode}
+                isImportMode={isImportDnpMode}
+                dnpMatchThreshold={dnpMatchThreshold}
+                matchedAnswerCount={matchedAnswerCount}
+                selectedDnpMatches={selectedDnpMatches}
+                includeDnpEvidenceOnInject={includeDnpEvidenceOnInject}
+                onIncludeDnpEvidenceOnInjectChange={setIncludeDnpEvidenceOnInject}
+                onThresholdChange={setDnpMatchThreshold}
+                onAutoPair={() => void autoPairDnpMatches()}
+                onClearAll={() => void clearAllDnpMatches()}
+                dnpQuestionPage={dnpQuestionPage}
+                onDnpQuestionPageChange={setDnpQuestionPage}
+              />
             ) : null}
             {showResultSubmissionSection ? (
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                <div className="text-sm font-semibold text-slate-700">
-                  Pengiriman Document Final Hasil Audit
-                </div>
-                {!isResultComplete && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                    Hasil audit belum lengkap. Centang opsi di bawah jika ingin tetap
-                    mengirim.
-                  </div>
-                )}
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-slate-600">
-                      Status Hasil <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                      value={finalizeStatus}
-                      onChange={(event) =>
-                        setFinalizeStatus(
-                          event.target.value === 'final' ? 'final' : 'interim'
-                        )
-                      }
-                      disabled={!isResultComplete && !forceSendResult}
-                    >
-                      <option value="interim">Interim</option>
-                      <option value="final">Final</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-slate-600">
-                      Upload Document <span className="text-red-500">*</span>
-                    </label>
-                    <Input
-                      ref={finalizeFileInputRef}
-                      type="file"
-                      multiple
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.zip"
-                      onChange={(event) =>
-                        setFinalizeFiles(Array.from(event.target.files ?? []))
-                      }
-                      disabled={!isResultComplete && !forceSendResult}
-                    />
-                  </div>
-                </div>
-                {detail.result?.files?.length ? (
-                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-600">
-                    <div className="mb-2 font-semibold text-slate-700">
-                      File tersimpan
-                    </div>
-                    <div className="space-y-2">
-                      {detail.result.files.map((file) => (
-                        <div
-                          key={file.id}
-                          className="flex items-center justify-between gap-2"
-                        >
-                          <a
-                            href={resolveApiUrl(file.url)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="block truncate text-blue-600 underline"
-                          >
-                            {file.name}
-                          </a>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 px-2 text-red-500 hover:text-red-600"
-                            disabled={isDeletingResultFile}
-                            onClick={async () => {
-                              if (isDeletingResultFile) return;
-                              setIsDeletingResultFile(true);
-                              try {
-                                await deleteSelfAssessmentResultFile(file.id);
-                                setDetail((prev) =>
-                                  prev
-                                    ? {
-                                        ...prev,
-                                        result: prev.result
-                                          ? {
-                                              ...prev.result,
-                                              files: prev.result.files.filter(
-                                                (item) => item.id !== file.id
-                                              ),
-                                            }
-                                          : prev.result,
-                                      }
-                                    : prev
-                                );
-                                toast({
-                                  title: 'File dihapus',
-                                  description: 'File dokumen berhasil dihapus.',
-                                });
-                              } catch (error) {
-                                toast({
-                                  title: 'Gagal menghapus file',
-                                  description:
-                                    error instanceof Error && error.message
-                                      ? error.message
-                                      : 'Terjadi kesalahan.',
-                                });
-                              } finally {
-                                setIsDeletingResultFile(false);
-                              }
-                            }}
-                          >
-                            Hapus
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                <label className="flex items-start gap-2 text-xs text-slate-600">
-                  <Checkbox
-                    checked={forceSendResult}
-                    onCheckedChange={(checked) => setForceSendResult(checked === true)}
-                  />
-                  <span>
-                    Kirim hasil audit walaupun tidak lengkap.
-                  </span>
-                </label>
-                {forceSendResult && (
-                  <div className="text-xs text-slate-500">
-                    Dengan mencentang box ini maka hasil akan tetap dikirim walaupun
-                    user belum mengirim semua self assessment atau admin belum
-                    mereview semua self assessment.
-                  </div>
-                )}
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    className="bg-blue-500 text-white hover:bg-blue-600"
-                    onClick={handleSendResult}
-                    disabled={isSaving || (!isResultComplete && !forceSendResult)}
-                  >
-                    Kirim Hasil Audit
-                  </Button>
-                  <div className="text-xs text-slate-500">
-                    Format: PDF, DOC, DOCX, XLS, XLSX, PNG, JPG, ZIP.
-                  </div>
-                </div>
-              </div>
+              <SelfAssessmentResultSubmissionPanel
+                isResultComplete={isResultComplete}
+                finalizeStatus={finalizeStatus}
+                onFinalizeStatusChange={setFinalizeStatus}
+                fileInputRef={finalizeFileInputRef}
+                onFilesChange={setFinalizeFiles}
+                resultFiles={detail.result?.files ?? []}
+                resolveUrl={resolveApiUrl}
+                isDeletingResultFile={isDeletingResultFile}
+                onDeleteResultFile={(fileId) => void handleDeleteResultFile(fileId)}
+                forceSendResult={forceSendResult}
+                onForceSendResultChange={setForceSendResult}
+                onSendResult={handleSendResult}
+                isSaving={isSaving}
+              />
             ) : null}
           </div>
 
           <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             {activeAnswer ? (
-              detailPanelMode === 'assessment' ? (
-                <>
-                  <div>
-                    <h2 className="text-sm font-semibold text-slate-700">
-                      Upload file evidence <span className="text-red-500">*</span>
-                    </h2>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Your file will be upload to server
-                    </p>
-                  </div>
-                  <div
-                    className={`relative flex min-h-[140px] items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-center ${
-                      isAssessmentLocked ? 'opacity-60' : ''
-                    }`}
-                  >
-                    <div className="flex flex-col items-center gap-2 text-sm text-slate-500">
-                      <UploadCloud className="h-6 w-6 text-slate-400" />
-                      Drop files here or click to upload.
-                    </div>
-                    <input
-                      type="file"
-                      multiple
-                      className={`absolute inset-0 h-full w-full opacity-0 ${
-                        isAssessmentLocked ? 'cursor-not-allowed' : 'cursor-pointer'
-                      }`}
-                      accept=".jpg,.jpeg,.png,.pdf,.docx,.xlsx,.mp3,.mp4"
-                      onChange={handleAdminEvidenceUpload}
-                      disabled={isAssessmentLocked || isUploadingEvidence || isSaving}
-                    />
-                  </div>
-                  {isUploadingEvidence ? (
-                    <div className="text-xs text-slate-500">Mengunggah file...</div>
-                  ) : null}
-                  {activeAnswer.evidence.length > 0 ? (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
-                      <div className="mb-2 text-xs font-semibold text-slate-600">
-                        File evidence existing
-                      </div>
-                      <div className="space-y-2">
-                        {activeAnswer.evidence.map((item) => (
-                          <div
-                            key={item.id}
-                            className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
-                          >
-                            <a
-                              href={resolveApiUrl(item.url)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="truncate text-blue-600 underline"
-                            >
-                              {item.name}
-                            </a>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={isAssessmentLocked || isUploadingEvidence || isSaving}
-                              onClick={() => handleAdminEvidenceDelete(item.id)}
-                            >
-                              Hapus
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">
-                      Belum ada evidence.
-                    </div>
-                  )}
-                  <div className="text-xs text-slate-500">
-                    *File yang diperbolehkan: JPG, JPEG, PDF, DOCX, PNG, MP3, MP4,
-                    XLSX
-                    <br />
-                    *Max size : 20MB
-                  </div>
-                  {evidenceError ? (
-                    <div className="text-xs text-red-500">{evidenceError}</div>
-                  ) : null}
-                  {isAssessmentLocked ? (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                      Jawaban sudah difinalisasi dan tidak bisa diubah.
-                    </div>
-                  ) : null}
-
-                  <FormSection title="Data Assessment">
-                    <div className="grid gap-4">
-                      {activeDnpCompare ? (
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <div className="text-sm font-semibold text-slate-700">
-                                Compare Pertanyaan Lokal vs DNP
-                              </div>
-                              <div className="text-xs text-slate-500">
-                                Penyamaan berbasis similarity isi pertanyaan.
-                              </div>
-                            </div>
-                            {activeBestMatch ? (
-                              <div className="flex flex-wrap items-center gap-2">
-                                {activeSelectedDnpMatch ? (
-                                  <span className="rounded-full border border-blue-200 bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-200">
-                                    Dipilih: {activeSelectedDnpMatch.questionCode}
-                                  </span>
-                                ) : null}
-                                <span
-                                  className={`rounded-full px-3 py-1 text-xs font-semibold ${getMatchTone(
-                                    activeBestMatch.similarity,
-                                    dnpMatchThreshold
-                                  )}`}
-                                >
-                                  Best match {activeBestMatch.similarity}%
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                                Belum ada kandidat
-                              </span>
-                            )}
-                          </div>
-                          {activeSelectedDnpMatch ? (
-                            <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div>
-                                  <div className="text-sm font-semibold text-slate-700">
-                                    Target export dipilih
-                                  </div>
-                                  <div className="text-xs text-slate-500">
-                                    {activeAnswer.questionCode} akan diarahkan ke PQ DNP{' '}
-                                    {activeSelectedDnpMatch.questionCode}.
-                                  </div>
-                                  <div className="mt-1 text-xs text-slate-500">
-                                    Evidence lokal yang ikut dikirim: {activeAnswerEvidenceCount}{' '}
-                                    file.
-                                  </div>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    className="bg-blue-500 text-white hover:bg-blue-600"
-                                    onClick={() => runExportToDnp([activeAnswer.id])}
-                                    disabled={isExportingToDnp}
-                                  >
-                                    {isExportingToDnp
-                                      ? 'Mengirim...'
-                                      : `Export Pertanyaan Ini (${activeAnswer.questionCode})`}
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      handleToggleDnpMatchCollapse(activeAnswer.id)
-                                    }
-                                  >
-                                    {isActiveDnpMatchCollapsed ? 'Open List' : 'Minimize'}
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          ) : null}
-                          {!activeSelectedDnpMatch || !isActiveDnpMatchCollapsed ? (
-                            <div className="mt-3 space-y-3">
-                              {activeAnswerMatches.length > 0 ? (
-                                activeAnswerMatches.map((match, index) => {
-                                  const isQualified = match.similarity >= dnpMatchThreshold;
-                                  const isSelected = activeSelectedDnpMatch?.id === match.id;
-                                  return (
-                                    <div
-                                      key={match.id}
-                                      className="rounded-xl border border-slate-200 bg-white px-3 py-3"
-                                    >
-                                      <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          <span className="text-xs font-semibold text-slate-500">
-                                            Kandidat {index + 1}
-                                          </span>
-                                          <span
-                                            className={`rounded-full px-2 py-1 text-xs font-semibold ${getMatchTone(
-                                              match.similarity,
-                                              dnpMatchThreshold
-                                            )}`}
-                                          >
-                                            {match.similarity}%
-                                          </span>
-                                          <span className="text-xs text-slate-500">
-                                            {isQualified
-                                              ? 'Layak dipertimbangkan untuk export'
-                                              : 'Masih di bawah ambang match'}
-                                          </span>
-                                        </div>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant={isSelected ? 'outline' : 'default'}
-                                          className={
-                                            isSelected
-                                              ? undefined
-                                              : 'bg-blue-500 text-white hover:bg-blue-600'
-                                          }
-                                          onClick={() => {
-                                            if (isSelected) {
-                                              void handleClearDnpMatch(activeAnswer.id);
-                                              return;
-                                            }
-                                            void handleChooseDnpMatch(activeAnswer, match);
-                                          }}
-                                        >
-                                          {isSelected ? 'Batalkan Pilihan' : 'Pilih / Ganti Target'}
-                                        </Button>
-                                      </div>
-                                      <div className="mt-2 text-xs font-semibold text-slate-500">
-                                        {match.questionCode}
-                                      </div>
-                                      <div className="text-sm text-slate-700">
-                                        {match.questionText || '-'}
-                                      </div>
-                                      {match.reference ? (
-                                        <div className="mt-2 text-xs text-slate-500">
-                                          Referensi DNP: {match.reference}
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  );
-                                })
-                              ) : (
-                                <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">
-                                  Belum ada pertanyaan DNP untuk dibandingkan pada area ini.
-                                </div>
-                              )}
-                            </div>
-                          ) : null}
-                          {Object.keys(selectedDnpMatches).length > 0 ? (
-                            <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div>
-                                  <div className="text-sm font-semibold text-slate-700">
-                                    Export Semua Pairing Area Ini
-                                  </div>
-                                  <div className="text-xs text-slate-500">
-                                    Kirim semua pertanyaan lokal yang sudah dipasangkan ke draft DNP.
-                                  </div>
-                                  <div className="mt-1 text-xs text-slate-500">
-                                    Pairing terpilih: {Object.keys(selectedDnpMatches).length} •
-                                    Evidence lokal yang ikut dikirim: {totalSelectedEvidenceCount}{' '}
-                                    file.
-                                  </div>
-                                </div>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className="bg-blue-500 text-white hover:bg-blue-600"
-                                  onClick={() => runExportToDnp()}
-                                  disabled={isExportingToDnp}
-                                >
-                                  {isExportingToDnp
-                                    ? 'Mengirim semua...'
-                                    : `Export Semua Pairing (${Object.keys(selectedDnpMatches).length})`}
-                                </Button>
-                              </div>
-                            </div>
-                          ) : null}
-                          {dnpExportResult ? (
-                            <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
-                              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
-                                <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-slate-800 dark:border-slate-500/40 dark:bg-slate-500/15 dark:text-slate-100">
-                                  Total {dnpExportResult.summary.total}
-                                </span>
-                                <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-1 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200">
-                                  Berhasil {dnpExportResult.summary.success}
-                                </span>
-                                <span className="rounded-full border border-red-200 bg-red-100 px-2 py-1 text-red-800 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200">
-                                  Gagal {dnpExportResult.summary.failed}
-                                </span>
-                                <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-1 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200">
-                                  Dilewati {dnpExportResult.summary.skipped}
-                                </span>
-                              </div>
-                              <div className="mt-3 space-y-2">
-                                {dnpExportResult.results.map((item) => (
-                                  <div
-                                    key={`${item.answerId}-${item.dnpQuestionCode}`}
-                                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
-                                  >
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="font-semibold text-slate-700">
-                                        {item.localQuestionCode} {'->'} {item.dnpQuestionCode || '-'}
-                                      </span>
-                                      <span
-                                        className={`rounded-full border px-2 py-1 font-semibold ${
-                                          item.status === 'success'
-                                            ? 'border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200'
-                                            : item.status === 'failed'
-                                            ? 'border-red-200 bg-red-100 text-red-800 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200'
-                                            : 'border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200'
-                                        }`}
-                                      >
-                                        {item.status}
-                                      </span>
-                                    </div>
-                                    <div className="mt-1 text-slate-500">{item.message}</div>
-                                    {item.uploads && item.uploads.length > 0 ? (
-                                      <div className="mt-2 space-y-1">
-                                        {item.uploads.map((upload) => (
-                                          <div
-                                            key={upload.evidenceId}
-                                            className="rounded-md bg-white px-2 py-2 text-[11px]"
-                                          >
-                                            <div className="flex flex-wrap items-center gap-2">
-                                              <span className="font-semibold text-slate-700">
-                                                File: {upload.fileName}
-                                              </span>
-                                              <span
-                                                className={`rounded-full border px-2 py-1 font-semibold ${
-                                                  upload.status === 'success'
-                                                    ? 'border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200'
-                                                    : upload.status === 'failed'
-                                                    ? 'border-red-200 bg-red-100 text-red-800 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200'
-                                                    : 'border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200'
-                                                }`}
-                                              >
-                                                {upload.status}
-                                              </span>
-                                            </div>
-                                            <div className="mt-1 text-slate-500">
-                                              {upload.message}
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      <FormField label="Protocol Question">
-                        <Textarea rows={3} value={activeAnswer.questionText} disabled />
-                      </FormField>
-                      <FormField label="Referensi Regulasi">
-                        <Textarea rows={2} value={activeAnswer.reference ?? ''} disabled />
-                      </FormField>
-                      <FormField label="Status of Implementation" required>
-                        <select
-                          className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                          value={activeAssessmentInput?.status ?? 'Satisfactory'}
-                          onChange={(event) =>
-                            handleAssessmentChange(activeAnswer.id, {
-                              status: event.target.value,
-                            })
-                          }
-                          disabled={isAssessmentLocked}
-                        >
-                          <option value="Satisfactory">Satisfactory</option>
-                          <option value="Not Satisfactory">Not Satisfactory</option>
-                          <option value="Not Aplicable">Not Aplicable</option>
-                        </select>
-                      </FormField>
-                      <FormField label="Comment">
-                        <Textarea
-                          rows={3}
-                          value={activeAssessmentInput?.comment ?? ''}
-                          onChange={(event) =>
-                            handleAssessmentChange(activeAnswer.id, {
-                              comment: event.target.value,
-                            })
-                          }
-                          disabled={isAssessmentLocked}
-                        />
-                      </FormField>
-                      <FormField label="Evidence Notes">
-                        <Textarea
-                          rows={3}
-                          value={activeAssessmentInput?.evidenceNote ?? ''}
-                          onChange={(event) =>
-                            handleAssessmentChange(activeAnswer.id, {
-                              evidenceNote: event.target.value,
-                            })
-                          }
-                          disabled={isAssessmentLocked}
-                        />
-                      </FormField>
-                      <div className="text-xs text-red-500">
-                        Kolom dengan tanda bintang wajib diisi.
-                      </div>
-                      <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
-                        <Button
-                          className="bg-blue-500 text-white hover:bg-blue-600"
-                          onClick={handleAssessmentSave}
-                          disabled={isAssessmentLocked || isSaving || isUploadingEvidence}
-                        >
-                          Simpan Perubahan
-                        </Button>
-                      </div>
-                    </div>
-                  </FormSection>
-                </>
+              detailPanelMode === 'assessment' || detailPanelMode === 'importDnp' ? (
+                <SelfAssessmentAssessmentEditorPanel
+                  activeAnswer={activeAnswer}
+                  activeAssessmentInput={{
+                    status: activeAssessmentInput?.status ?? 'Satisfactory',
+                    comment: activeAssessmentInput?.comment ?? '',
+                    evidenceNote: activeAssessmentInput?.evidenceNote ?? '',
+                  }}
+                  isAssessmentInputDisabled={isAssessmentInputDisabled}
+                  isAssessmentLocked={isAssessmentLocked}
+                  canOverrideAssessmentLock={canOverrideAssessmentLock}
+                  isUploadingEvidence={isUploadingEvidence}
+                  isSaving={isSaving}
+                  evidenceError={evidenceError}
+                  resolveUrl={resolveApiUrl}
+                  onAssessmentChange={(value) =>
+                    handleAssessmentChange(activeAnswer.id, value)
+                  }
+                  onAssessmentSave={handleAssessmentSave}
+                  onEvidenceUpload={handleAdminEvidenceUpload}
+                  onEvidenceDelete={handleAdminEvidenceDelete}
+                  dnpPairingPanel={
+                    activeDnpCompare ? (
+                      <SelfAssessmentDnpAnswerPairingPanel
+                        activeAnswer={activeAnswer}
+                        isImportMode={isImportDnpMode}
+                        dnpMatchThreshold={dnpMatchThreshold}
+                        activeBestMatch={activeBestMatch}
+                        activeSelectedDnpMatch={activeSelectedDnpMatch}
+                        isActiveDnpMatchCollapsed={isActiveDnpMatchCollapsed}
+                        activeAnswerMatches={activeAnswerMatches}
+                        activeAnswerEvidenceCount={activeAnswerEvidenceCount}
+                        selectedMatchCount={Object.keys(selectedDnpMatches).length}
+                        totalSelectedEvidenceCount={totalSelectedEvidenceCount}
+                        skipDuplicateDnpFileNames={skipDuplicateDnpFileNames}
+                        onSkipDuplicateDnpFileNamesChange={setSkipDuplicateDnpFileNames}
+                        onToggleCollapse={() => toggleDnpMatchCollapse(activeAnswer.id)}
+                        onChooseMatch={(match) =>
+                          void chooseDnpMatch(activeAnswer, match)
+                        }
+                        onClearMatch={() => void clearDnpMatch(activeAnswer.id)}
+                        onRunSingleExport={() => runExportToDnp([activeAnswer.id])}
+                        onRunBulkExport={() => runExportToDnp()}
+                        onRunSingleInject={() =>
+                          void runInjectFromDnp([activeAnswer.id])
+                        }
+                        onRunBulkInject={() => void runInjectFromDnp()}
+                        isExportingToDnp={isExportingToDnp}
+                        isInjectingFromDnp={isInjectingFromDnp}
+                        exportResult={dnpExportResult}
+                      />
+                    ) : null
+                  }
+                />
               ) : (
-                <>
-                <div className="space-y-1">
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                    Self Assessment
-                  </div>
-                  <div className="text-sm font-semibold text-slate-700">
-                    {activeAnswer.questionCode}
-                  </div>
-                  <div className="text-sm text-slate-600">{activeAnswer.questionText}</div>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                  {activeAnswer.comment || 'Belum ada komentar dari user.'}
-                </div>
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                    Evidence
-                  </div>
-                  {activeAnswer.evidence.length === 0 ? (
-                    <div className="text-sm text-slate-500">Belum ada evidence.</div>
-                  ) : (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                      <ol className="list-decimal space-y-1 pl-4 text-sm text-blue-600">
-                        {activeAnswer.evidence.map((item) => (
-                          <li key={item.id}>
-                            <a
-                              href={resolveApiUrl(item.url)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-block max-w-full break-all hover:underline"
-                            >
-                              {item.name}
-                            </a>
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-3 pt-2">
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                    {reviewLabel}
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-slate-600">
-                        Status of Implementation <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                        value={reviewInputs[activeAnswer.id]?.status ?? 'Satisfactory'}
-                        onChange={(event) =>
-                          handleReviewChange(activeAnswer.id, { status: event.target.value })
-                        }
-                      >
-                        <option value="Satisfactory">Satisfactory</option>
-                        <option value="Not Satisfactory">Not Satisfactory</option>
-                        <option value="Not Aplicable">Not Aplicable</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-slate-600">
-                        Severity
-                      </label>
-                      <select
-                        className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                        value={reviewInputs[activeAnswer.id]?.severity ?? ''}
-                        onChange={(event) =>
-                          handleReviewChange(activeAnswer.id, { severity: event.target.value })
-                        }
-                      >
-                        <option value="">-</option>
-                        <option value="Minor">Minor</option>
-                        <option value="Major">Major</option>
-                        <option value="Critical">Critical</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-slate-600">
-                        Probability
-                      </label>
-                      <select
-                        className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                        value={reviewInputs[activeAnswer.id]?.probability ?? ''}
-                        onChange={(event) =>
-                          handleReviewChange(activeAnswer.id, { probability: event.target.value })
-                        }
-                      >
-                        <option value="">-</option>
-                        <option value="Rare">Rare</option>
-                        <option value="Occasional">Occasional</option>
-                        <option value="Frequent">Frequent</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-slate-600">
-                        Resume
-                      </label>
-                      <Input
-                        value={reviewInputs[activeAnswer.id]?.resume ?? ''}
-                        onChange={(event) =>
-                          handleReviewChange(activeAnswer.id, { resume: event.target.value })
-                        }
-                        placeholder="Ringkasan"
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-xs font-semibold text-slate-600">
-                        Description
-                      </label>
-                      <Textarea
-                        rows={3}
-                        value={reviewInputs[activeAnswer.id]?.description ?? ''}
-                        onChange={(event) =>
-                          handleReviewChange(activeAnswer.id, { description: event.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-xs font-semibold text-slate-600">
-                        Finding
-                      </label>
-                      <Textarea
-                        rows={3}
-                        value={reviewInputs[activeAnswer.id]?.finding ?? ''}
-                        onChange={(event) =>
-                          handleReviewChange(activeAnswer.id, { finding: event.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-xs font-semibold text-slate-600">
-                        Recommendations
-                      </label>
-                      <Textarea
-                        rows={3}
-                        value={reviewInputs[activeAnswer.id]?.recommendations ?? ''}
-                        onChange={(event) =>
-                          handleReviewChange(activeAnswer.id, {
-                            recommendations: event.target.value,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-xs font-semibold text-slate-600">
-                        Remark
-                      </label>
-                      <Textarea
-                        rows={3}
-                        value={reviewInputs[activeAnswer.id]?.remark ?? ''}
-                        onChange={(event) =>
-                          handleReviewChange(activeAnswer.id, { remark: event.target.value })
-                        }
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3 pt-2">
-                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                    Mode Kirim
-                  </label>
-                  <select
-                    className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                    value={sendMode}
-                    onChange={(event) =>
-                      setSendMode(event.target.value === 'allow' ? 'allow' : 'finalize')
-                    }
-                  >
-                    <option value="finalize">Finalize</option>
-                    <option value="allow">Allow Reply</option>
-                  </select>
-                </div>
-
-                <div className="flex flex-wrap justify-end gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => submitReviews([activeAnswer.id], 'draft')}
-                    disabled={isSaving}
-                  >
-                    Simpan Draft
-                  </Button>
-                  <Button
-                    className="bg-blue-500 text-white hover:bg-blue-600"
-                    onClick={() => submitReviews([activeAnswer.id], 'send')}
-                    disabled={isSaving}
-                  >
-                    Kirim
-                  </Button>
-                </div>
-                <div className="grid gap-3 pt-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-slate-600">
-                      Review By
-                    </label>
-                    <Input
-                      value={activeAnswer.review?.reviewer?.name ?? '—'}
-                      disabled
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-slate-600">
-                      Review At
-                    </label>
-                    <Input value={activeAnswer.review?.sentAt ?? '—'} disabled />
-                  </div>
-                </div>
-              </>
+                <SelfAssessmentReviewDetailPanel
+                  activeAnswer={activeAnswer}
+                  reviewLabel={reviewLabel}
+                  reviewInput={{
+                    status: reviewInputs[activeAnswer.id]?.status ?? 'Satisfactory',
+                    severity: reviewInputs[activeAnswer.id]?.severity ?? '',
+                    probability: reviewInputs[activeAnswer.id]?.probability ?? '',
+                    resume: reviewInputs[activeAnswer.id]?.resume ?? '',
+                    description: reviewInputs[activeAnswer.id]?.description ?? '',
+                    finding: reviewInputs[activeAnswer.id]?.finding ?? '',
+                    recommendations:
+                      reviewInputs[activeAnswer.id]?.recommendations ?? '',
+                    remark: reviewInputs[activeAnswer.id]?.remark ?? '',
+                  }}
+                  sendMode={sendMode}
+                  onSendModeChange={setSendMode}
+                  onReviewChange={(value) =>
+                    handleReviewChange(activeAnswer.id, value)
+                  }
+                  onSubmitDraft={() => submitReviews([activeAnswer.id], 'draft')}
+                  onSubmitSend={() => submitReviews([activeAnswer.id], 'send')}
+                  isSaving={isSaving}
+                  resolveUrl={resolveApiUrl}
+                />
               )
             ) : (
               <div className="text-sm text-slate-500">Pilih pertanyaan untuk review.</div>
@@ -2786,24 +1681,42 @@ export function SelfAssessmentReviews({
             }
             setMonth(MONTH_OPTIONS[0].value);
             setYear(YEAR_OPTIONS[0]);
+            setSelectedUserId('all');
             setSearchText('');
           }}
           leadingControls={
-            !hideScopeFilter ? (
-              <select
-                className="h-11 rounded-xl border border-input bg-white/80 px-4 text-sm text-slate-700 shadow-sm transition-colors focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-slate-100"
-                value={scope}
-                onChange={(event) =>
-                  setScope(event.target.value as SelfAssessmentScope | 'all')
-                }
-                disabled={lockScope}
-              >
-                {SCOPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+            !hideScopeFilter || detailPanelMode === 'importDnp' ? (
+              <>
+                {!hideScopeFilter ? (
+                  <select
+                    className="h-11 rounded-xl border border-input bg-white/80 px-4 text-sm text-slate-700 shadow-sm transition-colors focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-slate-100"
+                    value={scope}
+                    onChange={(event) =>
+                      setScope(event.target.value as SelfAssessmentScope | 'all')
+                    }
+                    disabled={lockScope}
+                  >
+                    {SCOPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                {detailPanelMode === 'importDnp' ? (
+                  <select
+                    className="h-11 rounded-xl border border-input bg-white/80 px-4 text-sm text-slate-700 shadow-sm transition-colors focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:text-slate-100"
+                    value={selectedUserId}
+                    onChange={(event) => setSelectedUserId(event.target.value)}
+                  >
+                    {userFilterOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </>
             ) : undefined
           }
         />

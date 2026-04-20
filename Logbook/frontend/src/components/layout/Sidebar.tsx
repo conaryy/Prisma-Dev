@@ -5,6 +5,7 @@ import {
   BarChart3,
   BookOpen,
   ChevronRight,
+  FileSearch,
   Radio,
   Smartphone,
   Wrench,
@@ -231,7 +232,27 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             })}
           </nav>
 
-          <div className="hidden border-t border-violet-200/10 px-3 py-4 lg:block">
+          <div className="border-t border-violet-200/10 px-3 py-4">
+            <button
+              type="button"
+              onClick={() => handleNavigation('/import-management')}
+              className={`mb-3 flex w-full items-center justify-center rounded-2xl border px-0 py-3 transition-all duration-300 ${
+                location.pathname === '/import-management'
+                  ? 'border-violet-300/22 bg-violet-500/16 text-violet-100'
+                  : 'border-transparent'
+              }`}
+              style={
+                location.pathname === '/import-management'
+                  ? undefined
+                  : {
+                      background: 'var(--surface-soft)',
+                      color: 'var(--text-muted)',
+                    }
+              }
+              title="Import Center"
+            >
+              <FileSearch className="h-5 w-5" />
+            </button>
             <button
               type="button"
               onClick={() => handleNavigation('/')}
@@ -297,9 +318,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <h3 className="truncate text-lg font-semibold" style={{ color: 'var(--sidebar-active-title)' }}>
                     {activeMenu.label}
                   </h3>
-                  <p className="text-sm" style={{ color: 'var(--sidebar-active-text)' }}>
-                    Pilih tampilan logbook yang ingin dibuka
-                  </p>
                 </div>
               </div>
             </div>

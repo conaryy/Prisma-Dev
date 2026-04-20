@@ -280,6 +280,10 @@ services:
       AUTH_K3_CLIENT_SECRET: ${AUTH_K3_CLIENT_SECRET:-dev-secret-k3}
       AUTH_K3_REDIRECT_URI: ${AUTH_K3_REDIRECT_URI:-https://k3.ryvidia.my.id/auth/callback}
       AUTH_K3_POST_LOGOUT_URI: ${AUTH_K3_POST_LOGOUT_URI:-https://k3.ryvidia.my.id/}
+      AUTH_KEAMANAN_CLIENT_ID: ${AUTH_KEAMANAN_CLIENT_ID:-keamanan-web}
+      AUTH_KEAMANAN_CLIENT_SECRET: ${AUTH_KEAMANAN_CLIENT_SECRET:-dev-secret-keamanan}
+      AUTH_KEAMANAN_REDIRECT_URI: ${AUTH_KEAMANAN_REDIRECT_URI:-https://keamanan.ryvidia.my.id/auth/callback}
+      AUTH_KEAMANAN_POST_LOGOUT_URI: ${AUTH_KEAMANAN_POST_LOGOUT_URI:-https://keamanan.ryvidia.my.id/}
       AUTH_ALLOWED_ORIGINS: ${AUTH_ALLOWED_ORIGINS:-https://auth.ryvidia.my.id,https://k2s.ryvidia.my.id,https://logbook.ryvidia.my.id,https://k3.ryvidia.my.id,https://keamanan.ryvidia.my.id}
       AUTH_SESSION_COOKIE_NAME: ${AUTH_SESSION_COOKIE_NAME:-auth_sid}
       AUTH_SESSION_COOKIE_SECURE: ${AUTH_SESSION_COOKIE_SECURE:-true}
@@ -326,6 +330,7 @@ services:
       args:
         VITE_LOGBOOK_API_BASE_URL: ${LOGBOOK_VITE_API_BASE_URL:-https://apilogbook.ryvidia.my.id/api/v1}
         VITE_AUTH_PORTAL_URL: ${LOGBOOK_VITE_AUTH_PORTAL_URL:-https://auth.ryvidia.my.id}
+        VITE_SSO_ENABLED: ${LOGBOOK_VITE_SSO_ENABLED:-true}
         VITE_SSO_AUTH_BASE_URL: ${LOGBOOK_VITE_SSO_AUTH_BASE_URL:-https://authapi.ryvidia.my.id}
         VITE_SSO_AUTHORIZE_URL: ${LOGBOOK_VITE_SSO_AUTHORIZE_URL:-https://authapi.ryvidia.my.id/oauth/authorize}
         VITE_SSO_TOKEN_URL: ${LOGBOOK_VITE_SSO_TOKEN_URL:-https://authapi.ryvidia.my.id/oauth/token}
@@ -421,6 +426,21 @@ services:
     build:
       context: ./Keamanan
       dockerfile: backend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${KEAMANAN_VITE_API_BASE_URL:-}
+        VITE_AUTH_PORTAL_URL: ${AUTH_PORTAL_URL:-https://auth.ryvidia.my.id}
+        VITE_PORTAL_DASHBOARD_URL: ${KEAMANAN_VITE_PORTAL_DASHBOARD_URL:-}
+        VITE_PORTAL_KEAMANAN_URL: ${AUTH_VITE_KEAMANAN_BASE_URL:-https://keamanan.ryvidia.my.id}
+        VITE_PORTAL_K3_URL: ${AUTH_VITE_K3_BASE_URL:-https://k3.ryvidia.my.id}
+        VITE_PORTAL_K2S_URL: ${AUTH_VITE_K2S_BASE_URL:-https://k2s.ryvidia.my.id}
+        VITE_SSO_ENABLED: ${KEAMANAN_VITE_SSO_ENABLED:-true}
+        VITE_SSO_AUTH_BASE_URL: ${KEAMANAN_SSO_ISSUER:-https://authapi.ryvidia.my.id}
+        VITE_SSO_AUTHORIZE_URL: ${KEAMANAN_SSO_AUTHORIZE_URL:-https://authapi.ryvidia.my.id/oauth/authorize}
+        VITE_SSO_TOKEN_URL: ${KEAMANAN_SSO_TOKEN_URL:-https://authapi.ryvidia.my.id/oauth/token}
+        VITE_SSO_LOGOUT_URL: ${KEAMANAN_SSO_LOGOUT_URL:-https://authapi.ryvidia.my.id/auth/logout}
+        VITE_SSO_CLIENT_ID: ${AUTH_KEAMANAN_CLIENT_ID:-keamanan-web}
+        VITE_SSO_REDIRECT_URI: ${AUTH_KEAMANAN_REDIRECT_URI:-https://keamanan.ryvidia.my.id/auth/callback}
+        VITE_SSO_SCOPE: ${KEAMANAN_SSO_SCOPE:-openid profile email}
     container_name: keamanan-backend
     restart: unless-stopped
     depends_on:
@@ -429,6 +449,15 @@ services:
     environment:
       PORT: ${KEAMANAN_PORT:-3107}
       DATABASE_URL: ${KEAMANAN_DATABASE_URL:-postgresql://keamanan:change_me_keamanan@keamanan-db:5432/keamanan?schema=public}
+      KEAMANAN_CORS_ALLOW_ORIGINS: ${KEAMANAN_CORS_ALLOW_ORIGINS:-https://keamanan.ryvidia.my.id,https://auth.ryvidia.my.id}
+      KEAMANAN_ADMIN_ROLES: ${KEAMANAN_ADMIN_ROLES:-admin,keamanan_admin}
+      SSO_ISSUER: ${KEAMANAN_SSO_ISSUER:-https://authapi.ryvidia.my.id}
+      SSO_AUDIENCE: ${KEAMANAN_SSO_AUDIENCE:-k2s-platform}
+      SSO_JWKS_URL: ${KEAMANAN_SSO_JWKS_URL:-https://authapi.ryvidia.my.id/.well-known/jwks.json}
+      SSO_CLOCK_SKEW: ${KEAMANAN_SSO_CLOCK_SKEW:-60}
+      SSO_JWKS_CACHE_TTL: ${KEAMANAN_SSO_JWKS_CACHE_TTL:-300}
+    volumes:
+      - keamanan_uploads:/app/backend/uploads
 
   keycloak-db:
     image: postgres:16-alpine
@@ -477,4 +506,5 @@ volumes:
   logbook_db_data:
   k3_db_data:
   keamanan_db_data:
+  keamanan_uploads:
   keycloak_db_data:

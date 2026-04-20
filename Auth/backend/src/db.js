@@ -115,6 +115,15 @@ export async function seedDefaults() {
     redirectUri: config.defaultK3Client.redirectUri,
     postLogoutRedirectUri: config.defaultK3Client.postLogoutRedirectUri,
   });
+
+  await ensureOauthClient({
+    now,
+    clientId: config.defaultKeamananClient.clientId,
+    clientSecret: config.defaultKeamananClient.clientSecret,
+    name: 'Keamanan Web (dev)',
+    redirectUri: config.defaultKeamananClient.redirectUri,
+    postLogoutRedirectUri: config.defaultKeamananClient.postLogoutRedirectUri,
+  });
 }
 
 async function ensureOauthClient({

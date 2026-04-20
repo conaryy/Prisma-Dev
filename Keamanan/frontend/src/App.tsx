@@ -29,6 +29,14 @@ import {
   updateSupervisionStatus,
   uploadSupervisionEvidence,
 } from '@/lib/api';
+import { clearSessionTokens, getSessionToken, setSessionTokens } from '@/lib/session';
+import {
+  buildSsoLogoutUrl as buildFrontendSsoLogoutUrl,
+  consumeSsoState,
+  exchangeAuthorizationCode,
+  isSsoEnabled as isFrontendSsoEnabled,
+  startSsoLogin,
+} from '@/lib/sso';
 import type {
   ActivityItem,
   DashboardData,
@@ -608,6 +616,10 @@ function getInitialTheme(): ThemeMode {
 function normalizePath(pathname: string) {
   const trimmed = pathname.replace(/\/+$/, '');
   return trimmed || '/';
+}
+
+function isAuthCallbackPath(pathname: string) {
+  return normalizePath(pathname) === '/auth/callback';
 }
 
 function resolveRouteId(id: string): RouteId {
@@ -1490,6 +1502,13 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthBootstrapping, setIsAuthBootstrapping] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    return isFrontendSsoEnabled() && isAuthCallbackPath(window.location.pathname);
+  });
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
   const [isPortalMenuOpen, setIsPortalMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -1554,6 +1573,7 @@ export default function App() {
   }, [activeId, routeState.personSlug]);
 
   function handleLogout() {
+    clearSessionTokens();
     clearKnownSessionTokens();
 
     if (typeof window === 'undefined') {
@@ -1561,7 +1581,7 @@ export default function App() {
     }
 
     if (isSsoEnabled()) {
-      window.location.replace(buildSsoLogoutUrl(window.location.origin));
+      window.location.replace(buildFrontendSsoLogoutUrl(window.location.origin));
       return;
     }
 
@@ -1582,6 +1602,90 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (typeof window === 'undefined' || !isFrontendSsoEnabled()) {
+      setIsAuthBootstrapping(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function bootstrapAuth() {
+      if (isAuthCallbackPath(window.location.pathname)) {
+        setIsAuthBootstrapping(true);
+
+        try {
+          const url = new URL(window.location.href);
+          const code = url.searchParams.get('code');
+          const returnedState = url.searchParams.get('state');
+          const oauthError = url.searchParams.get('error');
+          const { state, verifier, returnTo } = consumeSsoState();
+
+          if (oauthError) {
+            throw new Error(url.searchParams.get('error_description') || oauthError);
+          }
+
+          if (!code || !returnedState || !state || returnedState !== state || !verifier) {
+            throw new Error('Callback SSO keamanan tidak valid.');
+          }
+
+          const tokenResult = await exchangeAuthorizationCode(code, verifier);
+          setSessionTokens({
+            accessToken: tokenResult.access_token,
+            refreshToken: tokenResult.refresh_token,
+          });
+
+          if (cancelled) {
+            return;
+          }
+
+          window.history.replaceState({}, '', returnTo);
+          setRouteState(parseRouteState(window.location.pathname));
+          setError('');
+          setIsAuthBootstrapping(false);
+          return;
+        } catch (authError) {
+          if (!cancelled) {
+            setError(authError instanceof Error ? authError.message : 'Gagal menyelesaikan login SSO keamanan.');
+            setIsAuthBootstrapping(false);
+            setIsLoading(false);
+          }
+          return;
+        }
+      }
+
+      if (!getSessionToken()) {
+        setIsAuthBootstrapping(true);
+
+        try {
+          await startSsoLogin(`${window.location.pathname}${window.location.search}${window.location.hash}`);
+          return;
+        } catch (authError) {
+          if (!cancelled) {
+            setError(authError instanceof Error ? authError.message : 'Gagal memulai login SSO keamanan.');
+            setIsAuthBootstrapping(false);
+            setIsLoading(false);
+          }
+          return;
+        }
+      }
+
+      if (!cancelled) {
+        setIsAuthBootstrapping(false);
+      }
+    }
+
+    void bootstrapAuth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isAuthBootstrapping) {
+      return;
+    }
+
     let cancelled = false;
 
     async function loadDashboard() {
@@ -1609,10 +1713,14 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAuthBootstrapping]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (isAuthCallbackPath(window.location.pathname)) {
       return;
     }
 
@@ -2109,6 +2217,7 @@ export default function App() {
             resultCount={resultCount}
             showMeta={routeHero.showMeta}
             showResultCount={routeHero.showResultCount}
+            layout={activeId === 'fasilitas-keamanan' ? 'wide-copy' : 'default'}
           />
         )}
 
@@ -2479,6 +2588,7 @@ function RouteHero({
   resultCount,
   showMeta = true,
   showResultCount = true,
+  layout = 'default',
 }: {
   eyebrow: string;
   title: string;
@@ -2488,12 +2598,13 @@ function RouteHero({
   resultCount: number;
   showMeta?: boolean;
   showResultCount?: boolean;
+  layout?: 'default' | 'wide-copy';
 }) {
   return (
     <section className="hero">
       <div className="hero-gradient" />
-      <div className="hero-card">
-        <div>
+      <div className={`hero-card${layout === 'wide-copy' ? ' hero-card--wide-copy' : ''}`}>
+        <div className="hero-copy-block">
           <p className="eyebrow">{eyebrow}</p>
           <h2 className="hero-title">{title}</h2>
           {subtitle ? <p className="hero-copy">{subtitle}</p> : null}
@@ -2751,8 +2862,8 @@ function FacilitiesSection({
   }
 
   return (
-    <section className="section-grid">
-      <article className="panel">
+    <section className="section-grid section-grid--facilities">
+      <article className="panel panel-span-full">
         <div className="panel-head">
           <div>
             <p className="eyebrow">Fasilitas Keamanan</p>
@@ -2886,25 +2997,6 @@ function FacilitiesSection({
           ) : (
             <EmptyRows copy="Tidak ada data fasilitas yang cocok dengan pencarian." />
           )}
-        </div>
-      </article>
-
-      <article className="panel panel-side">
-        <div className="panel-head">
-          <div>
-            <p className="eyebrow">Cakupan Area</p>
-            <h2 className="panel-title">Fokus inspeksi</h2>
-          </div>
-        </div>
-
-        <div className="mini-stat-list">
-          <MiniStat label="Zona Airside" value="Stabil" note="CCTV dan perimeter tervalidasi 98%." />
-          <MiniStat label="Zona Cargo" value="Perlu servis" note="Access gate perlu tindak lanjut vendor." />
-          <MiniStat
-            label="Terminal Kedatangan"
-            value="Aman"
-            note="X-Ray checkpoint beroperasi penuh selama shift pagi."
-          />
         </div>
       </article>
 

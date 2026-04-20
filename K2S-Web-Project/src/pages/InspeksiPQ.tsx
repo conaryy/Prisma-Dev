@@ -194,7 +194,7 @@ export function InspeksiPQ() {
                 >
                   <option value="Satisfactory">Satisfactory</option>
                   <option value="Not Satisfactory">Not Satisfactory</option>
-                  <option value="Not Aplicable">Not Aplicable</option>
+                  <option value="Not Applicable">Not Applicable</option>
                 </select>
               </FormField>
               <FormField label="Catatan Assessor">

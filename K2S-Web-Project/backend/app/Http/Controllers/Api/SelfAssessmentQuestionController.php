@@ -645,6 +645,7 @@ class SelfAssessmentQuestionController extends ApiController
             $rowNumber = (int) ($row['rowNumber'] ?? 0);
             $kategori = (string) ($row['kategori'] ?? '');
             $prefix = (string) ($row['prefix'] ?? '');
+            $pqNo = (string) ($row['pqNo'] ?? '');
             $pertanyaan = (string) ($row['pertanyaan'] ?? '');
             $deskripsi = (string) ($row['deskripsi'] ?? '');
 
@@ -680,6 +681,9 @@ class SelfAssessmentQuestionController extends ApiController
                 }
 
                 $numberKey = $scope.'|'.$category.'|'.$prefix;
+                $normalizedPqNo = $this->normalizeImportedQuestionCode($pqNo, $prefix);
+                $derivedSortOrder = $this->extractSortOrderFromQuestionCode($normalizedPqNo);
+
                 if (!isset($lastNumberCache[$numberKey])) {
                     $lastNumberCache[$numberKey] = (int) SelfAssessmentQuestion::query()
                         ->where('scope', $scope)
@@ -688,8 +692,41 @@ class SelfAssessmentQuestionController extends ApiController
                         ->max('sort_order');
                 }
 
-                $lastNumberCache[$numberKey]++;
-                $nextNumber = $lastNumberCache[$numberKey];
+                if ($normalizedPqNo !== '') {
+                    $existingQuestion = SelfAssessmentQuestion::query()
+                        ->where('scope', $scope)
+                        ->where('category', $category)
+                        ->where('code', $normalizedPqNo)
+                        ->first();
+
+                    if ($existingQuestion) {
+                        $sameQuestion = trim((string) $existingQuestion->text) === $pertanyaan
+                            && trim((string) ($existingQuestion->reference ?? '')) === ($deskripsi !== '' ? $deskripsi : '');
+
+                        if ($sameQuestion) {
+                            if ($derivedSortOrder !== null) {
+                                $lastNumberCache[$numberKey] = max($lastNumberCache[$numberKey], $derivedSortOrder);
+                            }
+                            continue;
+                        }
+
+                        $errors[] = [
+                            'row' => $rowNumber,
+                            'message' => "Kode PQ {$normalizedPqNo} sudah dipakai oleh pertanyaan lain.",
+                        ];
+                        continue;
+                    }
+                }
+
+                if ($normalizedPqNo !== '' && $derivedSortOrder !== null) {
+                    $nextCode = $normalizedPqNo;
+                    $nextNumber = $derivedSortOrder;
+                    $lastNumberCache[$numberKey] = max($lastNumberCache[$numberKey], $nextNumber);
+                } else {
+                    $lastNumberCache[$numberKey]++;
+                    $nextNumber = $lastNumberCache[$numberKey];
+                    $nextCode = $prefix.'.'.$nextNumber;
+                }
 
                 SelfAssessmentQuestion::create([
                     'id' => (string) Str::uuid(),
@@ -697,7 +734,7 @@ class SelfAssessmentQuestionController extends ApiController
                     'category' => $category,
                     'question_category' => $kategori,
                     'question_category_prefix' => $prefix,
-                    'code' => $prefix.'.'.$nextNumber,
+                    'code' => $nextCode,
                     'text' => $pertanyaan,
                     'reference' => $deskripsi !== '' ? $deskripsi : null,
                     'is_active' => true,
@@ -738,9 +775,40 @@ class SelfAssessmentQuestionController extends ApiController
             'rowNumber' => $rowNumber > 0 ? $rowNumber : $fallbackRowNumber,
             'kategori' => $this->sanitizeCsvValue((string) ($row['kategori'] ?? '')),
             'prefix' => strtoupper($this->sanitizeCsvValue((string) ($row['prefix'] ?? ''))),
+            'pqNo' => $this->sanitizeCsvValue((string) ($row['pqNo'] ?? $row['pq_no'] ?? '')),
             'pertanyaan' => $this->sanitizeCsvValue((string) ($row['pertanyaan'] ?? '')),
             'deskripsi' => $this->sanitizeCsvValue((string) ($row['deskripsi'] ?? '')),
         ];
+    }
+
+    private function normalizeImportedQuestionCode(string $pqNo, string $prefix): string
+    {
+        $normalizedPrefix = strtoupper(trim($prefix));
+        $value = strtoupper(trim($pqNo));
+        $value = preg_replace('/\s+/', '', $value);
+
+        if ($value === '') {
+            return '';
+        }
+
+        if (preg_match('/^[A-Z]+\.\d+$/', $value) === 1) {
+            return $value;
+        }
+
+        if ($normalizedPrefix !== '' && preg_match('/^\d+$/', $value) === 1) {
+            return $normalizedPrefix.'.'.$value;
+        }
+
+        return '';
+    }
+
+    private function extractSortOrderFromQuestionCode(string $code): ?int
+    {
+        if (preg_match('/^[A-Z]+\.(\d+)$/', $code, $matches) !== 1) {
+            return null;
+        }
+
+        return (int) $matches[1];
     }
 
     private function wrapperUrl(): string

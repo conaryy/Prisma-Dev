@@ -1,0 +1,317 @@
+# Arsitektur Logbook
+
+## Tujuan
+
+Dokumen ini mendefinisikan arah arsitektur Logbook untuk pengembangan production-grade, maintainable, dan siap dikembangkan bertahap.
+
+Fokus utama Logbook saat ini:
+
+- menerima file Excel arsip logbook sebagai sumber data utama
+- melakukan parsing, validasi, normalisasi, dan penyimpanan langsung ke database
+- menyediakan pencarian dan penelusuran data logbook
+- tetap kompatibel dengan SSO pusat
+
+Fitur masa depan yang perlu disiapkan dari awal:
+
+- AI semantic search berbasis makna dan konteks
+- evidence integrity atau tamper-evidence berbasis Hyperledger Fabric
+
+## Prinsip Arsitektur
+
+- Postgres adalah source of truth utama.
+- File Excel arsip hanya dipakai saat proses parsing dan import.
+- Import harus idempotent, terlacak, dan bisa diaudit.
+- Domain logbook inti tidak boleh bergantung langsung ke AI atau blockchain.
+- AI search dan blockchain ditempatkan sebagai extension capability di atas event dan metadata yang stabil.
+- Semua akses aplikasi tetap melalui Auth Portal/SSO pusat.
+
+## Gambaran Solusi
+
+Arsitektur Logbook dibagi menjadi 5 area:
+
+1. Presentation Layer
+- `Logbook/frontend`
+- menampilkan data logbook, status import, hasil pencarian, dan detail entry
+- tidak memproses file secara berat
+
+2. API & Application Layer
+- `Logbook/backend`
+- menerima request dari frontend
+- memvalidasi token SSO
+- menjalankan use case seperti import, list entries, detail, search, dan audit trail
+
+3. Data Ingestion Layer
+- modul import Excel
+- membaca file `.xlsx` atau `.xls`
+- melakukan validasi format
+- memetakan kolom arsip ke struktur domain internal
+- langsung menulis hasil normalisasi ke database
+- mencatat hasil import per batch
+
+4. Core Domain & Persistence
+- menyimpan entitas logbook hasil normalisasi
+- menyimpan metadata sumber impor, hash file, audit trail, dan status proses
+- seluruh query utama aplikasi berasal dari layer ini
+
+5. Extension Layer
+- semantic indexing untuk AI search
+- blockchain anchoring untuk tamper-evidence
+- dijalankan async melalui event atau queue
+
+## Skenario Operasional Utama
+
+### 1. Import Arsip Excel
+
+Flow yang disarankan:
+
+- user login melalui Auth Portal
+- user dengan permission import mengunggah file Excel
+- backend membuat `import batch`
+- backend membaca sheet dan memvalidasi struktur
+- backend melakukan normalisasi ke model domain
+- backend melakukan deduplication dan idempotency check
+- backend menyimpan data entry ke Postgres
+- backend menyimpan audit trail dan hasil import
+- backend menerbitkan event untuk indexing AI dan blockchain anchoring jika fitur itu aktif
+
+### 2. Konsumsi Data
+
+Setelah import selesai:
+
+- frontend hanya membaca data dari API
+- API hanya membaca data dari Postgres
+- file Excel tidak dipakai sebagai sumber query aplikasi
+
+### 3. Semantic Search Masa Depan
+
+Semantic search tidak langsung membaca file Excel. Pipeline yang disarankan:
+
+- entry logbook yang sudah tersimpan diterbitkan sebagai event indexing
+- service indexing membuat embedding dari teks penting
+- embedding dan metadata pencarian disimpan di storage pencarian yang sesuai
+- query user dijalankan terhadap index, lalu hasilnya diperkaya dari Postgres
+
+Dengan pola ini:
+
+- domain inti tetap sederhana
+- provider AI bisa diganti tanpa mengubah model data utama
+- reindex bisa dijalankan ulang tanpa menyentuh data sumber
+
+### 4. Tamper-Evidence via Hyperledger Fabric
+
+Prinsip utamanya adalah:
+
+- raw data tetap disimpan off-chain
+- proof integritas disimpan on-chain
+
+Dalam konteks Logbook ini, blockchain tidak dipakai untuk menyimpan isi file Excel, isi record logbook lengkap, atau payload mentah secara penuh. Yang dicatat cukup:
+
+- checksum proses import atau payload hasil parsing
+- checksum record atau batch
+- timestamp proses
+- actor atau subject import
+- reference ID batch atau entry
+- event penting seperti imported, re-imported, corrected, verified
+
+Data yang tetap berada di sistem utama aplikasi:
+
+- hasil parsing yang sudah masuk ke PostgreSQL
+- detail entry logbook
+- metadata operasional yang dipakai query harian
+- file atau artefak mentah bila suatu saat dipertahankan untuk kebutuhan audit internal
+
+Data yang masuk ke Hyperledger Fabric:
+
+- hash dari record, batch, atau payload yang relevan
+- ID referensi yang menunjuk ke data off-chain
+- jenis event integritas
+- timestamp dan identitas proses atau actor
+
+Model ini biasa disebut:
+
+- `raw data off-chain`
+- `proof on-chain`
+
+Manfaat pendekatan ini:
+
+- biaya dan kompleksitas lebih rendah
+- domain aplikasi tetap cepat
+- Fabric menjadi lapisan pembuktian integritas, bukan database operasional
+
+Cara verifikasinya nanti:
+
+- sistem mengambil data dari PostgreSQL
+- sistem menghitung ulang hash data yang ingin diverifikasi
+- hash hasil perhitungan dibandingkan dengan hash yang sudah di-anchor ke Fabric
+- bila hash cocok, data dianggap tidak berubah sejak event anchor tersebut
+
+## Batasan Domain Yang Disarankan
+
+### A. Auth & Access
+
+Tanggung jawab:
+
+- validasi token dari SSO pusat
+- mapping role atau permission
+- audit actor
+
+Tidak bertanggung jawab untuk:
+
+- login lokal
+- manajemen user lokal penuh
+
+### B. Logbook Core
+
+Tanggung jawab:
+
+- entri logbook
+- kategori logbook seperti tower, app, teknik
+- metadata sumber data
+- audit trail perubahan
+- query daftar dan detail
+
+### C. Import
+
+Tanggung jawab:
+
+- upload file
+- validasi template
+- parsing dan mapping Excel
+- deduplication
+- import batch result
+
+### D. Search
+
+Tanggung jawab:
+
+- full-text search
+- filter tanggal, kategori, fasilitas, call sign, operation type
+- semantic search di tahap berikutnya
+
+### E. Integrity
+
+Tanggung jawab:
+
+- checksum file dan batch
+- chain-of-custody
+- blockchain anchoring
+
+## Struktur Backend Yang Disarankan
+
+Untuk `Logbook/backend/src`, struktur yang disarankan:
+
+```text
+src/
+  auth/
+  common/
+  database/
+  health/
+  logbook/
+    dto/
+    entries/
+    imports/
+    search/
+    audit/
+    integrity/
+  jobs/
+```
+
+Makna tiap area:
+
+- `entries/`: query dan detail entry logbook
+- `imports/`: upload Excel, parsing, validasi, import batch
+- `search/`: search biasa dan semantic search
+- `audit/`: histori aktivitas dan perubahan
+- `integrity/`: hashing, notarization, blockchain adapter
+- `jobs/`: worker async untuk indexing dan anchoring
+
+## Struktur Data Yang Disarankan
+
+Schema Prisma saat ini masih memisahkan:
+
+- `TowerLogbookEntry`
+- `AppLogbookEntry`
+- `TeknikLogbookEntry`
+
+Itu masih bisa dipakai sementara, tetapi untuk jangka menengah saya sarankan arsitektur data mengarah ke model berikut:
+
+- `LogbookImportBatch`
+- `LogbookImportFile`
+- `LogbookImportError`
+- `LogbookEntry`
+- `LogbookEntryEvidence` jika nanti ada lampiran atau evidence per entry
+- `LogbookAuditTrail`
+- `LogbookSearchDocument`
+- `IntegrityAnchor`
+
+Catatan desain:
+
+- bila format tower, app, dan teknik benar-benar sangat berbeda, tiga tabel domain terpisah masih bisa dipertahankan
+- tetapi tetap tambahkan tabel batch import dan audit sebagai layer umum
+- hindari mengikat pipeline import hanya ke model manual-entry
+
+## Kebutuhan Teknis Production Grade
+
+Minimum yang perlu ada:
+
+- validasi file upload berdasarkan ukuran, MIME, dan ekstensi
+- checksum `SHA-256` untuk payload import atau batch hasil parsing
+- import batch dengan status `uploaded`, `validating`, `processing`, `completed`, `failed`
+- logging terstruktur
+- audit trail setiap import dan koreksi data
+- mekanisme deduplication
+- retry aman untuk job async
+- pemisahan storage file mentah dan data hasil normalisasi
+- policy permission yang jelas untuk viewer, importer, reviewer, admin
+
+## Risiko Jika Tidak Dipisah Dari Awal
+
+Jika AI search dan blockchain langsung dicampur ke controller atau service logbook inti, biasanya akan muncul masalah berikut:
+
+- alur import menjadi sulit diuji
+- query operasional melambat
+- schema database cepat kacau
+- perubahan provider AI atau Fabric chaincode akan memaksa perubahan domain utama
+- debugging produksi menjadi mahal
+
+Karena itu, core domain harus tetap sederhana: import, normalize, store, query, audit.
+
+## Rekomendasi Implementasi Bertahap
+
+### Fase 1
+
+- rapikan domain import Excel
+- tambah tabel batch import dan audit trail
+- tambah endpoint status import
+- tambah validasi dan deduplication
+
+### Fase 2
+
+- tambah search operasional biasa
+- filter dan full-text search
+- tambah metadata pencarian yang konsisten
+
+### Fase 3
+
+- tambah event atau queue
+- tambah semantic indexing pipeline
+- tambah endpoint semantic search
+
+### Fase 4
+
+- tambah hashing dan integrity record
+- integrasikan adapter Hyperledger Fabric
+- anchor batch import dan event penting
+
+## Keputusan Arsitektur Saat Ini
+
+Dengan kebutuhan yang Anda jelaskan, keputusan arsitektur yang paling tepat untuk Logbook saat ini adalah:
+
+- jadikan import Excel sebagai jalur ingestion resmi
+- parse Excel lalu masukkan hasilnya langsung ke Postgres
+- jadikan Postgres sebagai source of truth hasil normalisasi
+- siapkan audit dan batch import sejak awal
+- posisikan AI search sebagai service indexing terpisah
+- posisikan blockchain Fabric sebagai proof layer untuk integrity, bukan storage utama
+
+Pendekatan ini menjaga Logbook tetap sederhana untuk dibangun sekarang, tetapi tidak mengunci Anda saat nanti menambahkan semantic search dan tamper-evidence.

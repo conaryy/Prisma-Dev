@@ -71,6 +71,8 @@ model LogbookImportBatch {
   id             String    @id @default(cuid())
   sourceCategory String    @map("source_category")
   sourcePeriod   String?   @map("source_period")
+  reimportOfBatchId String? @map("reimport_of_batch_id")
+  isActive       Boolean   @default(true) @map("is_active")
   sourceFileName String    @map("source_file_name")
   status         String    @default("pending")
   totalRows      Int       @default(0) @map("total_rows")

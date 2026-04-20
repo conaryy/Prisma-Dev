@@ -5,6 +5,7 @@ import { HealthModule } from './health/health.module';
 import { LogbookModule } from './logbook/logbook.module';
 import { SsoJwtStrategy } from './auth/sso-jwt.strategy';
 import { DatabaseModule } from './database/database.module';
+import { SemanticSearchModule } from './semantic-search/semantic-search.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { DatabaseModule } from './database/database.module';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     HealthModule,
     LogbookModule,
+    SemanticSearchModule,
   ],
   providers: [SsoJwtStrategy],
 })

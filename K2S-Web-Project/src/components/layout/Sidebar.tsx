@@ -27,6 +27,7 @@ import {
   Users,
   Award,
   ShieldCheck,
+  Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -193,11 +194,15 @@ export function Sidebar({
   const isAdminExportDnpActive = location.pathname.startsWith(
     '/admin/self-assessment-export-dnp'
   );
+  const isAdminImportDnpActive = location.pathname.startsWith(
+    '/admin/self-assessment-import-dnp'
+  );
   const isAdminSelfAssessmentMenuActive =
     isAdminSelfAssessmentQuestionActive ||
     isAdminSelfAssessmentSessionActive ||
     isAdminReviewUnitSafetyActive ||
-    isAdminExportDnpActive;
+    isAdminExportDnpActive ||
+    isAdminImportDnpActive;
   const isAdminCapReviewActive = location.pathname.startsWith(
     '/admin/self-assessment-cap-reviews'
   );
@@ -1369,6 +1374,16 @@ export function Sidebar({
                   >
                     <Share2 className={navIconClass} />
                     <span className={labelClass('flex-1')}>Export DNP</span>
+                  </Link>
+                  <Link
+                    to="/admin/self-assessment-import-dnp"
+                    className={cn(
+                      subNavClass(isAdminImportDnpActive),
+                      'pl-8 text-[13px]'
+                    )}
+                  >
+                    <Download className={navIconClass} />
+                    <span className={labelClass('flex-1')}>Import DNP</span>
                   </Link>
                 </CollapsibleContent>
               </Collapsible>

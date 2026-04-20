@@ -81,8 +81,10 @@ class SelfAssessmentEvidenceController extends ApiController
         $validated = $request->validate([
             'answerId' => ['required', 'uuid'],
             'file' => ['required', 'file', 'max:20480', 'mimes:jpg,jpeg,png,pdf,docx,xlsx,mp3,mp4'],
+            'overrideFinalLock' => ['nullable', 'boolean'],
         ]);
 
+        $overrideFinalLock = (bool) ($validated['overrideFinalLock'] ?? false);
         $answer = SelfAssessmentAnswer::query()
             ->with('review')
             ->find($validated['answerId']);
@@ -91,7 +93,7 @@ class SelfAssessmentEvidenceController extends ApiController
             return response()->json(['error' => 'Jawaban tidak ditemukan.'], 404);
         }
 
-        if ($answer->review && $answer->review->is_final) {
+        if (!$overrideFinalLock && $answer->review && $answer->review->is_final) {
             return response()->json([
                 'error' => 'Jawaban sudah difinalisasi dan evidence tidak bisa diubah.',
             ], 403);
@@ -114,8 +116,13 @@ class SelfAssessmentEvidenceController extends ApiController
         return $this->respondData($item, 201);
     }
 
-    public function adminDestroy(SelfAssessmentEvidence $evidence)
+    public function adminDestroy(Request $request, SelfAssessmentEvidence $evidence)
     {
+        $validated = $request->validate([
+            'overrideFinalLock' => ['nullable', 'boolean'],
+        ]);
+
+        $overrideFinalLock = (bool) ($validated['overrideFinalLock'] ?? false);
         $answer = SelfAssessmentAnswer::query()
             ->with('review')
             ->where('session_area_id', $evidence->session_area_id)
@@ -123,7 +130,7 @@ class SelfAssessmentEvidenceController extends ApiController
             ->where('question_code', $evidence->question_code)
             ->first();
 
-        if ($answer && $answer->review && $answer->review->is_final) {
+        if (!$overrideFinalLock && $answer && $answer->review && $answer->review->is_final) {
             return response()->json([
                 'error' => 'Jawaban sudah difinalisasi dan evidence tidak bisa dihapus.',
             ], 403);

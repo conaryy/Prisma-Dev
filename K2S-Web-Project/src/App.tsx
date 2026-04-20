@@ -295,6 +295,16 @@ const AdminSelfAssessmentExportDnp = lazy(() =>
     default: module.SelfAssessmentExportDnp,
   }))
 );
+const AdminSelfAssessmentImportDnp = lazy(() =>
+  import('@/pages/admin/SelfAssessmentImportDnp').then((module) => ({
+    default: module.SelfAssessmentImportDnp,
+  }))
+);
+const AdminSelfAssessmentImportDnpDetail = lazy(() =>
+  import('@/pages/admin/SelfAssessmentImportDnpDetail').then((module) => ({
+    default: module.SelfAssessmentImportDnpDetail,
+  }))
+);
 const AdminSelfAssessmentCapReviews = lazy(() =>
   import('@/pages/admin/SelfAssessmentCapReviews').then((module) => ({
     default: module.SelfAssessmentCapReviews,
@@ -413,6 +423,22 @@ function App() {
             element={
               <RequireAdmin>
                 <AdminSelfAssessmentExportDnp />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/self-assessment-import-dnp"
+            element={
+              <RequireAdmin>
+                <AdminSelfAssessmentImportDnp />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/self-assessment-import-dnp/:userId/:sessionAreaId"
+            element={
+              <RequireAdmin>
+                <AdminSelfAssessmentImportDnpDetail />
               </RequireAdmin>
             }
           />

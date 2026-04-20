@@ -1,13 +1,19 @@
 import { apiFetch } from './api';
 import type {
+  ImportBatchDetail,
+  ImportBatchError,
+  ImportBatchesResponse,
+  ImportBatchSummary,
   LogbookCategory,
   LogbookEntryRecord,
   LogbookListResponse,
+  PaginationMeta,
   PaginatedLogbookEntries,
   LogbookSummaryItem,
   TeknikEntryRecord,
   TowerOrAppEntryRecord,
   UnifiedLogbookEntry,
+  SemanticSearchResponse,
 } from '../types';
 
 export const LOGBOOK_CATEGORIES: LogbookCategory[] = ['tower', 'app', 'teknik'];
@@ -197,6 +203,36 @@ export async function fetchLogbookOverview() {
   };
 }
 
+type SearchSemanticParams = {
+  query: string;
+  limit?: number;
+  sourceType?: LogbookCategory;
+  startDate?: string;
+  endDate?: string;
+};
+
+export async function searchSemanticLogbook({
+  query,
+  limit = 8,
+  sourceType,
+  startDate,
+  endDate,
+}: SearchSemanticParams): Promise<SemanticSearchResponse> {
+  return apiFetch<SemanticSearchResponse>('/logbook/search/semantic', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query,
+      limit,
+      sourceType,
+      startDate,
+      endDate,
+    }),
+  });
+}
+
 export function getPeriodStart(period: 'hari' | 'minggu' | 'bulan' | 'tahun') {
   const now = new Date();
   const start = new Date(now);
@@ -236,4 +272,95 @@ export function groupEntriesForRekap(entries: UnifiedLogbookEntry[]) {
   return Array.from(grouped.entries())
     .map(([label, total]) => ({ label, total }))
     .sort((left, right) => right.total - left.total);
+}
+
+type FetchImportBatchesParams = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  category?: LogbookCategory | null;
+  status?: 'pending' | 'processing' | 'completed' | 'failed' | null;
+};
+
+export async function fetchImportBatches({
+  page = 1,
+  pageSize = 20,
+  search = '',
+  category = null,
+  status = null,
+}: FetchImportBatchesParams): Promise<ImportBatchesResponse> {
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+
+  if (search.trim()) {
+    params.set('search', search.trim());
+  }
+  if (category) {
+    params.set('category', category);
+  }
+  if (status) {
+    params.set('status', status);
+  }
+
+  return apiFetch<ImportBatchesResponse>(`/logbook/import-batches?${params.toString()}`);
+}
+
+export async function fetchImportBatchDetail(
+  batchId: string,
+  params?: {
+    sourcePage?: number;
+    sourcePageSize?: number;
+    auditPage?: number;
+    auditPageSize?: number;
+  }
+) {
+  const searchParams = new URLSearchParams();
+  if (params?.sourcePage) searchParams.set('sourcePage', String(params.sourcePage));
+  if (params?.sourcePageSize) searchParams.set('sourcePageSize', String(params.sourcePageSize));
+  if (params?.auditPage) searchParams.set('auditPage', String(params.auditPage));
+  if (params?.auditPageSize) searchParams.set('auditPageSize', String(params.auditPageSize));
+
+  const response = await apiFetch<{
+    data: ImportBatchDetail;
+    meta: {
+      sourceRows: PaginationMeta;
+      auditTrail: PaginationMeta;
+    };
+  }>(`/logbook/import-batches/${batchId}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`);
+
+  return response;
+}
+
+export async function fetchImportBatchErrors(
+  batchId: string,
+  params?: {
+    page?: number;
+    pageSize?: number;
+  }
+) {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+
+  return apiFetch<{
+    data: ImportBatchError[];
+    meta: PaginationMeta;
+  }>(`/logbook/import-batches/${batchId}/errors${searchParams.toString() ? `?${searchParams.toString()}` : ''}`);
+}
+
+export async function rollbackImportBatch(batchId: string) {
+  const response = await apiFetch<{
+    data: {
+      batchId: string;
+      isActive: boolean;
+      replacedBatchId: string | null;
+      sourceCategory: LogbookCategory;
+      sourcePeriod: string | null;
+    };
+  }>(`/logbook/import-batches/${batchId}/rollback`, {
+    method: 'POST',
+  });
+  return response.data;
 }

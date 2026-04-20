@@ -1,6 +1,9 @@
+import { clearSessionTokens, getRefreshToken, getSessionToken, setSessionTokens } from '@/lib/session';
+import { refreshAccessToken } from '@/lib/sso';
 import type { DashboardData } from '@/types/dashboard';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+let activeRefreshRequest: Promise<string | null> | null = null;
 
 function resolveApiAssetUrl(url: string) {
   if (!url || /^https?:\/\//i.test(url) || !url.startsWith('/')) {
@@ -49,8 +52,71 @@ async function readApiError(response: Response, fallbackMessage: string) {
   return fallbackMessage;
 }
 
+async function refreshSessionToken() {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    clearSessionTokens();
+    return null;
+  }
+
+  if (!activeRefreshRequest) {
+    activeRefreshRequest = refreshAccessToken(refreshToken)
+      .then((result) => {
+        if (!result.access_token) {
+          throw new Error('Access token tidak ditemukan.');
+        }
+
+        setSessionTokens({
+          accessToken: result.access_token,
+          refreshToken: result.refresh_token,
+        });
+
+        return result.access_token;
+      })
+      .catch(() => {
+        clearSessionTokens();
+        return null;
+      })
+      .finally(() => {
+        activeRefreshRequest = null;
+      });
+  }
+
+  return activeRefreshRequest;
+}
+
+async function apiFetch(path: string, init: RequestInit = {}, allowRefresh = true) {
+  const headers = new Headers(init.headers);
+  const token = getSessionToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(path, {
+    ...init,
+    headers,
+  });
+
+  if (response.status !== 401 || !allowRefresh) {
+    return response;
+  }
+
+  const refreshedToken = await refreshSessionToken();
+  if (!refreshedToken) {
+    return response;
+  }
+
+  const retryHeaders = new Headers(init.headers);
+  retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
+
+  return fetch(path, {
+    ...init,
+    headers: retryHeaders,
+  });
+}
+
 export async function fetchDashboard(): Promise<DashboardData> {
-  const response = await fetch(`${API_BASE_URL}/api/dashboard`);
+  const response = await apiFetch(`${API_BASE_URL}/api/dashboard`);
 
   if (!response.ok) {
     throw new Error(await readApiError(response, 'Gagal memuat data dashboard keamanan.'));
@@ -79,7 +145,7 @@ export async function createPersonnel(input: {
   recurrentExisting?: string;
   recurrentPlan?: string;
 }) {
-  const response = await fetch(`${API_BASE_URL}/api/personnel`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/personnel`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -95,7 +161,7 @@ export async function createPersonnel(input: {
 }
 
 export async function deletePersonnelTable() {
-  const response = await fetch(`${API_BASE_URL}/api/personnel`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/personnel`, {
     method: 'DELETE',
   });
 
@@ -107,7 +173,7 @@ export async function deletePersonnelTable() {
 }
 
 export async function deletePersonnel(slug: string) {
-  const response = await fetch(`${API_BASE_URL}/api/personnel/${slug}`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/personnel/${slug}`, {
     method: 'DELETE',
   });
 
@@ -119,7 +185,7 @@ export async function deletePersonnel(slug: string) {
 }
 
 export async function deleteDocumentsTable() {
-  const response = await fetch(`${API_BASE_URL}/api/documents`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/documents`, {
     method: 'DELETE',
   });
 
@@ -131,7 +197,7 @@ export async function deleteDocumentsTable() {
 }
 
 export async function deleteDocument(sourceType: 'manual' | 'evidence', id: string) {
-  const response = await fetch(`${API_BASE_URL}/api/documents/${sourceType}/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/documents/${sourceType}/${id}`, {
     method: 'DELETE',
   });
 
@@ -146,7 +212,7 @@ export async function uploadPersonnelPhoto(slug: string, photo: File) {
   const formData = new FormData();
   formData.append('photo', photo);
 
-  const response = await fetch(`${API_BASE_URL}/api/personnel/${slug}/photo`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/personnel/${slug}/photo`, {
     method: 'POST',
     body: formData,
   });
@@ -174,7 +240,7 @@ export async function createFacility(input: {
     formData.append('photo', input.photo);
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/facilities`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/facilities`, {
     method: 'POST',
     body: formData,
   });
@@ -187,7 +253,7 @@ export async function createFacility(input: {
 }
 
 export async function deleteFacility(id: string) {
-  const response = await fetch(`${API_BASE_URL}/api/facilities/${id}`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/facilities/${id}`, {
     method: 'DELETE',
   });
 
@@ -208,7 +274,7 @@ export async function updateSupervisionStatus(
     inspectorNames?: string[] | null;
   }
 ) {
-  const response = await fetch(`${API_BASE_URL}/api/supervision-activities/${activityId}/status`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/supervision-activities/${activityId}/status`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -227,7 +293,7 @@ export async function uploadSupervisionEvidence(activityId: string, file: File) 
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`${API_BASE_URL}/api/supervision-activities/${activityId}/evidence`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/supervision-activities/${activityId}/evidence`, {
     method: 'POST',
     body: formData,
   });

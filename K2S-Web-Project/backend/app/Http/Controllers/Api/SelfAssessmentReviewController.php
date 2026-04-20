@@ -6,6 +6,7 @@ use App\Models\SelfAssessmentAnswer;
 use App\Models\SelfAssessmentCap;
 use App\Models\SelfAssessmentEvidence;
 use App\Models\SelfAssessmentExportDnpImportJob;
+use App\Models\SelfAssessmentImportDnpInjectJob;
 use App\Models\SelfAssessmentQuestion;
 use App\Models\SelfAssessmentExportDnpSnapshot;
 use App\Models\SelfAssessmentReview;
@@ -13,9 +14,12 @@ use App\Models\SelfAssessmentResult;
 use App\Models\SelfAssessmentSession;
 use App\Models\SelfAssessmentSessionArea;
 use App\Models\SelfAssessmentSessionQuestionCategoryUser;
+use App\Models\SelfAssessmentSessionUser;
 use App\Models\SelfAssessmentQuestionCategory;
 use App\Models\SystemNotification;
+use App\Models\User;
 use App\Services\Whatsapp\SelfAssessmentWhatsappNotificationService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -30,7 +34,12 @@ class SelfAssessmentReviewController extends ApiController
             'scope' => ['nullable', 'in:audit,monitoring,inspeksi,surveillance'],
             'month' => ['nullable'],
             'year' => ['nullable', 'integer'],
+            'mode' => ['nullable', 'in:default,importDnp'],
         ]);
+
+        if (($validated['mode'] ?? 'default') === 'importDnp') {
+            return $this->respondData($this->buildActiveImportDnpPayload($validated));
+        }
 
         $monthNumber = $this->resolveMonth($validated['month'] ?? null);
 
@@ -77,21 +86,52 @@ class SelfAssessmentReviewController extends ApiController
     {
         $validated = $request->validate([
             'userId' => ['required', 'uuid'],
+            'mode' => ['nullable', 'in:default,importDnp'],
         ]);
 
         $session = SelfAssessmentSession::query()->find($area->session_id);
 
+        $isImportDnpMode = ($validated['mode'] ?? 'default') === 'importDnp';
+
+        $questions = $isImportDnpMode
+            ? $this->resolveQuestionsForSessionAreaUser($session, $area, $validated['userId'])
+            : collect();
+
+        if ($isImportDnpMode) {
+            foreach ($questions as $question) {
+                SelfAssessmentAnswer::query()->firstOrCreate(
+                    [
+                        'session_area_id' => $area->id,
+                        'user_id' => $validated['userId'],
+                        'question_code' => $question->code,
+                    ],
+                    [
+                        'status' => 'Satisfactory',
+                        'comment' => null,
+                        'evidence_note' => null,
+                        'is_submitted' => false,
+                        'submitted_at' => null,
+                    ]
+                );
+            }
+        }
+
         $answers = SelfAssessmentAnswer::query()
             ->where('session_area_id', $area->id)
             ->where('user_id', $validated['userId'])
-            ->where('is_submitted', true)
+            ->when(
+                !$isImportDnpMode,
+                fn ($query) => $query->where('is_submitted', true)
+            )
             ->with(['review.reviewer', 'user'])
             ->get();
 
-        $questions = SelfAssessmentQuestion::query()
-            ->when($session?->scope, fn ($query, $scope) => $query->where('scope', $scope))
-            ->whereIn('code', $answers->pluck('question_code'))
-            ->get()
+        $questions = ($isImportDnpMode
+            ? $questions
+            : SelfAssessmentQuestion::query()
+                ->when($session?->scope, fn ($query, $scope) => $query->where('scope', $scope))
+                ->whereIn('code', $answers->pluck('question_code'))
+                ->get())
             ->keyBy('code');
         $totalQuestions = $this->resolveTotalQuestions(
             $session,
@@ -124,6 +164,15 @@ class SelfAssessmentReviewController extends ApiController
         $currentAdminUserId = (string) optional($request->user())->id;
         $activeDnpImportJob = $currentAdminUserId !== ''
             ? SelfAssessmentExportDnpImportJob::query()
+                ->where('user_id', $currentAdminUserId)
+                ->where('session_area_id', $area->id)
+                ->where('target_user_id', $validated['userId'])
+                ->whereIn('status', ['queued', 'running'])
+                ->latest('created_at')
+                ->first()
+            : null;
+        $activeDnpInjectJob = $currentAdminUserId !== ''
+            ? SelfAssessmentImportDnpInjectJob::query()
                 ->where('user_id', $currentAdminUserId)
                 ->where('session_area_id', $area->id)
                 ->where('target_user_id', $validated['userId'])
@@ -202,6 +251,13 @@ class SelfAssessmentReviewController extends ApiController
                 'createdAt' => optional($activeDnpImportJob->created_at)->toDateTimeString(),
                 'startedAt' => optional($activeDnpImportJob->started_at)->toDateTimeString(),
             ] : null,
+            'dnpInjectJob' => $activeDnpInjectJob ? [
+                'jobId' => $activeDnpInjectJob->id,
+                'status' => $activeDnpInjectJob->status,
+                'message' => $activeDnpInjectJob->message,
+                'createdAt' => optional($activeDnpInjectJob->created_at)->toDateTimeString(),
+                'startedAt' => optional($activeDnpInjectJob->started_at)->toDateTimeString(),
+            ] : null,
             'answers' => $answers->map(function (SelfAssessmentAnswer $answer) use ($questions, $evidence) {
                 $question = $questions[$answer->question_code] ?? null;
                 $review = $answer->review;
@@ -213,6 +269,7 @@ class SelfAssessmentReviewController extends ApiController
                     'status' => $answer->status,
                     'comment' => $answer->comment,
                     'evidenceNote' => $answer->evidence_note,
+                    'isSubmitted' => (bool) $answer->is_submitted,
                     'submittedAt' => optional($answer->submitted_at)->toDateTimeString(),
                     'evidence' => ($evidence[$answer->question_code] ?? collect())->map(function ($item) {
                         return [
@@ -246,6 +303,178 @@ class SelfAssessmentReviewController extends ApiController
         ];
 
         return $this->respondData($payload);
+    }
+
+    /**
+     * @param array{scope?: string, month?: mixed, year?: int|null} $validated
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildActiveImportDnpPayload(array $validated): array
+    {
+        $today = Carbon::today();
+        $monthNumber = $this->resolveMonth($validated['month'] ?? null);
+        $supportedScopes = ['audit', 'inspeksi', 'surveillance'];
+
+        $sessions = SelfAssessmentSession::query()
+            ->whereIn('scope', $supportedScopes)
+            ->when(
+                $validated['scope'] ?? null,
+                fn ($query, $scope) => $query->where('scope', $scope)
+            )
+            ->where('is_published', true)
+            ->whereDate('start_date', '<=', $today)
+            ->whereDate('end_date', '>=', $today)
+            ->when($monthNumber, fn ($query) => $query->whereMonth('start_date', $monthNumber))
+            ->when($validated['year'] ?? null, fn ($query, $year) => $query->whereYear('start_date', $year))
+            ->orderByDesc('start_date')
+            ->get();
+
+        if ($sessions->isEmpty()) {
+            return [];
+        }
+
+        $sessionIds = $sessions->pluck('id')->values();
+        $assignments = SelfAssessmentSessionUser::query()
+            ->whereIn('session_id', $sessionIds)
+            ->get(['session_id', 'user_id']);
+
+        $assignedUserIds = $assignments->pluck('user_id')->unique()->values();
+        $fallbackUsers = User::query()
+            ->whereRaw('LOWER(role) <> ?', ['admin'])
+            ->where('status', '!=', 'Disabled')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email'])
+            ->keyBy('id');
+        $assignedUsers = $assignedUserIds->isNotEmpty()
+            ? User::query()
+                ->whereIn('id', $assignedUserIds)
+                ->where('status', '!=', 'Disabled')
+                ->orderBy('name')
+                ->get(['id', 'name', 'email'])
+                ->keyBy('id')
+            : collect();
+
+        $areasBySession = SelfAssessmentSessionArea::query()
+            ->whereIn('session_id', $sessionIds)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get()
+            ->groupBy('session_id');
+
+        $payload = [];
+
+        foreach ($sessions as $session) {
+            $areaItems = $areasBySession->get($session->id, collect());
+            if ($areaItems->isEmpty()) {
+                continue;
+            }
+
+            $sessionAssignments = $assignments
+                ->where('session_id', $session->id)
+                ->pluck('user_id')
+                ->unique()
+                ->values();
+            $users = $sessionAssignments->isNotEmpty()
+                ? $sessionAssignments
+                    ->map(fn ($userId) => $assignedUsers->get($userId))
+                    ->filter()
+                    ->values()
+                : $fallbackUsers->values();
+
+            if ($users->isEmpty()) {
+                continue;
+            }
+
+            $schedule = $session->start_date && $session->end_date
+                ? $session->start_date->format('Y-m-d').' - '.$session->end_date->format('Y-m-d')
+                : null;
+
+            foreach ($users as $user) {
+                foreach ($areaItems as $area) {
+                    $payload[] = [
+                        'sessionAreaId' => $area->id,
+                        'user' => $user?->only(['id', 'name', 'email']),
+                        'area' => $area->category ?? '-',
+                        'scope' => $session->scope ?? '-',
+                        'schedule' => $schedule,
+                        'leader' => $session->team_leader ?? '-',
+                        'dnp' => $session->team_members ?? [],
+                        'kobo' => $session->team_audity ?? [],
+                        'questionCount' => $this->resolveTotalQuestions($session, $area, (string) $user->id),
+                        'submittedAt' => null,
+                    ];
+                }
+            }
+        }
+
+        return $payload;
+    }
+
+    private function resolveQuestionsForSessionAreaUser(
+        ?SelfAssessmentSession $session,
+        SelfAssessmentSessionArea $area,
+        string $userId
+    ): Collection {
+        if (!$session) {
+            return collect();
+        }
+
+        $items = SelfAssessmentQuestion::query()
+            ->where('scope', $session->scope)
+            ->where('category', $area->category)
+            ->where('is_active', true)
+            ->orderBy('question_category_prefix')
+            ->orderBy('sort_order')
+            ->get();
+
+        $questionCategories = SelfAssessmentQuestionCategory::query()
+            ->where('scope', $session->scope)
+            ->get(['id', 'name', 'prefix']);
+
+        if ($questionCategories->isEmpty()) {
+            return $items->values();
+        }
+
+        $assignments = SelfAssessmentSessionQuestionCategoryUser::query()
+            ->where('session_id', $session->id)
+            ->get(['question_category_id', 'user_id']);
+
+        if ($assignments->isEmpty()) {
+            return $items->values();
+        }
+
+        $categoryKeyById = $questionCategories->mapWithKeys(function ($category) {
+            return [$category->id => $category->prefix.'|'.$category->name];
+        });
+
+        $allowedKeys = [];
+        $assignedCategoryIds = $assignments
+            ->where('user_id', $userId)
+            ->pluck('question_category_id')
+            ->unique();
+
+        foreach ($assignedCategoryIds as $categoryId) {
+            $key = $categoryKeyById[$categoryId] ?? null;
+            if ($key) {
+                $allowedKeys[$key] = true;
+            }
+        }
+
+        if (empty($allowedKeys)) {
+            return collect();
+        }
+
+        return $items
+            ->filter(function ($item) use ($allowedKeys) {
+                $prefix = $item->question_category_prefix;
+                $name = $item->question_category;
+                if (!$prefix || !$name) {
+                    return false;
+                }
+
+                return isset($allowedKeys[$prefix.'|'.$name]);
+            })
+            ->values();
     }
 
     private function resolveTotalQuestions(?SelfAssessmentSession $session, SelfAssessmentSessionArea $area, string $userId): int

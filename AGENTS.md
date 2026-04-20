@@ -175,6 +175,10 @@
 
 ## Working Rules For Future Changes
 - Bila tugas menyentuh satu service saja, baca `AGENTS.md` di folder service itu sebelum mengubah kode.
+- Bila tugas melanjutkan refactor frontend K2S, baca juga `K2S-Web-Project/refactor_process.md` setelah `K2S-Web-Project/AGENTS.md` agar konteks tahap refactor terakhir tidak hilang.
+- Bila tugas butuh memahami struktur frontend/backend K2S lebih cepat, baca juga:
+  - `K2S-Web-Project/arsitekltur.md` untuk arsitektur frontend
+  - `K2S-Web-Project/backend/arsitektur.md` untuk arsitektur backend
 - Bila tugas menyentuh domain, gateway, env deploy, SSO, atau compose, baca juga `deploy/AGENTS.md` dan cek `docker-compose.central.yml`.
 - Jangan jadikan `legacy_file` atau `folder_referensi` sebagai dasar perubahan runtime tanpa verifikasi silang ke service aktif.
 - Jika ada mismatch antara dokumentasi dan file runtime aktual, prioritaskan file runtime lalu update dokumentasinya.

@@ -111,6 +111,8 @@ export function SelfAssessmentQuestions() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [isDeleteAreaOpen, setIsDeleteAreaOpen] = useState(false);
+  const [isDeletingArea, setIsDeletingArea] = useState(false);
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
   const [isExportingQuestions, setIsExportingQuestions] = useState(false);
   const [dnpSessionId, setDnpSessionId] = useState('');
@@ -501,9 +503,71 @@ export function SelfAssessmentQuestions() {
       .finally(() => setIsDeletingAll(false));
   };
 
+  const openDeleteArea = () => {
+    if (!filters.scope || !filters.category) {
+      setErrorMessage('Pilih scope dan kategori terlebih dahulu.');
+      return;
+    }
+    if (!selectedAreaCategory) {
+      setErrorMessage('Area yang dipilih tidak ditemukan.');
+      return;
+    }
+    setIsDeleteAreaOpen(true);
+  };
+
+  const handleDeleteArea = () => {
+    if (!selectedAreaCategory) {
+      setErrorMessage('Area yang dipilih tidak ditemukan.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsDeletingArea(true);
+    const params = new URLSearchParams({
+      scope: filters.scope,
+      category: filters.category,
+    });
+
+    apiFetch(`/api/admin/self-assessment/questions?${params.toString()}`, {
+      method: 'DELETE',
+    })
+      .then(() =>
+        apiFetch(`/api/admin/self-assessment/categories/${selectedAreaCategory.id}`, {
+          method: 'DELETE',
+        })
+      )
+      .then(() => {
+        resetForm();
+        setQuestions([]);
+        setSelection((prev) => ({ ...prev, category: '' }));
+        setFilters((prev) => ({ ...prev, category: '' }));
+        setImportFile(null);
+        if (importInputRef.current) {
+          importInputRef.current.value = '';
+        }
+        loadAreaCategories(filters.scope);
+        setIsDeleteAreaOpen(false);
+        toast({
+          title: 'Area berhasil dihapus',
+          description: 'Area dan seluruh pertanyaan pada area tersebut sudah dihapus.',
+        });
+      })
+      .catch((error: Error) => {
+        setErrorMessage(error.message || 'Gagal menghapus area pertanyaan.');
+      })
+      .finally(() => setIsDeletingArea(false));
+  };
+
   const scopeLabel = useMemo(() => {
     return SCOPE_OPTIONS.find((item) => item.value === filters.scope)?.label ?? '';
   }, [filters.scope]);
+  const selectedAreaCategory = useMemo(() => {
+    return (
+      areaCategories.find(
+        (item) => item.scope === filters.scope && item.name === filters.category
+      ) ?? null
+    );
+  }, [areaCategories, filters.category, filters.scope]);
   const selectedDnpFill = useMemo(() => {
     if (!selectedDnpFillKey) return null;
     return (
@@ -761,7 +825,7 @@ export function SelfAssessmentQuestions() {
               value="__add_category__"
               className="font-semibold text-blue-600"
             >
-              Tambah kategori
+              Tambah Area
             </SelectItem>
           </SelectContent>
         </Select>
@@ -1134,11 +1198,20 @@ export function SelfAssessmentQuestions() {
             <Button
               type="button"
               variant="destructive"
+              onClick={openDeleteArea}
+              disabled={!canManageQuestions || !selectedAreaCategory || isDeletingArea}
+              className="!border !border-red-600/50 !bg-red-600/20 !text-red-700 hover:!bg-red-600/28 hover:!text-red-800 dark:!border-red-400/70 dark:!bg-red-500/15 dark:!text-red-200 dark:hover:!bg-red-500/25 dark:hover:!text-red-100"
+            >
+              {isDeletingArea ? 'Menghapus Area...' : 'Hapus Area'}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
               onClick={openDeleteAll}
               disabled={!canManageQuestions || questions.length === 0}
               className="!border !border-red-600/50 !bg-red-600/20 !text-red-700 hover:!bg-red-600/28 hover:!text-red-800 dark:!border-red-400/70 dark:!bg-red-500/15 dark:!text-red-200 dark:hover:!bg-red-500/25 dark:hover:!text-red-100"
             >
-              Hapus Semua
+              Hapus Semua Data
             </Button>
             <Button
               type="button"
@@ -1238,6 +1311,40 @@ export function SelfAssessmentQuestions() {
             disabled={isDeletingAll}
           >
             {isDeletingAll ? 'Menghapus...' : 'Hapus Semua'}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={isDeleteAreaOpen}
+        onOpenChange={(open) => {
+          if (!isDeletingArea) {
+            setIsDeleteAreaOpen(open);
+          }
+        }}
+        modal={false}
+        title="Hapus area pertanyaan?"
+        description={`Area ${scopeLabel}${filters.category ? ` · ${filters.category}` : ''} akan dihapus bersama seluruh pertanyaan di dalamnya.`}
+      >
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          Tindakan ini akan menghapus area dan seluruh pertanyaan pada area yang dipilih.
+        </div>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsDeleteAreaOpen(false)}
+            disabled={isDeletingArea}
+          >
+            Batal
+          </Button>
+          <Button
+            type="button"
+            className="bg-red-500 text-white hover:bg-red-600"
+            onClick={handleDeleteArea}
+            disabled={isDeletingArea}
+          >
+            {isDeletingArea ? 'Menghapus Area...' : 'Hapus Area'}
           </Button>
         </div>
       </Modal>

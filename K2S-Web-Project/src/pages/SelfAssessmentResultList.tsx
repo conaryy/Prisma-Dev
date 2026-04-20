@@ -325,7 +325,7 @@ function ResultList({
                     Anggota
                   </TableHead>
                   <TableHead className="border-r border-slate-200 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Audity
+                    Auditee
                   </TableHead>
                 </TableRow>
               </TableHeader>
