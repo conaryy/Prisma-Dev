@@ -180,16 +180,20 @@ export async function fetchLogbookEntries({
 
 export async function fetchLogbookOverview() {
   const results = await Promise.all(
-    LOGBOOK_CATEGORIES.map(async (category) => ({
-      category,
-      entries: (await fetchLogbookEntries({ category, page: 1, pageSize: 200 })).entries,
-    }))
+    LOGBOOK_CATEGORIES.map(async (category) => {
+      const result = await fetchLogbookEntries({ category, page: 1, pageSize: 100 });
+      return {
+        category,
+        entries: result.entries,
+        total: result.meta.total,
+      };
+    })
   );
 
-  const summaries: LogbookSummaryItem[] = results.map(({ category, entries }) => ({
+  const summaries: LogbookSummaryItem[] = results.map(({ category, total }) => ({
     category,
     label: getCategoryLabel(category),
-    total: entries.length,
+    total,
   }));
 
   const allEntries = results
@@ -199,7 +203,7 @@ export async function fetchLogbookOverview() {
   return {
     summaries,
     allEntries,
-    totalEntries: allEntries.length,
+    totalEntries: summaries.reduce((sum, item) => sum + item.total, 0),
   };
 }
 

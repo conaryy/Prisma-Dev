@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+
 type SearchableEntry = {
   source_type: 'tower' | 'app' | 'teknik';
   source_id: string;
@@ -49,6 +51,42 @@ export function buildEmbeddingText(entry: SearchableEntry) {
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+export function buildPayload(entry: SearchableEntry) {
+  const formattedDate = formatDate(entry.entry_date);
+  const date = formattedDate ? new Date(`${formattedDate}T00:00:00.000Z`) : null;
+
+  return {
+    source_type: entry.source_type,
+    source_id: entry.source_id,
+    entry_no: entry.entry_no,
+    entry_date: formattedDate,
+    entry_year: date ? date.getUTCFullYear() : null,
+    entry_month: date ? date.getUTCMonth() + 1 : null,
+    entry_day: date ? date.getUTCDate() : null,
+    entry_date_key: date
+      ? Number(
+          `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, '0')}${String(
+            date.getUTCDate()
+          ).padStart(2, '0')}`
+        )
+      : null,
+    entry_time: entry.entry_time,
+  };
+}
+
+export function buildPointId(entry: SearchableEntry) {
+  const raw = `${entry.source_type}:${entry.source_id}`;
+  const hex = createHash('sha256').update(raw).digest('hex');
+
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    `5${hex.slice(13, 16)}`,
+    `a${hex.slice(17, 20)}`,
+    hex.slice(20, 32),
+  ].join('-');
 }
 
 export function buildResult(entry: SearchableEntry) {

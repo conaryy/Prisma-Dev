@@ -185,7 +185,7 @@ export default function Topbar({
   return (
     <header
       className={`fixed top-4 right-4 z-40 transition-all duration-300 ${
-        isSidebarOpen ? 'left-4 lg:left-[19rem]' : 'left-4'
+        isSidebarOpen ? 'left-4 lg:left-[18rem]' : 'left-4'
       }`}
     >
       <div

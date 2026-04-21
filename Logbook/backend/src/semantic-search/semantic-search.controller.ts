@@ -1,12 +1,17 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { SsoAuthGuard } from '../auth/sso-auth.guard';
+import { ReindexSemanticDto } from './dto/reindex-semantic.dto';
 import { SearchSemanticDto } from './dto/search-semantic.dto';
+import { SemanticSearchIndexingService } from './semantic-search.indexing';
 import { SemanticSearchService } from './semantic-search.service';
 
 @Controller('logbook/search/semantic')
 @UseGuards(SsoAuthGuard)
 export class SemanticSearchController {
-  constructor(private readonly semanticSearchService: SemanticSearchService) {}
+  constructor(
+    private readonly semanticSearchService: SemanticSearchService,
+    private readonly semanticSearchIndexingService: SemanticSearchIndexingService
+  ) {}
 
   @Get('status')
   getStatus() {
@@ -30,6 +35,16 @@ export class SemanticSearchController {
         limit,
         filters,
       },
+    };
+  }
+
+  @Post('reindex')
+  async reindex(@Body() body: ReindexSemanticDto) {
+    return {
+      data: await this.semanticSearchIndexingService.reindex({
+        fullReindex: body.fullReindex,
+        batchSize: body.batchSize,
+      }),
     };
   }
 }

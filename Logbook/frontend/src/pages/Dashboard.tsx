@@ -77,7 +77,7 @@ export default function Dashboard() {
         </GlassCard>
 
         <GlassCard className="p-6">
-          <h2 className="mb-4 text-xl font-semibold theme-page-title">Distribusi Kategori</h2>
+          <h2 className="mb-4 text-xl font-semibold theme-page-title">Jumlah Data Setiap Kategori</h2>
           {overview?.summaries.length ? (
             <div className="space-y-4">
               {overview.summaries.map((category) => (

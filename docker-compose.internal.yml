@@ -1,0 +1,63 @@
+services:
+  # Internal/LAN deploy uses direct IP:port access instead of the host-based gateway.
+  gateway:
+    profiles: ["manual_only"]
+
+  db:
+    ports: !reset []
+
+  auth-backend:
+    ports:
+      - "${AUTH_BACKEND_PORT:-3104}:3104"
+
+  auth-frontend:
+    ports:
+      - "${AUTH_FRONTEND_PORT:-5174}:80"
+
+  backend-init:
+    environment:
+      SSO_ISSUER: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}"
+      SSO_JWKS_URL: "http://auth-backend:3104/.well-known/jwks.json"
+      SSO_AUTHORIZE_URL: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}/oauth/authorize"
+      SSO_TOKEN_URL: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}/oauth/token"
+      SSO_END_SESSION_URL: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}/auth/logout"
+
+  backend:
+    environment:
+      SSO_ISSUER: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}"
+      SSO_JWKS_URL: "http://auth-backend:3104/.well-known/jwks.json"
+      SSO_AUTHORIZE_URL: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}/oauth/authorize"
+      SSO_TOKEN_URL: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}/oauth/token"
+      SSO_END_SESSION_URL: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}/auth/logout"
+
+  queue-worker:
+    environment:
+      SSO_ISSUER: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}"
+      SSO_JWKS_URL: "http://auth-backend:3104/.well-known/jwks.json"
+      SSO_AUTHORIZE_URL: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}/oauth/authorize"
+      SSO_TOKEN_URL: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}/oauth/token"
+      SSO_END_SESSION_URL: "http://${INTERNAL_SERVER_IP}:${AUTH_BACKEND_PORT:-3104}/auth/logout"
+
+  backend-nginx:
+    ports:
+      - "${K2S_BACKEND_PORT:-8000}:80"
+
+  frontend:
+    ports:
+      - "${K2S_FRONTEND_PORT:-5173}:80"
+
+  logbook-backend:
+    ports:
+      - "${LOGBOOK_BACKEND_PORT:-3105}:${LOGBOOK_BACKEND_PORT:-3105}"
+
+  logbook-frontend:
+    ports:
+      - "${LOGBOOK_FRONTEND_PORT:-5175}:80"
+
+  k3-backend:
+    ports:
+      - "${K3_PORT:-3106}:${K3_PORT:-3106}"
+
+  keamanan-backend:
+    ports:
+      - "${KEAMANAN_PORT:-3107}:${KEAMANAN_PORT:-3107}"

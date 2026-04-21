@@ -77,7 +77,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
         <main
           className={`pt-24 transition-all duration-300 ${
-            isSidebarOpen ? 'lg:ml-[18rem]' : 'lg:ml-0'
+            isSidebarOpen ? 'lg:ml-[17rem]' : 'lg:ml-0'
           }`}
         >
           <div className="p-4 lg:p-6">{children}</div>

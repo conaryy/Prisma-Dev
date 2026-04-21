@@ -126,6 +126,66 @@ export class SemanticSearchPostgresService {
     `);
   }
 
+  async fetchAllActiveEntries() {
+    return this.prisma.$queryRaw<SearchEntryRow[]>(Prisma.sql`
+      SELECT *
+      FROM (
+        SELECT
+          'tower' AS source_type,
+          id AS source_id,
+          entry_no,
+          TO_CHAR(entry_date, 'YYYY-MM-DD') AS entry_date,
+          entry_time,
+          operation_type,
+          facility,
+          call_sign,
+          description,
+          NULL::text AS equipment,
+          NULL::text AS frequency_section,
+          NULL::text AS incident
+        FROM tower_logbook_entries
+        WHERE ${this.buildActiveBatchEntryCondition('tower_logbook_entries')}
+
+        UNION ALL
+
+        SELECT
+          'app' AS source_type,
+          id AS source_id,
+          entry_no,
+          TO_CHAR(entry_date, 'YYYY-MM-DD') AS entry_date,
+          entry_time,
+          operation_type,
+          facility,
+          call_sign,
+          description,
+          NULL::text AS equipment,
+          NULL::text AS frequency_section,
+          NULL::text AS incident
+        FROM app_logbook_entries
+        WHERE ${this.buildActiveBatchEntryCondition('app_logbook_entries')}
+
+        UNION ALL
+
+        SELECT
+          'teknik' AS source_type,
+          id AS source_id,
+          entry_no,
+          TO_CHAR(entry_date, 'YYYY-MM-DD') AS entry_date,
+          entry_time,
+          NULL::text AS operation_type,
+          NULL::text AS facility,
+          NULL::text AS call_sign,
+          NULL::text AS description,
+          equipment,
+          frequency_section,
+          incident
+        FROM teknik_logbook_entries
+        WHERE ${this.buildActiveBatchEntryCondition('teknik_logbook_entries')}
+      ) combined_entries
+      ORDER BY entry_date DESC, entry_time DESC
+    `);
+  }
+
   private buildStructuredConditions(
     filters: SemanticSearchFilters,
     tableName: 'tower_logbook_entries' | 'app_logbook_entries' | 'teknik_logbook_entries'
