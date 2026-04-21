@@ -122,6 +122,11 @@ export const config = {
     resetPasswordWindowMs: toInt(process.env.AUTH_RATE_LIMIT_RESET_PASSWORD_WINDOW_MS, 15 * 60 * 1000),
     resetPasswordMaxPerActor: toInt(process.env.AUTH_RATE_LIMIT_RESET_PASSWORD_MAX_PER_ACTOR, 30),
   },
+  k2sUserSync: {
+    url: String(process.env.AUTH_K2S_USER_SYNC_URL || '').trim(),
+    token: String(process.env.AUTH_K2S_USER_SYNC_TOKEN || '').trim(),
+    timeoutMs: toInt(process.env.AUTH_K2S_USER_SYNC_TIMEOUT_MS, 5000),
+  },
   isDevelopment: (process.env.NODE_ENV || 'development') !== 'production',
   dataDir,
 };

@@ -44,6 +44,8 @@ export class SemanticSearchController {
       data: await this.semanticSearchIndexingService.reindex({
         fullReindex: body.fullReindex,
         batchSize: body.batchSize,
+        resume: body.resume,
+        stateFile: body.stateFile,
       }),
     };
   }

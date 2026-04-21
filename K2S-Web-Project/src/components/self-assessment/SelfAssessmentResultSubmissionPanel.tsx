@@ -68,7 +68,7 @@ export function SelfAssessmentResultSubmissionPanel({
         </div>
         <div className="space-y-2">
           <label className="text-xs font-semibold text-slate-600">
-            Upload Document <span className="text-red-500">*</span>
+            Upload Document <span className="font-normal text-slate-400">(opsional)</span>
           </label>
           <Input
             ref={fileInputRef}
@@ -114,7 +114,7 @@ export function SelfAssessmentResultSubmissionPanel({
           checked={forceSendResult}
           onCheckedChange={(checked) => onForceSendResultChange(checked === true)}
         />
-        <span>Kirim hasil audit walaupun tidak lengkap.</span>
+        <span>Kirim hasil walaupun tidak lengkap.</span>
       </label>
       {forceSendResult && (
         <div className="text-xs text-slate-500">
@@ -129,7 +129,7 @@ export function SelfAssessmentResultSubmissionPanel({
           onClick={onSendResult}
           disabled={isSaving || (!isResultComplete && !forceSendResult)}
         >
-          Kirim Hasil Audit
+          Kirim Hasil
         </Button>
         <div className="text-xs text-slate-500">
           Format: PDF, DOC, DOCX, XLS, XLSX, PNG, JPG, ZIP.

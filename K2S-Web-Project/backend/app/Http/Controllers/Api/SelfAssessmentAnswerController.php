@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\SelfAssessmentAnswer;
+use App\Models\SelfAssessmentResult;
 use App\Models\SystemNotification;
 use App\Models\User;
 use App\Services\Whatsapp\SelfAssessmentWhatsappNotificationService;
@@ -22,8 +23,13 @@ class SelfAssessmentAnswerController extends ApiController
             ->where('user_id', $request->user()->id)
             ->with(['review.reviewer'])
             ->get();
+        $result = SelfAssessmentResult::query()
+            ->where('session_area_id', $validated['sessionAreaId'])
+            ->where('user_id', $request->user()->id)
+            ->first(['finalized_at']);
+        $resultFinalizedAt = optional($result?->finalized_at)->toDateTimeString();
 
-        $payload = $answers->map(function (SelfAssessmentAnswer $answer) {
+        $payload = $answers->map(function (SelfAssessmentAnswer $answer) use ($resultFinalizedAt) {
             $review = $answer->review && $answer->review->sent_at ? $answer->review : null;
             return [
                 'id' => $answer->id,
@@ -33,6 +39,7 @@ class SelfAssessmentAnswerController extends ApiController
                 'evidenceNote' => $answer->evidence_note,
                 'isSubmitted' => $answer->is_submitted,
                 'submittedAt' => optional($answer->submitted_at)->toDateTimeString(),
+                'resultFinalizedAt' => $resultFinalizedAt,
                 'review' => $review ? [
                     'id' => $review->id,
                     'status' => $review->status,
@@ -63,6 +70,18 @@ class SelfAssessmentAnswerController extends ApiController
         $userId = $request->user()->id;
         $saved = [];
 
+        $sessionAreaIds = collect($validated['items'])
+            ->pluck('sessionAreaId')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        if ($this->hasFinalizedResult($sessionAreaIds, $userId)) {
+            return response()->json([
+                'error' => 'Hasil self assessment sudah difinalisasi Unit Safety dan tidak bisa diubah.',
+            ], 403);
+        }
+
         $submittedAnswerIds = [];
         foreach ($validated['items'] as $item) {
             $answer = SelfAssessmentAnswer::query()->firstOrNew([
@@ -70,12 +89,6 @@ class SelfAssessmentAnswerController extends ApiController
                 'user_id' => $userId,
                 'question_code' => $item['questionCode'],
             ]);
-
-            if ($answer->exists && $answer->review && $answer->review->is_final) {
-                return response()->json([
-                    'error' => 'Jawaban sudah difinalisasi dan tidak bisa diubah.',
-                ], 403);
-            }
 
             $answer->status = $item['status'];
             $answer->comment = $item['comment'] ?? null;
@@ -155,9 +168,9 @@ class SelfAssessmentAnswerController extends ApiController
                 return response()->json(['error' => 'Jawaban tidak ditemukan.'], 404);
             }
 
-            if (!$overrideFinalLock && $answer->review && $answer->review->is_final) {
+            if (!$overrideFinalLock && $this->hasFinalizedResult([$answer->session_area_id], $answer->user_id)) {
                 return response()->json([
-                    'error' => 'Jawaban sudah difinalisasi dan tidak bisa diubah.',
+                    'error' => 'Hasil self assessment sudah difinalisasi Unit Safety dan tidak bisa diubah.',
                 ], 403);
             }
 
@@ -170,5 +183,17 @@ class SelfAssessmentAnswerController extends ApiController
         }
 
         return $this->respondData(['saved' => $saved]);
+    }
+
+    /**
+     * @param  array<int, string>  $sessionAreaIds
+     */
+    private function hasFinalizedResult(array $sessionAreaIds, string $userId): bool
+    {
+        return SelfAssessmentResult::query()
+            ->where('user_id', $userId)
+            ->whereIn('session_area_id', $sessionAreaIds)
+            ->whereNotNull('finalized_at')
+            ->exists();
     }
 }

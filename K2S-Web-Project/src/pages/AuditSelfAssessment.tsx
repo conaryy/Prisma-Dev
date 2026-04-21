@@ -239,6 +239,7 @@ export function AuditSelfAssessment({
   const [submittedByQuestion, setSubmittedByQuestion] = useState<Record<string, boolean>>(
     {}
   );
+  const [resultFinalizedAt, setResultFinalizedAt] = useState<string | null>(null);
   const [evidenceList, setEvidenceList] = useState<
     Array<{ id: string; name: string; url: string }>
   >([]);
@@ -383,6 +384,7 @@ export function AuditSelfAssessment({
     if (!selectedAssessmentId) {
       setAssessmentByQuestion({});
       setReviewByQuestion({});
+      setResultFinalizedAt(null);
       return;
     }
     fetchSelfAssessmentAnswers(selectedAssessmentId)
@@ -411,11 +413,15 @@ export function AuditSelfAssessment({
         setAssessmentByQuestion(nextAnswers);
         setReviewByQuestion(nextReview);
         setSubmittedByQuestion(nextSubmitted);
+        setResultFinalizedAt(
+          items.find((item) => Boolean(item.resultFinalizedAt))?.resultFinalizedAt ?? null
+        );
       })
       .catch(() => {
         setAssessmentByQuestion({});
         setReviewByQuestion({});
         setSubmittedByQuestion({});
+        setResultFinalizedAt(null);
       });
   }, [selectedAssessmentId]);
 
@@ -472,11 +478,8 @@ export function AuditSelfAssessment({
   };
   const allowReply = reviewByQuestion[activeQuestion.id]?.allowReply ?? false;
   const isSubmitted = submittedByQuestion[activeQuestion.id] ?? false;
-  const isReviewLocked = reviewByQuestion[activeQuestion.id]?.isFinal ?? false;
-  const isMonitoringScope = scope === 'monitoring';
-  const isAnswerLocked = isMonitoringScope
-    ? isReviewLocked
-    : isSubmitted && !allowReply;
+  const isReviewLocked = Boolean(resultFinalizedAt);
+  const isAnswerLocked = Boolean(resultFinalizedAt);
   const isQuestionFilled = (questionId: string) => {
     const state = assessmentByQuestion[questionId];
     if (!state) return false;
@@ -799,15 +802,7 @@ export function AuditSelfAssessment({
       return;
     }
     const items = filteredByCategory
-      .filter(
-        (question) =>
-          isQuestionFilled(question.id) &&
-          !(
-            submittedByQuestion[question.id] &&
-            !reviewByQuestion[question.id]?.allowReply &&
-            scope !== 'monitoring'
-          )
-      )
+      .filter((question) => isQuestionFilled(question.id))
       .map((question) => ({
         sessionAreaId: selectedAssessmentId,
         questionCode: question.id,
@@ -1164,7 +1159,11 @@ export function AuditSelfAssessment({
                           Kolom dengan tanda bintang wajib diisi.
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
-                          <Button variant="outline" onClick={handleSaveDraft}>
+                          <Button
+                            variant="outline"
+                            onClick={handleSaveDraft}
+                            disabled={isAnswerLocked || isSubmittingAnswers}
+                          >
                             Simpan Draft
                           </Button>
                           <Button

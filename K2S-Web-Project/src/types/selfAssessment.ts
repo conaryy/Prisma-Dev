@@ -42,6 +42,7 @@ export type SelfAssessmentAnswer = {
   evidenceNote?: string | null;
   isSubmitted: boolean;
   submittedAt?: string | null;
+  resultFinalizedAt?: string | null;
   review?: SelfAssessmentReview | null;
 };
 

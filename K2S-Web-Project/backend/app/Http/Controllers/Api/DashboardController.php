@@ -827,6 +827,7 @@ class DashboardController extends ApiController
 
                 return [
                     'answerId' => $answer->id,
+                    'sessionAreaId' => $sessionArea?->id,
                     'questionCode' => $answer->question_code,
                     'questionText' => $question?->text ?? '',
                     'instansiName' => $session?->instansi_name,
@@ -1199,6 +1200,7 @@ class DashboardController extends ApiController
 
                 $allNonAdminUserIds = User::query()
                     ->whereRaw('LOWER(role) <> ?', ['admin'])
+                    ->where('status', '!=', 'Disabled')
                     ->pluck('id')
                     ->values()
                     ->all();
@@ -1376,6 +1378,7 @@ class DashboardController extends ApiController
 
         $users = User::query()
             ->whereRaw('LOWER(role) <> ?', ['admin'])
+            ->where('status', '!=', 'Disabled')
             ->orderBy('name')
             ->get(['id', 'name']);
         $allNonAdminUserIds = $users->pluck('id')->values()->all();

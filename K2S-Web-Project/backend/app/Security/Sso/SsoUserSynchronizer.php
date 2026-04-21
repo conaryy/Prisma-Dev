@@ -282,7 +282,11 @@ class SsoUserSynchronizer
     private function normalizePhone(string $value): string
     {
         $phone = preg_replace('/[\s().-]+/', '', $value) ?? '';
+        $phone = ltrim($phone, '+');
+        if (str_starts_with($phone, '08')) {
+            $phone = '62' . substr($phone, 1);
+        }
 
-        return preg_match('/^62\d{7,15}$/', $phone) === 1 ? $phone : '';
+        return preg_match('/^[1-9]\d{7,14}$/', $phone) === 1 ? $phone : '';
     }
 }

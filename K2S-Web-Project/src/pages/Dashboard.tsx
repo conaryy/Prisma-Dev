@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Lottie, { type LottieRefCurrentProps } from 'lottie-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -136,6 +136,7 @@ type MapMarkerDetailLatestFulfillment = {
 
 type MapMarkerDetailItem = {
   answerId: string;
+  sessionAreaId?: string | null;
   questionCode: string;
   questionText: string;
   instansiName?: string | null;
@@ -616,6 +617,7 @@ const MapKcpSection = memo(function MapKcpSection({
   hasExternalDnpMapAccess: boolean | null;
   mapSummaryByKey: Record<string, MapMarkerSummary>;
 }) {
+  const navigate = useNavigate();
   const displayedMapMarkerKey = pinnedMapMarkerKey;
   const activeMapMarker =
     MAP_KCP_MARKERS.find((marker) => marker.key === displayedMapMarkerKey) ?? null;
@@ -699,6 +701,17 @@ const MapKcpSection = memo(function MapKcpSection({
         setDetailLoading(false);
       }
     }
+  };
+
+  const openExternalDnpCapFulfillment = (item: MapMarkerDetailItem) => {
+    if (!detailScope || !item.sessionAreaId) {
+      return;
+    }
+
+    const query = new URLSearchParams({ answerId: item.answerId });
+    navigate(
+      `/external-dnp/${detailScope}/cap/pemenuhan/${item.sessionAreaId}?${query.toString()}`
+    );
   };
 
   return (
@@ -957,10 +970,20 @@ const MapKcpSection = memo(function MapKcpSection({
                           </div>
                         ) : detailScope && detailItems.length > 0 ? (
                           <div className="h-full space-y-2 overflow-y-auto pr-1">
-                            {detailItems.map((item) => (
-                              <div
+                            {detailItems.map((item) => {
+                              const canOpenItem = Boolean(detailScope && item.sessionAreaId);
+
+                              return (
+                              <button
                                 key={item.answerId}
-                                className="flex items-center justify-between gap-3 rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-sm dark:border-[#365891]/60 dark:bg-[#102754]/60"
+                                type="button"
+                                disabled={!canOpenItem}
+                                onClick={() => openExternalDnpCapFulfillment(item)}
+                                className={`flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-left text-sm transition dark:border-[#365891]/60 dark:bg-[#102754]/60 ${
+                                  canOpenItem
+                                    ? 'hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50/80 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 dark:hover:border-[#8fb5ff] dark:hover:bg-[#16336d]'
+                                    : 'cursor-not-allowed opacity-70'
+                                }`}
                               >
                                 <span className="font-semibold text-slate-700 dark:text-slate-100">
                                   {item.questionCode}
@@ -968,8 +991,9 @@ const MapKcpSection = memo(function MapKcpSection({
                                 <span className="text-sm font-semibold text-slate-500 dark:text-blue-100/80">
                                   {item.progress !== null ? `${item.progress}%` : '-'}
                                 </span>
-                              </div>
-                            ))}
+                              </button>
+                              );
+                            })}
                           </div>
                         ) : detailScope ? (
                           <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-200 px-3 py-4 text-sm text-slate-500 dark:border-[#365891]/70 dark:text-blue-100/75">

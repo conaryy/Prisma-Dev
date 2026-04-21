@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\SelfAssessmentAnswer;
 use App\Models\SelfAssessmentEvidence;
+use App\Models\SelfAssessmentResult;
 use App\Models\SelfAssessmentSessionArea;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -44,6 +45,11 @@ class SelfAssessmentEvidenceController extends ApiController
         if (!$area) {
             return response()->json(['error' => 'Session area not found.'], 404);
         }
+        if ($this->hasFinalizedResult($area->id, $request->user()->id)) {
+            return response()->json([
+                'error' => 'Hasil self assessment sudah difinalisasi Unit Safety dan evidence tidak bisa diubah.',
+            ], 403);
+        }
 
         $file = $validated['file'];
         $path = $file->store('self-assessment-evidence', 'public');
@@ -65,6 +71,11 @@ class SelfAssessmentEvidenceController extends ApiController
     {
         if ($evidence->user_id !== $request->user()->id) {
             return response()->json(['error' => 'Evidence not found.'], 404);
+        }
+        if ($this->hasFinalizedResult($evidence->session_area_id, $request->user()->id)) {
+            return response()->json([
+                'error' => 'Hasil self assessment sudah difinalisasi Unit Safety dan evidence tidak bisa dihapus.',
+            ], 403);
         }
 
         $relativePath = $this->resolveStoragePath($evidence->url ?? '', ['self-assessment-evidence/']);
@@ -93,9 +104,9 @@ class SelfAssessmentEvidenceController extends ApiController
             return response()->json(['error' => 'Jawaban tidak ditemukan.'], 404);
         }
 
-        if (!$overrideFinalLock && $answer->review && $answer->review->is_final) {
+        if (!$overrideFinalLock && $this->hasFinalizedResult($answer->session_area_id, $answer->user_id)) {
             return response()->json([
-                'error' => 'Jawaban sudah difinalisasi dan evidence tidak bisa diubah.',
+                'error' => 'Hasil self assessment sudah difinalisasi Unit Safety dan evidence tidak bisa diubah.',
             ], 403);
         }
 
@@ -130,9 +141,9 @@ class SelfAssessmentEvidenceController extends ApiController
             ->where('question_code', $evidence->question_code)
             ->first();
 
-        if (!$overrideFinalLock && $answer && $answer->review && $answer->review->is_final) {
+        if (!$overrideFinalLock && $answer && $this->hasFinalizedResult($answer->session_area_id, $answer->user_id)) {
             return response()->json([
-                'error' => 'Jawaban sudah difinalisasi dan evidence tidak bisa dihapus.',
+                'error' => 'Hasil self assessment sudah difinalisasi Unit Safety dan evidence tidak bisa dihapus.',
             ], 403);
         }
 
@@ -200,6 +211,15 @@ class SelfAssessmentEvidenceController extends ApiController
         }
 
         return $path;
+    }
+
+    private function hasFinalizedResult(string $sessionAreaId, string $userId): bool
+    {
+        return SelfAssessmentResult::query()
+            ->where('session_area_id', $sessionAreaId)
+            ->where('user_id', $userId)
+            ->whereNotNull('finalized_at')
+            ->exists();
     }
 
     public function downloadSigned(Request $request, SelfAssessmentEvidence $evidence)

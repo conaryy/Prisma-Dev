@@ -53,7 +53,7 @@ test('validateCreateUserPayload rejects empty email', () => {
   assert.equal(result.status, 422);
 });
 
-test('validateCreateUserPayload rejects non-62 phone format', () => {
+test('validateCreateUserPayload normalizes local Indonesian phone format', () => {
   const result = validateCreateUserPayload({
     name: 'Admin User',
     username: 'admin',
@@ -62,8 +62,47 @@ test('validateCreateUserPayload rejects non-62 phone format', () => {
     password: 'secret123',
   });
 
+  assert.equal(result.ok, true);
+  assert.equal(result.data.phone, '628123456789');
+});
+
+test('validateCreateUserPayload accepts international phone format', () => {
+  const result = validateCreateUserPayload({
+    name: 'Admin User',
+    username: 'admin',
+    email: 'admin@example.com',
+    phone: '+14155552671',
+    password: 'secret123',
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.phone, '14155552671');
+});
+
+test('validateCreateUserPayload rejects invalid phone format', () => {
+  const result = validateCreateUserPayload({
+    name: 'Admin User',
+    username: 'admin',
+    email: 'admin@example.com',
+    phone: '66',
+    password: 'secret123',
+  });
+
   assert.equal(result.ok, false);
   assert.equal(result.status, 422);
+});
+
+test('validateCreateUserPayload allows empty optional phone', () => {
+  const result = validateCreateUserPayload({
+    name: 'Admin User',
+    username: 'admin',
+    email: 'admin@example.com',
+    phone: '',
+    password: 'secret123',
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.phone, '');
 });
 
 test('validateUpdateUserPayload keeps undefined permissions untouched', () => {

@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class ReindexSemanticDto {
   @IsOptional()
@@ -13,4 +13,13 @@ export class ReindexSemanticDto {
   @Min(1)
   @Max(100)
   batchSize?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === '1')
+  @IsBoolean()
+  resume?: boolean;
+
+  @IsOptional()
+  @IsString()
+  stateFile?: string;
 }

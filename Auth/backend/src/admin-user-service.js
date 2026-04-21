@@ -233,8 +233,8 @@ export async function deleteManagedUser(userId, actorUserId) {
     return { ok: false, status: 400, error: 'Tidak bisa menghapus akun sendiri.' };
   }
 
-  const exists = await queryOne('SELECT id FROM users WHERE id = ? LIMIT 1', [userId]);
-  if (!exists) {
+  const existing = await queryOne('SELECT * FROM users WHERE id = ? LIMIT 1', [userId]);
+  if (!existing) {
     return { ok: false, status: 404, error: 'User tidak ditemukan.' };
   }
 
@@ -242,7 +242,7 @@ export async function deleteManagedUser(userId, actorUserId) {
   await execQuery('DELETE FROM authorization_codes WHERE user_id = ?', [userId]);
   await execQuery('DELETE FROM refresh_tokens WHERE user_id = ?', [userId]);
   await execQuery('DELETE FROM users WHERE id = ?', [userId]);
-  return { ok: true };
+  return { ok: true, user: existing };
 }
 
 export async function resetManagedUserPassword(userId, password, logoutSessions = true) {

@@ -10,6 +10,7 @@ import {
   updateManagedUser,
 } from '../auth-service.js';
 import { asyncHandler, requireManageUsers, requireSessionUser } from '../middleware.js';
+import { disableK2sUserBestEffort, syncK2sUserBestEffort } from '../k2s-user-sync.js';
 import { createResetPasswordRateLimiter } from '../rate-limit.js';
 import {
   validateCreateUserPayload,
@@ -107,7 +108,9 @@ export function createAdminRouter() {
         res.status(result.status).json({ error: result.error });
         return;
       }
-      res.status(201).json({ data: toUserResponse(result.user) });
+      const user = toUserResponse(result.user);
+      await syncK2sUserBestEffort(user);
+      res.status(201).json({ data: user });
     })
   );
 
@@ -130,7 +133,9 @@ export function createAdminRouter() {
         res.status(result.status).json({ error: result.error });
         return;
       }
-      res.json({ data: toUserResponse(result.user) });
+      const user = toUserResponse(result.user);
+      await syncK2sUserBestEffort(user);
+      res.json({ data: user });
     })
   );
 
@@ -146,6 +151,9 @@ export function createAdminRouter() {
       if (!result.ok) {
         res.status(result.status).json({ error: result.error });
         return;
+      }
+      if (result.user) {
+        await disableK2sUserBestEffort(toUserResponse(result.user));
       }
       res.json({ data: { success: true } });
     })

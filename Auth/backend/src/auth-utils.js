@@ -20,8 +20,14 @@ export function sanitizeEmail(value) {
 }
 
 export function sanitizePhone(value) {
-  const normalized = sanitizeText(value).replace(/[\s().-]/g, '');
-  return normalized || null;
+  const cleaned = sanitizeText(value).replace(/[\s().-]/g, '').replace(/^\+/, '');
+  if (!cleaned) {
+    return null;
+  }
+  if (cleaned.startsWith('08')) {
+    return `62${cleaned.slice(1)}`;
+  }
+  return cleaned;
 }
 
 export function ensureRole(value) {

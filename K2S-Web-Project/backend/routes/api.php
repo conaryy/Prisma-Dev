@@ -297,3 +297,8 @@ Route::middleware('auth.api')->group(function () {
 Route::prefix('internal/whatsapp')->middleware('internal.api')->group(function () {
     Route::get('external-dnp/temuan', [ExternalDnpWhatsappController::class, 'temuan']);
 });
+
+Route::prefix('internal/auth')->middleware('internal.api')->group(function () {
+    Route::post('users/sync', [UserController::class, 'syncFromAuth']);
+    Route::post('users/sync/disable', [UserController::class, 'disableFromAuth']);
+});

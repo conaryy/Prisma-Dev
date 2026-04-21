@@ -435,13 +435,6 @@ export function MonitoringReviewDetail() {
 
   const handleSendResult = async () => {
     if (!sessionAreaId || !userId) return;
-    if (resultFiles.length === 0) {
-      toast({
-        title: 'Upload dokumen wajib',
-        description: 'Mohon pilih minimal 1 file hasil monitoring.',
-      });
-      return;
-    }
     setIsSendingResult(true);
     try {
       const response = await finalizeMonitoringResult({
@@ -650,7 +643,7 @@ export function MonitoringReviewDetail() {
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-slate-600">
-                  Upload Document <span className="text-red-500">*</span>
+                  Upload Document <span className="font-normal text-slate-400">(opsional)</span>
                 </label>
                 <Input
                   ref={resultFileInputRef}

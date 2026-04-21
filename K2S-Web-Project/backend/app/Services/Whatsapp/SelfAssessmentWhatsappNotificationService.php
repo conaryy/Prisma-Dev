@@ -123,16 +123,25 @@ class SelfAssessmentWhatsappNotificationService
      */
     public function getUserNotificationRecipients(): array
     {
+        $activeUserIds = User::query()
+            ->where('status', '!=', 'Disabled')
+            ->pluck('id')
+            ->all();
+
         return WhatsappUserNotificationRecipient::query()
             ->orderBy('created_at')
             ->get()
-            ->map(function (WhatsappUserNotificationRecipient $recipient) {
+            ->map(function (WhatsappUserNotificationRecipient $recipient) use ($activeUserIds) {
                 return [
                     'id' => $recipient->id,
                     'phoneNumber' => $recipient->phone_number,
-                    'userIds' => $this->normalizeUserIds($recipient->user_ids ?? []),
+                    'userIds' => array_values(array_intersect(
+                        $this->normalizeUserIds($recipient->user_ids ?? []),
+                        $activeUserIds
+                    )),
                 ];
             })
+            ->filter(fn (array $recipient) => $recipient['userIds'] !== [])
             ->values()
             ->all();
     }
@@ -164,8 +173,13 @@ class SelfAssessmentWhatsappNotificationService
                 $recipient = new WhatsappUserNotificationRecipient();
             }
 
+            $userIds = $this->normalizeActiveUserIds($item['userIds'] ?? []);
+            if ($userIds === []) {
+                continue;
+            }
+
             $recipient->phone_number = $phoneNumber;
-            $recipient->user_ids = $this->normalizeUserIds($item['userIds'] ?? []);
+            $recipient->user_ids = $userIds;
             $recipient->save();
 
             $keepIds[] = $recipient->id;
@@ -176,6 +190,31 @@ class SelfAssessmentWhatsappNotificationService
             ->delete();
 
         return $this->getUserNotificationRecipients();
+    }
+
+    public function removeUserFromNotificationRecipients(string $userId): void
+    {
+        $userId = trim($userId);
+        if ($userId === '') {
+            return;
+        }
+
+        WhatsappUserNotificationRecipient::query()
+            ->get()
+            ->each(function (WhatsappUserNotificationRecipient $recipient) use ($userId) {
+                $nextUserIds = array_values(array_filter(
+                    $this->normalizeUserIds($recipient->user_ids ?? []),
+                    fn (string $storedUserId) => $storedUserId !== $userId
+                ));
+
+                if ($nextUserIds === []) {
+                    $recipient->delete();
+                    return;
+                }
+
+                $recipient->user_ids = $nextUserIds;
+                $recipient->save();
+            });
     }
 
     /**
@@ -666,6 +705,7 @@ class SelfAssessmentWhatsappNotificationService
 
         $phones = User::query()
             ->whereIn('id', $ids->all())
+            ->where('status', '!=', 'Disabled')
             ->pluck('phone')
             ->all();
 
@@ -678,7 +718,7 @@ class SelfAssessmentWhatsappNotificationService
      */
     private function getPhoneNumbersForRecipientCopies(array $userIds): array
     {
-        $ids = $this->normalizeUserIds($userIds);
+        $ids = $this->normalizeActiveUserIds($userIds);
         if ($ids === []) {
             return [];
         }
@@ -712,6 +752,24 @@ class SelfAssessmentWhatsappNotificationService
             ->map(fn (string $item) => trim($item))
             ->unique()
             ->values()
+            ->all();
+    }
+
+    /**
+     * @param  mixed  $values
+     * @return array<int, string>
+     */
+    private function normalizeActiveUserIds(mixed $values): array
+    {
+        $ids = $this->normalizeUserIds($values);
+        if ($ids === []) {
+            return [];
+        }
+
+        return User::query()
+            ->whereIn('id', $ids)
+            ->where('status', '!=', 'Disabled')
+            ->pluck('id')
             ->all();
     }
 

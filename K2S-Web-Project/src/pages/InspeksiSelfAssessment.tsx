@@ -282,6 +282,7 @@ export function InspeksiSelfAssessment({
   const [submittedByQuestion, setSubmittedByQuestion] = useState<Record<string, boolean>>(
     {}
   );
+  const [resultFinalizedAt, setResultFinalizedAt] = useState<string | null>(null);
   const [evidenceList, setEvidenceList] = useState<
     Array<{ id: string; name: string; url: string }>
   >([]);
@@ -502,6 +503,7 @@ export function InspeksiSelfAssessment({
     if (!selectedAreaId) {
       setAssessmentByQuestion({});
       setReviewByQuestion({});
+      setResultFinalizedAt(null);
       return;
     }
     fetchSelfAssessmentAnswers(selectedAreaId)
@@ -534,11 +536,15 @@ export function InspeksiSelfAssessment({
         setAssessmentByQuestion(nextAnswers);
         setReviewByQuestion(nextReview);
         setSubmittedByQuestion(nextSubmitted);
+        setResultFinalizedAt(
+          items.find((item) => Boolean(item.resultFinalizedAt))?.resultFinalizedAt ?? null
+        );
       })
       .catch(() => {
         setAssessmentByQuestion({});
         setReviewByQuestion({});
         setSubmittedByQuestion({});
+        setResultFinalizedAt(null);
       });
   }, [selectedAreaId, questionKeyByCode]);
 
@@ -553,8 +559,8 @@ export function InspeksiSelfAssessment({
   };
   const allowReply = reviewByQuestion[activeQuestion.key]?.allowReply ?? false;
   const isSubmitted = submittedByQuestion[activeQuestion.key] ?? false;
-  const isReviewLocked = reviewByQuestion[activeQuestion.key]?.isFinal ?? false;
-  const isAnswerLocked = isSubmitted && !allowReply;
+  const isReviewLocked = Boolean(resultFinalizedAt);
+  const isAnswerLocked = Boolean(resultFinalizedAt);
   const isQuestionFilled = (questionKey: string) => {
     const state = assessmentByQuestion[questionKey];
     if (!state) return false;
@@ -842,11 +848,7 @@ export function InspeksiSelfAssessment({
       return;
     }
     const items = (activeArea?.questions ?? [])
-      .filter(
-        (question) =>
-          isQuestionFilled(question.key) &&
-          !(submittedByQuestion[question.key] && !reviewByQuestion[question.key]?.allowReply)
-      )
+      .filter((question) => isQuestionFilled(question.key))
       .map((question) => ({
         sessionAreaId: selectedAreaId,
         questionCode: question.id,
@@ -1245,7 +1247,11 @@ export function InspeksiSelfAssessment({
                           Kolom dengan tanda bintang wajib diisi.
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
-                          <Button variant="outline" onClick={handleSaveDraft}>
+                          <Button
+                            variant="outline"
+                            onClick={handleSaveDraft}
+                            disabled={isAnswerLocked || isSubmittingAnswers}
+                          >
                             Simpan Draft
                           </Button>
                           <Button

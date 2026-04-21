@@ -20,6 +20,7 @@ class SelfAssessmentWhatsappSettingController extends ApiController
             'previews' => $this->service->getPreviewTemplates(),
             'userRecipients' => $this->service->getUserNotificationRecipients(),
             'users' => User::query()
+                ->where('status', '!=', 'Disabled')
                 ->orderBy('name')
                 ->get(['id', 'name', 'username', 'email', 'phone'])
                 ->map(fn (User $user) => [
@@ -56,6 +57,7 @@ class SelfAssessmentWhatsappSettingController extends ApiController
             'previews' => $this->service->getPreviewTemplates(),
             'userRecipients' => $this->service->updateUserNotificationRecipients($validated['userRecipients'] ?? []),
             'users' => User::query()
+                ->where('status', '!=', 'Disabled')
                 ->orderBy('name')
                 ->get(['id', 'name', 'username', 'email', 'phone'])
                 ->map(fn (User $user) => [

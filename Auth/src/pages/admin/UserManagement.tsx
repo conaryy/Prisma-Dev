@@ -95,6 +95,21 @@ function normalizeExternalDnpSelection(form: UserFormState): UserFormState {
   return form;
 }
 
+function normalizePhoneInput(value: string) {
+  const cleaned = value.trim().replace(/[\s().-]/g, '').replace(/^\+/, '');
+  if (!cleaned) {
+    return '';
+  }
+  if (cleaned.startsWith('08')) {
+    return `62${cleaned.slice(1)}`;
+  }
+  return cleaned;
+}
+
+function isValidInternationalPhone(value: string) {
+  return /^[1-9]\d{7,14}$/.test(value);
+}
+
 export function UserManagement() {
   const navigate = useNavigate();
   const [isDark, setIsDark] = useState(() =>
@@ -115,7 +130,7 @@ export function UserManagement() {
     form.role !== 'Admin' && form.permissions.can_access_external_dnp;
 
   const canSubmit = useMemo(() => {
-    const phone = form.phone.trim();
+    const phone = normalizePhoneInput(form.phone);
     const isPasswordValid = isEditing
       ? form.password.length === 0 || form.password.length >= 8
       : form.password.length >= 8;
@@ -124,7 +139,7 @@ export function UserManagement() {
       form.name.trim().length >= 2 &&
       form.username.trim().length >= 3 &&
       form.email.trim().length > 0 &&
-      (phone.length === 0 || /^62\d{7,15}$/.test(phone)) &&
+      (phone.length === 0 || isValidInternationalPhone(phone)) &&
       isPasswordValid &&
       (!requiresExternalDnpInstansiSelection || form.externalDnpInstansiAccess.length > 0)
     );
@@ -207,7 +222,7 @@ export function UserManagement() {
       name: form.name.trim(),
       username: form.username.trim(),
       email: form.email.trim(),
-      phone: form.phone.trim() || null,
+      phone: normalizePhoneInput(form.phone) || null,
       password: form.password || undefined,
       role: form.role,
       status: form.status,
@@ -360,7 +375,12 @@ export function UserManagement() {
             <Input placeholder="Nama lengkap" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
             <Input placeholder="Username" value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} />
             <Input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
-            <Input inputMode="tel" pattern="62[0-9]{7,15}" placeholder="WhatsApp 62..." value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
+            <Input
+              inputMode="tel"
+              placeholder="WhatsApp +62... / +1... (opsional)"
+              value={form.phone}
+              onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+            />
             <Input
               type="password"
               placeholder={isEditing ? 'Kosongkan jika tidak diubah' : 'Password min 8 karakter'}
@@ -368,6 +388,11 @@ export function UserManagement() {
               onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
             />
           </div>
+          {form.phone.trim() && !isValidInternationalPhone(normalizePhoneInput(form.phone)) ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
+              Nomor WhatsApp harus memakai format internasional yang valid, misalnya +6281234567890 atau +14155552671.
+            </div>
+          ) : null}
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-2 text-sm">

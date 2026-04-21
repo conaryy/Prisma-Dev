@@ -270,7 +270,7 @@ export function SelfAssessmentReviews({
   >({});
   const [isUploadingEvidence, setIsUploadingEvidence] = useState(false);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
-  const [sendMode, setSendMode] = useState<'finalize' | 'allow'>('finalize');
+  const [sendMode, setSendMode] = useState<'finalize' | 'allow'>('allow');
   const [finalizeStatus, setFinalizeStatus] = useState<'interim' | 'final'>(
     'interim'
   );
@@ -794,7 +794,7 @@ export function SelfAssessmentReviews({
         evidenceNote: activeAnswer.evidenceNote ?? '',
       }
     : null;
-  const isAssessmentLocked = activeAnswer?.review?.isFinal ?? false;
+  const isAssessmentLocked = Boolean(detail?.result?.finalizedAt) || (activeAnswer?.review?.isFinal ?? false);
   const canOverrideAssessmentLock = detailPanelMode === 'assessment';
   const isAssessmentInputDisabled = isAssessmentLocked && !canOverrideAssessmentLock;
   const derivedDnpYear = useMemo(() => {
@@ -1211,14 +1211,6 @@ export function SelfAssessmentReviews({
       });
       return;
     }
-    if (finalizeFiles.length === 0) {
-      toast({
-        title: 'Upload document wajib',
-        description: 'Mohon unggah minimal 1 dokumen.',
-      });
-      return;
-    }
-
     const draftAnswerIds = detail.answers
       .filter((answer) => answer.review && !answer.review.sentAt)
       .map((answer) => answer.id);
@@ -1256,7 +1248,7 @@ export function SelfAssessmentReviews({
 
       toast({
         title: 'Hasil dikirim',
-        description: 'Dokumen hasil audit berhasil dikirim ke user.',
+        description: 'Hasil audit berhasil dikirim ke user.',
       });
       setFinalizeFiles([]);
       if (finalizeFileInputRef.current) {

@@ -9,6 +9,21 @@ function normalizeString(value) {
   return String(value ?? '').trim();
 }
 
+function normalizePhoneInput(value) {
+  const cleaned = normalizeString(value).replace(/[\s().-]/g, '').replace(/^\+/, '');
+  if (!cleaned) {
+    return '';
+  }
+  if (cleaned.startsWith('08')) {
+    return `62${cleaned.slice(1)}`;
+  }
+  return cleaned;
+}
+
+function isValidInternationalPhone(value) {
+  return /^[1-9]\d{7,14}$/.test(value);
+}
+
 export function validateLoginPayload(input) {
   const payload = normalizeObject(input);
   const email = normalizeString(payload.email);
@@ -34,13 +49,13 @@ export function validateLoginPayload(input) {
 export function validateCreateUserPayload(input) {
   const payload = normalizeObject(input);
   const email = normalizeString(payload.email).toLowerCase();
-  const phone = normalizeString(payload.phone).replace(/[\s().-]/g, '');
+  const phone = normalizePhoneInput(payload.phone);
 
   if (!email) {
     return { ok: false, status: 422, error: 'Email wajib diisi.' };
   }
-  if (phone && !/^62\d{7,15}$/.test(phone)) {
-    return { ok: false, status: 422, error: 'Nomor WhatsApp harus memakai format 62.' };
+  if (phone && !isValidInternationalPhone(phone)) {
+    return { ok: false, status: 422, error: 'Nomor WhatsApp harus memakai format internasional.' };
   }
 
   return {
@@ -63,10 +78,10 @@ export function validateUpdateUserPayload(input) {
   const payload = normalizeObject(input);
   const phone = payload.phone === undefined
     ? undefined
-    : normalizeString(payload.phone).replace(/[\s().-]/g, '');
+    : normalizePhoneInput(payload.phone);
 
-  if (phone && !/^62\d{7,15}$/.test(phone)) {
-    return { ok: false, status: 422, error: 'Nomor WhatsApp harus memakai format 62.' };
+  if (phone && !isValidInternationalPhone(phone)) {
+    return { ok: false, status: 422, error: 'Nomor WhatsApp harus memakai format internasional.' };
   }
 
   return {
@@ -108,10 +123,10 @@ export function validateSelfProfilePayload(input) {
   const payload = normalizeObject(input);
   const phone = payload.phone === undefined
     ? undefined
-    : normalizeString(payload.phone).replace(/[\s().-]/g, '');
+    : normalizePhoneInput(payload.phone);
 
-  if (phone && !/^62\d{7,15}$/.test(phone)) {
-    return { ok: false, status: 422, error: 'Nomor WhatsApp harus memakai format 62.' };
+  if (phone && !isValidInternationalPhone(phone)) {
+    return { ok: false, status: 422, error: 'Nomor WhatsApp harus memakai format internasional.' };
   }
 
   return {

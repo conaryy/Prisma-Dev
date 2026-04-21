@@ -607,7 +607,7 @@ class SelfAssessmentReviewController extends ApiController
             'allowReply' => ['nullable', 'boolean'],
         ]);
 
-        $allowReply = $validated['allowReply'] ?? false;
+        $allowReply = $validated['allowReply'] ?? true;
         $action = $validated['action'];
         $sentAt = $action === 'send' ? now() : null;
 
@@ -659,7 +659,7 @@ class SelfAssessmentReviewController extends ApiController
                     'title' => 'Review Unit Safety dikirim',
                     'message' => $allowReply
                         ? 'Review Unit Safety dikirim. Kamu bisa memperbaiki dan kirim ulang.'
-                        : 'Review Unit Safety dikirim. Jawaban telah difinalisasi.',
+                        : 'Review Unit Safety dikirim. Hasil akhir akan dikunci saat Unit Safety melakukan finalisasi.',
                     'data' => json_encode([
                         'answerId' => $answer->id,
                         'allowReply' => $allowReply,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -164,7 +164,10 @@ export function SelfAssessmentSessions({
     () => resolvedScopeOptions.find((item) => item.value === scope)?.label ?? '',
     [resolvedScopeOptions, scope]
   );
-  const targetUsers = useMemo(() => users, [users]);
+  const targetUsers = useMemo(
+    () => users.filter((user) => user.status !== 'Disabled'),
+    [users]
+  );
   const categoryCountByUserId = useMemo(() => {
     const counts: Record<string, number> = {};
     Object.entries(questionCategoryAssignments).forEach(([userId, categoryIds]) => {
@@ -278,13 +281,13 @@ export function SelfAssessmentSessions({
       );
   };
 
-  const loadUsers = () => {
-    apiFetch<{ data: UserItem[] }>('/api/users?limit=200')
+  const loadUsers = useCallback(() => {
+    apiFetch<{ data: UserItem[] }>('/api/users?limit=1000')
       .then((response) => setUsers(response.data))
       .catch((error: Error) =>
         setErrorMessage(error.message || 'Gagal memuat user.')
       );
-  };
+  }, []);
 
   const loadSessionAreas = (sessionId: string) => {
     return apiFetch<{ data: Array<{ id: string; category: string }> }>(
@@ -296,6 +299,9 @@ export function SelfAssessmentSessions({
         const categories = items.map((item) => item.category).filter(Boolean);
         setSessionAreas(categories);
         setSelectedAreas(categories);
+        setActiveArea((current) =>
+          current && categories.includes(current) ? current : categories[0] ?? ''
+        );
         setCommittedAreaSummaries([]);
       })
       .catch((error: Error) =>
@@ -324,7 +330,9 @@ export function SelfAssessmentSessions({
 
   useEffect(() => {
     loadUsers();
-  }, []);
+    window.addEventListener('focus', loadUsers);
+    return () => window.removeEventListener('focus', loadUsers);
+  }, [loadUsers]);
 
   useEffect(() => {
     setScope(resolveInitialScope(resolvedScopeOptions, initialScope));
@@ -381,6 +389,14 @@ export function SelfAssessmentSessions({
         setErrorMessage(error.message || 'Gagal memuat kategori pertanyaan area.')
       );
   }, [activeArea, availableCategoryIdsByArea, scope]);
+
+  useEffect(() => {
+    if (!editingSessionId || activeArea || selectedAreas.length === 0) {
+      return;
+    }
+
+    setActiveArea(selectedAreas[0]);
+  }, [activeArea, editingSessionId, selectedAreas]);
 
   useEffect(() => {
     const selectedUserIds = questionCategoryTarget.userIds;
@@ -660,6 +676,8 @@ export function SelfAssessmentSessions({
           assignments[item.userId] = item.categoryIds ?? [];
         });
         setQuestionCategoryAssignments(assignments);
+        setAreaCategorySelections({});
+        selectionSyncRef.current = { pending: true, userKey: '' };
         loadSessionAreas(sessionId);
       })
       .catch((error: Error) =>

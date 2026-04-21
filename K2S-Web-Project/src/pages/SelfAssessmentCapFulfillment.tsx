@@ -271,6 +271,19 @@ export function SelfAssessmentCapFulfillment({
     return Math.max(1, Math.ceil(filteredItems.length / questionPageSize));
   }, [enableQuestionPagination, filteredItems.length, questionPageSize]);
 
+  useEffect(() => {
+    if (!enableQuestionPagination || !requestedAnswerId) {
+      return;
+    }
+
+    const targetIndex = filteredItems.findIndex((item) => item.answerId === requestedAnswerId);
+    if (targetIndex < 0) {
+      return;
+    }
+
+    setQuestionPage(Math.floor(targetIndex / questionPageSize) + 1);
+  }, [enableQuestionPagination, filteredItems, questionPageSize, requestedAnswerId]);
+
   const safeQuestionPage = Math.min(questionPage, totalQuestionPages);
 
   const pagedItems = useMemo(() => {
