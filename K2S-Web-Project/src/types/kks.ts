@@ -65,6 +65,7 @@ export interface PersonilItem {
 }
 
 export type CertificateStatus = 'Berlaku' | 'Tidak Berlaku';
+export type CertificateEvidenceType = 'Sertifikat Evidence' | 'Sertifikat Non Evidence';
 
 export interface CertificateItem {
   id: string;
@@ -73,6 +74,7 @@ export interface CertificateItem {
   number: string;
   validUntil: string;
   status: CertificateStatus;
+  evidenceType: CertificateEvidenceType;
   fileName?: string;
   fileUrl?: string;
 }

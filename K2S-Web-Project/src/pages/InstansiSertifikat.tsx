@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
-import { Plus, Search, X, Pencil, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ExternalLink, Plus, Search, X, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/shared/Modal';
 import { FormField } from '@/components/shared/Form';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAppData } from '@/contexts/AppDataContext';
-import { CertificateItem, CertificateStatus } from '@/types/kks';
+import { CertificateEvidenceType, CertificateItem, CertificateStatus } from '@/types/kks';
 import { formatDate } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import { resolveApiUrl } from '@/lib/api';
@@ -19,12 +20,18 @@ const statusStyles: Record<CertificateStatus, string> = {
   'Tidak Berlaku': 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/20 dark:text-red-300 dark:ring-red-700/50',
 };
 
+const evidenceTypeStyles: Record<CertificateEvidenceType, string> = {
+  'Sertifikat Evidence': 'bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:ring-blue-700/50',
+  'Sertifikat Non Evidence': 'bg-slate-50 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700',
+};
+
 const emptyForm: Omit<CertificateItem, 'id'> = {
   name: '',
   type: '',
   number: '',
   validUntil: '',
   status: 'Berlaku',
+  evidenceType: 'Sertifikat Non Evidence',
 };
 
 const emptyFilters = {
@@ -34,6 +41,7 @@ const emptyFilters = {
 };
 
 export function InstansiSertifikat() {
+  const navigate = useNavigate();
   const {
     instansi,
     certificates,
@@ -102,6 +110,7 @@ export function InstansiSertifikat() {
       number: item.number,
       validUntil: item.validUntil,
       status: item.status,
+      evidenceType: item.evidenceType ?? 'Sertifikat Non Evidence',
     });
     setSelectedFile(null);
     setExistingFileName(item.fileName ?? null);
@@ -132,6 +141,10 @@ export function InstansiSertifikat() {
     if (window.confirm('Hapus data sertifikat ini?')) {
       removeCertificate(id);
     }
+  };
+
+  const openFulfillment = (id: string) => {
+    navigate(`/informasi/instansi/sertifikat/pemenuhan/${id}`);
   };
 
   const instansiName = instansi.name || 'Perum LPPNPI Cabang Surabaya';
@@ -239,6 +252,9 @@ export function InstansiSertifikat() {
                     Status
                   </TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-300">
+                    Kategori
+                  </TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-300">
                     File Sertifikat
                   </TableHead>
                   <TableHead className="text-center text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-300">
@@ -249,63 +265,90 @@ export function InstansiSertifikat() {
               <TableBody>
                 {filteredCertificates.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="p-6 text-center text-sm text-slate-500 dark:text-slate-300">
+                    <TableCell colSpan={8} className="p-6 text-center text-sm text-slate-500 dark:text-slate-300">
                       Data sertifikat belum tersedia.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredCertificates.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="text-xs">{item.name}</TableCell>
-                      <TableCell className="text-xs">{item.type || '-'}</TableCell>
-                      <TableCell className="text-xs">{item.number || '-'}</TableCell>
-                      <TableCell className="text-xs">{formatDate(item.validUntil)}</TableCell>
-                      <TableCell className="text-xs">
-                        <span
-                          className={cn(
-                            'inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold ring-1',
-                            statusStyles[item.status]
+                  filteredCertificates.map((item) => {
+                    const evidenceType = item.evidenceType ?? 'Sertifikat Non Evidence';
+
+                    return (
+                      <TableRow key={item.id}>
+                        <TableCell className="text-xs">
+                          {evidenceType === 'Sertifikat Evidence' ? (
+                            <button
+                              type="button"
+                              onClick={() => openFulfillment(item.id)}
+                              className="inline-flex max-w-[24rem] items-center gap-1 text-left font-medium text-blue-600 underline-offset-4 hover:underline dark:text-blue-300"
+                            >
+                              <span className="truncate">{item.name}</span>
+                              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                            </button>
+                          ) : (
+                            item.name
                           )}
-                        >
-                          {item.status}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {item.fileUrl ? (
-                          <a
-                            href={resolveApiUrl(item.fileUrl)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600 underline dark:text-blue-300"
+                        </TableCell>
+                        <TableCell className="text-xs">{item.type || '-'}</TableCell>
+                        <TableCell className="text-xs">{item.number || '-'}</TableCell>
+                        <TableCell className="text-xs">{formatDate(item.validUntil)}</TableCell>
+                        <TableCell className="text-xs">
+                          <span
+                            className={cn(
+                              'inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold ring-1',
+                              statusStyles[item.status]
+                            )}
                           >
-                            {item.fileName || 'Lihat file'}
-                          </a>
-                        ) : (
-                          '-'
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-center gap-2">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 rounded-lg bg-sky-500/10 text-sky-600 hover:bg-sky-500 hover:text-white"
-                            onClick={() => openEdit(item)}
+                            {item.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <span
+                            className={cn(
+                              'inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold ring-1',
+                              evidenceTypeStyles[evidenceType]
+                            )}
                           >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 rounded-lg bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white"
-                            onClick={() => handleDelete(item.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                            {evidenceType}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {item.fileUrl ? (
+                            <a
+                              href={resolveApiUrl(item.fileUrl)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 underline dark:text-blue-300"
+                            >
+                              {item.fileName || 'Lihat file'}
+                            </a>
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-center gap-2">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 rounded-lg bg-sky-500/10 text-sky-600 hover:bg-sky-500 hover:text-white"
+                              onClick={() => openEdit(item)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 rounded-lg bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white"
+                              onClick={() => handleDelete(item.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -371,6 +414,22 @@ export function InstansiSertifikat() {
             >
               <option value="Berlaku">Berlaku</option>
               <option value="Tidak Berlaku">Tidak Berlaku</option>
+            </select>
+          </FormField>
+
+          <FormField label="Kategori Sertifikat">
+            <select
+              className={selectBaseClass}
+              value={form.evidenceType}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  evidenceType: event.target.value as CertificateEvidenceType,
+                }))
+              }
+            >
+              <option value="Sertifikat Non Evidence">Sertifikat Non Evidence</option>
+              <option value="Sertifikat Evidence">Sertifikat Evidence</option>
             </select>
           </FormField>
           <FormField label="File Sertifikat (PDF/JPG/PNG)">

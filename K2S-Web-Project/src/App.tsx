@@ -33,6 +33,11 @@ const InstansiSertifikat = lazy(() =>
     default: module.InstansiSertifikat,
   }))
 );
+const PemenuhanSertifikat = lazy(() =>
+  import('@/pages/PemenuhanSertifikat').then((module) => ({
+    default: module.PemenuhanSertifikat,
+  }))
+);
 const AgendaPengawasan = lazy(() =>
   import('@/pages/AgendaPengawasan').then((module) => ({
     default: module.AgendaPengawasan,
@@ -509,6 +514,8 @@ function App() {
               <Route path="organisasi" element={<InstansiOrganisasi />} />
               <Route path="personil" element={<InstansiPersonil />} />
               <Route path="sertifikat" element={<InstansiSertifikat />} />
+              <Route path="sertifikat/pemenuhan" element={<PemenuhanSertifikat />} />
+              <Route path="sertifikat/pemenuhan/:certificateId" element={<PemenuhanSertifikat />} />
             </Route>
             <Route path="agenda-pengawasan" element={<AgendaPengawasan />} />
           </Route>

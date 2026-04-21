@@ -106,6 +106,7 @@ class K2SSeeder extends Seeder
             'number' => '172/LLP/2025',
             'valid_until' => $now->copy()->addYears(2)->setDate(2027, 12, 31)->toDateString(),
             'status' => 'Berlaku',
+            'evidence_type' => 'Sertifikat Non Evidence',
         ]);
         Certificate::create([
             'id' => 'cert-2',
@@ -115,6 +116,7 @@ class K2SSeeder extends Seeder
             'number' => '172/LLP/2026',
             'valid_until' => $now->copy()->addYears(3)->setDate(2028, 12, 31)->toDateString(),
             'status' => 'Berlaku',
+            'evidence_type' => 'Sertifikat Non Evidence',
         ]);
 
         Agenda::create([

@@ -15,6 +15,7 @@ import {
   ClipboardList,
   CheckCircle,
   CheckCircle2,
+  FileCheck2,
   FileText,
   FolderOpen,
   Radar,
@@ -82,6 +83,9 @@ export function Sidebar({
   const isDashboardCapActive = location.pathname === '/cap';
   const isInfoActive = location.pathname.startsWith('/informasi');
   const isInstansiActive = location.pathname.startsWith('/informasi/instansi');
+  const isCertificateFulfillmentActive = location.pathname.startsWith(
+    '/informasi/instansi/sertifikat/pemenuhan'
+  );
   const isAuditPqActive = location.pathname.startsWith('/audit/protocol-question');
   const isAuditCapPath = location.pathname.startsWith('/audit/cap');
   const isAuditCapActive = isAuditCapPath;
@@ -579,6 +583,16 @@ export function Sidebar({
                   >
                     <Award className={navIconClass} />
                     <span className={labelClass('flex-1')}>Sertifikat</span>
+                  </Link>
+                  <Link
+                    to="/informasi/instansi/sertifikat/pemenuhan"
+                    className={cn(
+                      subNavClass(isCertificateFulfillmentActive),
+                      'pl-8 text-[13px]'
+                    )}
+                  >
+                    <FileCheck2 className={navIconClass} />
+                    <span className={labelClass('flex-1')}>Pemenuhan Sertifikat</span>
                   </Link>
                 </CollapsibleContent>
               </Collapsible>

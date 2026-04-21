@@ -207,6 +207,7 @@ export const seedCertificates: CertificateItem[] = [
     number: '172/LLP/2025',
     validUntil: '2027-12-31',
     status: 'Berlaku',
+    evidenceType: 'Sertifikat Non Evidence',
   },
   {
     id: 'cert-2',
@@ -215,6 +216,7 @@ export const seedCertificates: CertificateItem[] = [
     number: '172/LLP/2026',
     validUntil: '2028-12-31',
     status: 'Berlaku',
+    evidenceType: 'Sertifikat Non Evidence',
   },
 ];
 

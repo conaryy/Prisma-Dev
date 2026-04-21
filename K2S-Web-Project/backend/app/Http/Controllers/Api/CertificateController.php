@@ -9,15 +9,65 @@ use Illuminate\Support\Facades\Storage;
 
 class CertificateController extends ApiController
 {
+    private function resolveInstansiId(Request $request, bool $createIfMissing = false): ?string
+    {
+        $userId = $request->user()->id;
+
+        $instansi = Instansi::query()
+            ->where('user_id', $userId)
+            ->first();
+
+        if ($instansi) {
+            return $instansi->id;
+        }
+
+        $orphan = Instansi::query()
+            ->whereNull('user_id')
+            ->first();
+
+        if ($orphan) {
+            $orphan->user_id = $userId;
+            $orphan->save();
+
+            return $orphan->id;
+        }
+
+        if (!$createIfMissing) {
+            return null;
+        }
+
+        return Instansi::create([
+            'user_id' => $userId,
+            'facility_group' => 'Pelayanan Navigasi Penerbangan',
+            'kobu' => 'KANTOR OTORITAS BANDAR UDARA WILAYAH III',
+            'bandara' => 'JUANDA',
+            'cabang_airnav' => 'PERUM LPPNPI CABANG SURABAYA',
+            'name' => 'Perum LPPNPI Cabang Surabaya',
+            'alias' => 'Surabaya',
+            'address' => '',
+            'contact_name' => '',
+            'contact_email' => '',
+            'contact_phone' => '',
+            'fax' => '',
+            'postal_code' => '',
+            'longitude' => '',
+            'latitude' => '',
+            'service_area' => '',
+            'operating_hours' => '',
+            'traffic_type' => '',
+            'runway_capacity' => '',
+            'runway_condition' => '',
+            'location' => '',
+        ])->id;
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
         $limit = (int) $request->query('limit', 20);
-        $instansiId = Instansi::query()
-            ->where('user_id', $request->user()->id)
-            ->value('id');
+        $instansiId = $this->resolveInstansiId($request);
         if (!$instansiId) {
             return $this->respondPaginated(Certificate::query()->whereRaw('1 = 0')->paginate($limit));
         }
@@ -38,16 +88,12 @@ class CertificateController extends ApiController
             'number' => ['required'],
             'validUntil' => ['required', 'date'],
             'status' => ['required', 'in:Berlaku,Tidak Berlaku'],
+            'evidenceType' => ['sometimes', 'in:Sertifikat Evidence,Sertifikat Non Evidence'],
             'file' => ['nullable', 'file', 'mimes:pdf,png,jpg,jpeg', 'max:10240'],
         ]);
 
         $payload = $this->normalize($validated);
-        $instansiId = Instansi::query()
-            ->where('user_id', $request->user()->id)
-            ->value('id');
-        if (!$instansiId) {
-            return response()->json(['error' => 'Instansi belum tersedia.'], 422);
-        }
+        $instansiId = $this->resolveInstansiId($request, true);
         $payload['instansi_id'] = $instansiId;
         if (!empty($validated['file'])) {
             $path = $validated['file']->store('certificates', 'public');
@@ -90,6 +136,7 @@ class CertificateController extends ApiController
             'number' => ['sometimes'],
             'validUntil' => ['sometimes', 'date'],
             'status' => ['sometimes', 'in:Berlaku,Tidak Berlaku'],
+            'evidenceType' => ['sometimes', 'in:Sertifikat Evidence,Sertifikat Non Evidence'],
             'file' => ['nullable', 'file', 'mimes:pdf,png,jpg,jpeg', 'max:10240'],
         ]);
 

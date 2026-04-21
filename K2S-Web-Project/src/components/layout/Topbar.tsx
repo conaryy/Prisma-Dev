@@ -263,6 +263,7 @@ export function Topbar({
         { label: 'Informasi Instansi - Organisasi', path: '/informasi/instansi/organisasi' },
         { label: 'Informasi Instansi - Personil', path: '/informasi/instansi/personil' },
         { label: 'Informasi Instansi - Sertifikat', path: '/informasi/instansi/sertifikat' },
+        { label: 'Informasi Instansi - Pemenuhan Sertifikat', path: '/informasi/instansi/sertifikat/pemenuhan' },
         { label: 'Agenda Pengawasan', path: '/informasi/agenda-pengawasan' },
         { label: 'Hasil Audit', path: '/audit' },
         { label: 'Audit - Self Assessment', path: '/audit/protocol-question/self-assessment' },

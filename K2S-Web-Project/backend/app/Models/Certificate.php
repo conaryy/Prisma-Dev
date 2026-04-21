@@ -21,6 +21,7 @@ class Certificate extends Model
         'number',
         'valid_until',
         'status',
+        'evidence_type',
         'file_name',
         'file_url',
     ];

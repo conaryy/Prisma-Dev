@@ -13,6 +13,7 @@ import {
   OrganizationItem,
   OrganizationStatus,
   PersonilItem,
+  CertificateEvidenceType,
   CertificateItem,
   CertificateStatus,
   SourceType,
@@ -165,6 +166,7 @@ const mapCertificateFromApi = (data: Record<string, unknown>): CertificateItem =
   number: (data.number ?? '') as string,
   validUntil: (data.valid_until ?? data.validUntil ?? '') as string,
   status: (data.status ?? 'Berlaku') as CertificateStatus,
+  evidenceType: (data.evidence_type ?? data.evidenceType ?? 'Sertifikat Non Evidence') as CertificateEvidenceType,
   fileName: (data.file_name ?? data.fileName ?? '') as string,
   fileUrl: (data.file_url ?? data.fileUrl ?? '') as string,
 });
@@ -776,6 +778,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         formData.append('number', item.number);
         formData.append('validUntil', item.validUntil);
         formData.append('status', item.status);
+        formData.append('evidenceType', item.evidenceType);
         if (item.file) {
           formData.append('file', item.file);
         }
@@ -814,6 +817,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (changes.validUntil !== undefined)
           formData.append('validUntil', changes.validUntil);
         if (changes.status !== undefined) formData.append('status', changes.status);
+        if (changes.evidenceType !== undefined)
+          formData.append('evidenceType', changes.evidenceType);
         if (changes.file) {
           formData.append('file', changes.file);
         }

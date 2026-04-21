@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AgendaController;
 use App\Http\Controllers\Api\AuditController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CertificateController;
+use App\Http\Controllers\Api\CertificateFulfillmentNoteController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\FacilityController;
 use App\Http\Controllers\Api\FacilityGroupController;
@@ -100,6 +101,9 @@ Route::get('guide/manual/{type}/signed', [GuideManualController::class, 'downloa
 Route::get('guide/template/{type}/signed', [GuideManualController::class, 'downloadTemplateSigned'])
     ->middleware(['signed:relative', 'throttle:60,1'])
     ->name('guide.template.signed');
+Route::get('certificates/fulfillment-notes/{note}/evidence/signed', [CertificateFulfillmentNoteController::class, 'downloadSigned'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('certificates.fulfillment-notes.evidence.signed');
 
 Route::middleware('auth.api')->group(function () {
     Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -142,6 +146,11 @@ Route::middleware('auth.api')->group(function () {
     Route::apiResource('organizations', OrganizationController::class);
     Route::apiResource('personil', PersonilController::class);
     Route::apiResource('certificates', CertificateController::class);
+    Route::get('certificates/{certificate}/fulfillment-notes', [CertificateFulfillmentNoteController::class, 'index']);
+    Route::post('certificates/{certificate}/fulfillment-notes', [CertificateFulfillmentNoteController::class, 'store']);
+    Route::put('certificates/{certificate}/fulfillment-notes/{note}', [CertificateFulfillmentNoteController::class, 'update']);
+    Route::patch('certificates/{certificate}/fulfillment-notes/{note}', [CertificateFulfillmentNoteController::class, 'update']);
+    Route::delete('certificates/{certificate}/fulfillment-notes/{note}', [CertificateFulfillmentNoteController::class, 'destroy']);
     Route::get('agenda/self-assessment', [AgendaController::class, 'selfAssessmentSessions']);
     Route::apiResource('agenda', AgendaController::class)->only(['index', 'show']);
     Route::apiResource('audits', AuditController::class)->only(['index', 'show']);
