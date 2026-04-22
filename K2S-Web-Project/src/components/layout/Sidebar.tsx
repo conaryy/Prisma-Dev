@@ -39,6 +39,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getAuthUser } from '@/lib/api';
 import { getAuthPortalUrl } from '@/lib/authPortal';
+import { CERTIFICATION_NOTE_LOCATIONS } from '@/lib/certificationNotes';
 import { canAccessExternalDnp, canManageAdminModule } from '@/lib/permissions';
 import { useAppData } from '@/contexts/AppDataContext';
 
@@ -83,9 +84,6 @@ export function Sidebar({
   const isDashboardCapActive = location.pathname === '/cap';
   const isInfoActive = location.pathname.startsWith('/informasi');
   const isInstansiActive = location.pathname.startsWith('/informasi/instansi');
-  const isCertificateFulfillmentActive = location.pathname.startsWith(
-    '/informasi/instansi/sertifikat/pemenuhan'
-  );
   const isAuditPqActive = location.pathname.startsWith('/audit/protocol-question');
   const isAuditCapPath = location.pathname.startsWith('/audit/cap');
   const isAuditCapActive = isAuditCapPath;
@@ -149,6 +147,13 @@ export function Sidebar({
   const isMonitoringPqAgendaActive =
     location.pathname === '/monitoring/protocol-question/hasil-review-dgca';
   const isMonitoringResultActive = location.pathname === '/monitoring';
+  const isCertificationNotesActive = location.pathname.startsWith(
+    '/catatan-sertifikasi'
+  );
+  const activeCertificationLocation =
+    CERTIFICATION_NOTE_LOCATIONS.find(({ slug }) =>
+      location.pathname.startsWith(`/catatan-sertifikasi/${slug}`)
+    )?.slug ?? null;
   const isExternalDnpActive = location.pathname.startsWith('/external-dnp');
   const isExternalDnpAuditActive = location.pathname.startsWith(
     '/external-dnp/audit'
@@ -236,6 +241,9 @@ export function Sidebar({
   );
   const [monitoringOpen, setMonitoringOpen] = useState(isMonitoringActive);
   const [monitoringPqOpen, setMonitoringPqOpen] = useState(isMonitoringPqActive);
+  const [certificationNotesOpen, setCertificationNotesOpen] = useState(
+    isCertificationNotesActive
+  );
   const [externalDnpOpen, setExternalDnpOpen] = useState(isExternalDnpActive);
   const [externalDnpAuditOpen, setExternalDnpAuditOpen] = useState(
     isExternalDnpAuditActive
@@ -334,6 +342,12 @@ export function Sidebar({
       setMonitoringPqOpen(true);
     }
   }, [isMonitoringPqActive]);
+
+  useEffect(() => {
+    if (isCertificationNotesActive) {
+      setCertificationNotesOpen(true);
+    }
+  }, [isCertificationNotesActive]);
 
   useEffect(() => {
     if (isExternalDnpActive) {
@@ -583,16 +597,6 @@ export function Sidebar({
                   >
                     <Award className={navIconClass} />
                     <span className={labelClass('flex-1')}>Sertifikat</span>
-                  </Link>
-                  <Link
-                    to="/informasi/instansi/sertifikat/pemenuhan"
-                    className={cn(
-                      subNavClass(isCertificateFulfillmentActive),
-                      'pl-8 text-[13px]'
-                    )}
-                  >
-                    <FileCheck2 className={navIconClass} />
-                    <span className={labelClass('flex-1')}>Pemenuhan Sertifikat</span>
                   </Link>
                 </CollapsibleContent>
               </Collapsible>
@@ -1066,6 +1070,51 @@ export function Sidebar({
                 <Activity className={navIconClass} />
                 <span className={labelClass('flex-1')}>Hasil Monitoring</span>
               </Link>
+            </CollapsibleContent>
+          </Collapsible>
+
+          <Collapsible
+            open={certificationNotesOpen}
+            onOpenChange={setCertificationNotesOpen}
+          >
+            <CollapsibleTrigger
+              className={cn(navClass(isCertificationNotesActive), 'pr-2')}
+              onClick={handleCollapsedTriggerClick(setCertificationNotesOpen)}
+            >
+              <FileCheck2 className={navIconClass} />
+              <span className={labelClass('flex-1 text-left')}>
+                Catatan Sertifikasi
+              </span>
+              {!isCollapsed && (
+                <ChevronDown
+                  className={cn(
+                    'h-4 w-4 text-current/70 transition-transform',
+                    certificationNotesOpen && 'rotate-180'
+                  )}
+                />
+              )}
+            </CollapsibleTrigger>
+            <CollapsibleContent
+              className={cn(
+                'mt-1 space-y-1 overflow-hidden pb-1 pl-5 pr-2 pt-1',
+                isCollapsed && 'invisible pointer-events-none'
+              )}
+            >
+              {CERTIFICATION_NOTE_LOCATIONS.map((locationItem) => (
+                <Link
+                  key={locationItem.slug}
+                  to={`/catatan-sertifikasi/${locationItem.slug}`}
+                  className={cn(
+                    subNavClass(activeCertificationLocation === locationItem.slug),
+                    'pl-8 text-[13px]'
+                  )}
+                >
+                  <Building2 className={navIconClass} />
+                  <span className={labelClass('flex-1')}>
+                    {locationItem.menuLabel}
+                  </span>
+                </Link>
+              ))}
             </CollapsibleContent>
           </Collapsible>
 

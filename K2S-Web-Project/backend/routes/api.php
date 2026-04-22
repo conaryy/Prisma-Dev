@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuditController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CertificateController;
 use App\Http\Controllers\Api\CertificateFulfillmentNoteController;
+use App\Http\Controllers\Api\CertificationNoteController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\FacilityController;
 use App\Http\Controllers\Api\FacilityGroupController;
@@ -104,6 +105,9 @@ Route::get('guide/template/{type}/signed', [GuideManualController::class, 'downl
 Route::get('certificates/fulfillment-notes/{note}/evidence/signed', [CertificateFulfillmentNoteController::class, 'downloadSigned'])
     ->middleware(['signed', 'throttle:60,1'])
     ->name('certificates.fulfillment-notes.evidence.signed');
+Route::get('certification-notes/rows/{row}/evidence/signed', [CertificationNoteController::class, 'downloadSigned'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->name('certification-notes.rows.evidence.signed');
 
 Route::middleware('auth.api')->group(function () {
     Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -151,6 +155,25 @@ Route::middleware('auth.api')->group(function () {
     Route::put('certificates/{certificate}/fulfillment-notes/{note}', [CertificateFulfillmentNoteController::class, 'update']);
     Route::patch('certificates/{certificate}/fulfillment-notes/{note}', [CertificateFulfillmentNoteController::class, 'update']);
     Route::delete('certificates/{certificate}/fulfillment-notes/{note}', [CertificateFulfillmentNoteController::class, 'destroy']);
+    Route::get('certification-notes/{locationSlug}', [CertificationNoteController::class, 'index']);
+    Route::post('certification-notes/{locationSlug}/tables', [CertificationNoteController::class, 'storeTable']);
+    Route::patch('certification-note-tables/{table}', [CertificationNoteController::class, 'updateTable']);
+    Route::delete('certification-note-tables/{table}', [CertificationNoteController::class, 'destroyTable']);
+    Route::post('certification-note-tables/{table}/rows', [CertificationNoteController::class, 'storeRow']);
+    Route::patch('certification-note-tables/{table}/rows/{row}', [CertificationNoteController::class, 'updateRow']);
+    Route::delete('certification-note-tables/{table}/rows/{row}', [CertificationNoteController::class, 'destroyRow']);
+    Route::post(
+        'certification-note-tables/{table}/export-document/generate',
+        [CertificationNoteController::class, 'generateDocument']
+    );
+    Route::get(
+        'certification-note-tables/{table}/export-document/download',
+        [CertificationNoteController::class, 'downloadDocument']
+    );
+    Route::delete(
+        'certification-note-tables/{table}/rows/{row}/evidence/{fileIndex}',
+        [CertificationNoteController::class, 'destroyEvidenceFile']
+    );
     Route::get('agenda/self-assessment', [AgendaController::class, 'selfAssessmentSessions']);
     Route::apiResource('agenda', AgendaController::class)->only(['index', 'show']);
     Route::apiResource('audits', AuditController::class)->only(['index', 'show']);

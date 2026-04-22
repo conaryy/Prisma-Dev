@@ -38,6 +38,11 @@ const PemenuhanSertifikat = lazy(() =>
     default: module.PemenuhanSertifikat,
   }))
 );
+const CatatanSertifikasi = lazy(() =>
+  import('@/pages/CatatanSertifikasi').then((module) => ({
+    default: module.CatatanSertifikasi,
+  }))
+);
 const AgendaPengawasan = lazy(() =>
   import('@/pages/AgendaPengawasan').then((module) => ({
     default: module.AgendaPengawasan,
@@ -506,6 +511,14 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="profile" element={<Profile />} />
+          <Route
+            path="catatan-sertifikasi"
+            element={<Navigate to="/catatan-sertifikasi/surabaya" replace />}
+          />
+          <Route
+            path="catatan-sertifikasi/:locationSlug"
+            element={<CatatanSertifikasi />}
+          />
           <Route path="informasi">
             <Route path="instansi">
               <Route index element={<Navigate to="profil" replace />} />

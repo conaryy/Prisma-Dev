@@ -23,8 +23,8 @@ WORKDIR /var/www/html
 # Increase PHP upload/post limits for evidence uploads
 RUN set -eux; \
     { \
-      echo 'upload_max_filesize=25M'; \
-      echo 'post_max_size=25M'; \
+      echo 'upload_max_filesize=64M'; \
+      echo 'post_max_size=64M'; \
       echo 'memory_limit=256M'; \
     } > /usr/local/etc/php/conf.d/uploads.ini
 

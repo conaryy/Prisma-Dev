@@ -96,6 +96,7 @@ export function PemenuhanSertifikat() {
   const { certificateId } = useParams();
   const navigate = useNavigate();
   const { certificates } = useAppData();
+  const certificateFulfillmentBasePath = '/informasi/instansi/sertifikat/pemenuhan';
 
   const evidenceCertificates = useMemo(
     () =>
@@ -311,7 +312,9 @@ export function PemenuhanSertifikat() {
                         <TableCell className="text-xs font-medium text-slate-700 dark:text-slate-100">
                           <button
                             type="button"
-                            onClick={() => navigate(`/informasi/instansi/sertifikat/pemenuhan/${item.id}`)}
+                            onClick={() =>
+                              navigate(`${certificateFulfillmentBasePath}/${item.id}`)
+                            }
                             className="text-left font-semibold text-slate-700 underline-offset-4 hover:text-blue-600 hover:underline dark:text-slate-100 dark:hover:text-blue-300"
                           >
                             {item.name}
