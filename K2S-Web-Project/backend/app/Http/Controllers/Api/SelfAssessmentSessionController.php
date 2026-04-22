@@ -10,8 +10,15 @@ use App\Models\SelfAssessmentSessionUser;
 use App\Models\SelfAssessmentQuestion;
 use App\Models\SelfAssessmentAnswer;
 use App\Models\SelfAssessmentCap;
+use App\Models\SelfAssessmentCapExtension;
+use App\Models\SelfAssessmentCapFulfillment;
+use App\Models\SelfAssessmentCapFulfillmentFile;
 use App\Models\SelfAssessmentEvidence;
+use App\Models\SelfAssessmentMonitoringResult;
+use App\Models\SelfAssessmentMonitoringResultFile;
 use App\Models\SelfAssessmentReview;
+use App\Models\SelfAssessmentResult;
+use App\Models\SelfAssessmentResultFile;
 use App\Models\SystemNotification;
 use App\Models\User;
 use App\Services\Whatsapp\SelfAssessmentWhatsappNotificationService;
@@ -901,8 +908,152 @@ class SelfAssessmentSessionController extends ApiController
 
     public function adminDestroy(SelfAssessmentSession $session)
     {
-        $session->delete();
+        $fileUrls = $this->collectSessionFileUrlsForDeletion($session);
+
+        DB::transaction(function () use ($session) {
+            $sessionAreaIds = SelfAssessmentSessionArea::query()
+                ->where('session_id', $session->id)
+                ->pluck('id');
+
+            $answerIds = SelfAssessmentAnswer::query()
+                ->whereIn('session_area_id', $sessionAreaIds)
+                ->pluck('id');
+
+            $capIds = SelfAssessmentCap::query()
+                ->whereIn('answer_id', $answerIds)
+                ->pluck('id');
+
+            $fulfillmentIds = SelfAssessmentCapFulfillment::query()
+                ->whereIn('cap_id', $capIds)
+                ->pluck('id');
+
+            $resultIds = SelfAssessmentResult::query()
+                ->whereIn('session_area_id', $sessionAreaIds)
+                ->pluck('id');
+
+            $monitoringResultIds = SelfAssessmentMonitoringResult::query()
+                ->whereIn('session_area_id', $sessionAreaIds)
+                ->pluck('id');
+
+            $exportDnpSnapshotIds = $this->pluckWhereIn(
+                'self_assessment_export_dnp_snapshots',
+                'session_area_id',
+                $sessionAreaIds,
+                'id'
+            );
+
+            $this->deleteWhereIn('self_assessment_cap_fulfillment_files', 'fulfillment_id', $fulfillmentIds);
+            $this->deleteWhereIn('self_assessment_cap_fulfillments', 'cap_id', $capIds);
+            $this->deleteWhereIn('self_assessment_cap_extensions', 'cap_id', $capIds);
+            $this->deleteWhereIn('self_assessment_cap_fulfillment_reviews', 'cap_id', $capIds);
+            $this->deleteWhereIn('self_assessment_monitoring_reviews', 'cap_id', $capIds);
+            $this->deleteWhereIn('self_assessment_cap_reviews', 'cap_id', $capIds);
+            $this->deleteWhereIn('self_assessment_caps', 'answer_id', $answerIds);
+            $this->deleteWhereIn('self_assessment_reviews', 'answer_id', $answerIds);
+            $this->deleteWhereIn('self_assessment_result_files', 'result_id', $resultIds);
+            $this->deleteWhereIn('self_assessment_results', 'session_area_id', $sessionAreaIds);
+            $this->deleteWhereIn('self_assessment_monitoring_result_files', 'result_id', $monitoringResultIds);
+            $this->deleteWhereIn('self_assessment_monitoring_results', 'session_area_id', $sessionAreaIds);
+            $this->deleteWhereIn('self_assessment_evidence', 'session_area_id', $sessionAreaIds);
+            $this->deleteWhereIn('self_assessment_answers', 'session_area_id', $sessionAreaIds);
+            $this->deleteWhereIn('self_assessment_area_teams', 'session_area_id', $sessionAreaIds);
+            $this->deleteWhereIn('self_assessment_export_dnp_snapshot_items', 'snapshot_id', $exportDnpSnapshotIds);
+            $this->deleteWhereIn('self_assessment_export_dnp_snapshots', 'session_area_id', $sessionAreaIds);
+            $this->deleteWhereIn('self_assessment_export_dnp_import_jobs', 'session_area_id', $sessionAreaIds);
+            $this->deleteWhereIn('self_assessment_import_dnp_inject_jobs', 'session_area_id', $sessionAreaIds);
+            $this->deleteWhere('self_assessment_session_question_category_users', 'session_id', $session->id);
+            $this->deleteWhere('self_assessment_session_users', 'session_id', $session->id);
+            $this->deleteWhereIn('self_assessment_session_areas', 'id', $sessionAreaIds);
+
+            $session->delete();
+        });
+
+        foreach ($fileUrls as $fileUrl) {
+            $this->deleteFileIfExists($fileUrl);
+        }
+
         return $this->respondData(['success' => true]);
+    }
+
+    private function collectSessionFileUrlsForDeletion(SelfAssessmentSession $session): array
+    {
+        $sessionAreaIds = SelfAssessmentSessionArea::query()
+            ->where('session_id', $session->id)
+            ->pluck('id');
+
+        $answerIds = SelfAssessmentAnswer::query()
+            ->whereIn('session_area_id', $sessionAreaIds)
+            ->pluck('id');
+
+        $capIds = SelfAssessmentCap::query()
+            ->whereIn('answer_id', $answerIds)
+            ->pluck('id');
+
+        $fulfillmentIds = SelfAssessmentCapFulfillment::query()
+            ->whereIn('cap_id', $capIds)
+            ->pluck('id');
+
+        $resultIds = SelfAssessmentResult::query()
+            ->whereIn('session_area_id', $sessionAreaIds)
+            ->pluck('id');
+
+        $monitoringResultIds = SelfAssessmentMonitoringResult::query()
+            ->whereIn('session_area_id', $sessionAreaIds)
+            ->pluck('id');
+
+        return collect([$session->file_url])
+            ->merge(SelfAssessmentEvidence::query()->whereIn('session_area_id', $sessionAreaIds)->pluck('url'))
+            ->merge(SelfAssessmentResultFile::query()->whereIn('result_id', $resultIds)->pluck('url'))
+            ->merge(SelfAssessmentMonitoringResultFile::query()->whereIn('result_id', $monitoringResultIds)->pluck('url'))
+            ->merge(SelfAssessmentCapFulfillmentFile::query()->whereIn('fulfillment_id', $fulfillmentIds)->pluck('url'))
+            ->merge(SelfAssessmentCapExtension::query()->whereIn('cap_id', $capIds)->pluck('file_url'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function deleteWhere(string $table, string $column, string $value): void
+    {
+        if (!Schema::hasTable($table)) {
+            return;
+        }
+
+        DB::table($table)
+            ->where($column, $value)
+            ->delete();
+    }
+
+    private function deleteWhereIn(string $table, string $column, $values): void
+    {
+        if (!Schema::hasTable($table)) {
+            return;
+        }
+
+        $ids = collect($values)->filter()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        DB::table($table)
+            ->whereIn($column, $ids)
+            ->delete();
+    }
+
+    private function pluckWhereIn(string $table, string $whereColumn, $values, string $pluckColumn)
+    {
+        if (!Schema::hasTable($table)) {
+            return collect();
+        }
+
+        $ids = collect($values)->filter()->values();
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return DB::table($table)
+            ->whereIn($whereColumn, $ids)
+            ->pluck($pluckColumn);
     }
 
     private function supportsTargetAgendaIds(): bool

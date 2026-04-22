@@ -45,6 +45,7 @@ class SelfAssessmentReviewController extends ApiController
 
         $answers = SelfAssessmentAnswer::query()
             ->where('is_submitted', true)
+            ->whereHas('sessionArea.session')
             ->when($monthNumber, fn ($query) => $query->whereMonth('submitted_at', $monthNumber))
             ->when($validated['year'] ?? null, fn ($query, $year) => $query->whereYear('submitted_at', $year))
             ->when($validated['scope'] ?? null, function ($query, $scope) {
@@ -90,6 +91,9 @@ class SelfAssessmentReviewController extends ApiController
         ]);
 
         $session = SelfAssessmentSession::query()->find($area->session_id);
+        if (!$session) {
+            return response()->json(['error' => 'Sesi self assessment tidak ditemukan.'], 404);
+        }
 
         $isImportDnpMode = ($validated['mode'] ?? 'default') === 'importDnp';
 
@@ -205,7 +209,11 @@ class SelfAssessmentReviewController extends ApiController
                 'files' => $result->files->map(fn ($file) => [
                     'id' => $file->id,
                     'name' => $file->name,
-                    'url' => $file->url,
+                    'url' => URL::temporarySignedRoute(
+                        'self-assessment.results.file.signed',
+                        now()->addMinutes(10),
+                        ['file' => $file->id]
+                    ),
                 ])->values(),
             ] : null,
             'dnpCompare' => $dnpSnapshot ? [
@@ -728,6 +736,7 @@ class SelfAssessmentReviewController extends ApiController
 
         $answers = SelfAssessmentAnswer::query()
             ->where('user_id', $userId)
+            ->whereHas('sessionArea.session')
             ->when(
                 $scope === 'monitoring',
                 function ($query) use ($monitoringReviewedAnswerIds) {
@@ -793,6 +802,9 @@ class SelfAssessmentReviewController extends ApiController
             ->get();
 
         $session = SelfAssessmentSession::query()->find($area->session_id);
+        if (!$session) {
+            return response()->json(['error' => 'Sesi self assessment tidak ditemukan.'], 404);
+        }
 
         $questions = SelfAssessmentQuestion::query()
             ->when($session?->scope, fn ($query, $scope) => $query->where('scope', $scope))
