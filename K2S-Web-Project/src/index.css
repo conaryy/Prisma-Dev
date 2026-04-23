@@ -226,7 +226,7 @@
   }
 
   /* Button overrides for consistent dark theme */
-  .dark button.bg-white {
+  .dark button[class~='bg-white'] {
     background-color: rgba(30, 41, 59, 0.9) !important;
     color: #e2e8f0 !important;
   }

@@ -614,7 +614,7 @@ export function SupervisionProgramSection({
   }
 
   return (
-    <section className="flex min-w-0 w-full max-w-none flex-col gap-4 sm:gap-5 md:gap-6">
+    <section className="security-program-section flex min-w-0 w-full max-w-none flex-col gap-4 sm:gap-5 md:gap-6">
       <div className="rounded-[26px] border border-slate-200/80 bg-white/95 px-4 py-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:rounded-[30px] sm:px-6 sm:py-6 md:px-8 md:py-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 max-w-3xl">
@@ -644,19 +644,6 @@ export function SupervisionProgramSection({
           const categoryStatus =
             items.length > 0 && items.every((item) => item.status === 'Terlaksana') ? ('Sudah' as StatusTag) : ('Terjadwal' as StatusTag);
           const lastCompleted = [...items].find((item) => Boolean(item.completedAtIso));
-          const inspectionLocations =
-            category === 'Inspeksi'
-              ? CATEGORY_BRANCHES.Inspeksi.map((branch) => {
-                  const branchItems = items.filter((item) => normalizeBranch(item.location ?? item.owner) === branch);
-                  return {
-                    name: branch,
-                    status:
-                      branchItems.length > 0 && branchItems.every((item) => item.status === 'Terlaksana')
-                        ? ('Sudah' as StatusTag)
-                        : ('Terjadwal' as StatusTag),
-                  };
-                })
-              : [];
 
           return (
             <button
@@ -740,18 +727,6 @@ export function SupervisionProgramSection({
                         <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Butuh Aksi</p>
                         <strong className="mt-2.5 block text-[1.2rem] font-semibold tracking-[-0.03em] text-slate-900 sm:text-[1.3rem]">{pendingCount}</strong>
                       </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5">
-                      {inspectionLocations.map((location) => (
-                        <span
-                          key={location.name}
-                          className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-semibold ${getSummaryStatusStyles(location.status).badge}`}
-                        >
-                          <span className={`h-2 w-2 rounded-full ${getSummaryStatusStyles(location.status).dot}`} />
-                          {location.name}
-                        </span>
-                      ))}
                     </div>
                   </>
                 ) : null}
