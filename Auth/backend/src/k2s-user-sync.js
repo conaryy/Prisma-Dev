@@ -19,6 +19,7 @@ function buildPayload(user) {
     status: user.status,
     can_access_external_dnp: Boolean(user.can_access_external_dnp),
     permissions: user.permissions || {},
+    certification_note_location_access: user.certification_note_location_access || [],
     external_dnp_instansi_access: user.external_dnp_instansi_access || [],
   };
 }

@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Throwable;
 
 class RunSelfAssessmentQuestionImport implements ShouldQueue
@@ -18,11 +19,14 @@ class RunSelfAssessmentQuestionImport implements ShouldQueue
 
     public int $tries = 1;
 
+    public string $encryptedPayload;
+
     public function __construct(
         public string $importJobId,
         public string $userId,
-        public array $payload
+        array $payload
     ) {
+        $this->encryptedPayload = Crypt::encrypt($payload);
     }
 
     public function handle(SelfAssessmentQuestionController $controller): void
@@ -47,10 +51,15 @@ class RunSelfAssessmentQuestionImport implements ShouldQueue
             return;
         }
 
-        $request = Request::create('/api/admin/self-assessment/questions/import-dnp/run', 'POST', $this->payload);
-        $request->setUserResolver(static fn () => $user);
-
         try {
+            $payload = Crypt::decrypt($this->encryptedPayload);
+            if (!is_array($payload)) {
+                throw new \RuntimeException('Payload import pertanyaan DNP tidak valid.');
+            }
+
+            $request = Request::create('/api/admin/self-assessment/questions/import-dnp/run', 'POST', $payload);
+            $request->setUserResolver(static fn () => $user);
+
             $response = $controller->importDnpScrapeRun($request);
             $statusCode = method_exists($response, 'getStatusCode') ? $response->getStatusCode() : 500;
             $payload = method_exists($response, 'getContent')

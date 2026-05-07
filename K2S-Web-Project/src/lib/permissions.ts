@@ -12,6 +12,7 @@ export type PermissionMap = {
 type AuthUserLike = {
   role?: string;
   can_access_external_dnp?: boolean;
+  certification_note_location_access?: string[] | null;
   external_dnp_instansi_access?: string[] | null;
   permissions?: Partial<PermissionMap> | Record<string, unknown> | null;
 };
@@ -92,4 +93,36 @@ export function canAccessExternalDnp(user: AuthUserLike | null | undefined) {
 
 export function canManageExternalDnp(user: AuthUserLike | null | undefined) {
   return isAdminRole(user);
+}
+
+export function getCertificationNoteLocationAccess(
+  user: AuthUserLike | null | undefined
+) {
+  if (isAdminRole(user)) {
+    return [
+      'surabaya',
+      'sumenep',
+      'banyuwangi',
+      'malang',
+      'kediri',
+      'blora',
+      'jember',
+      'bawean',
+    ];
+  }
+
+  return Array.isArray(user?.certification_note_location_access)
+    ? user.certification_note_location_access
+        .map((value) => String(value ?? '').trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+}
+
+export function canAccessCertificationNoteLocation(
+  user: AuthUserLike | null | undefined,
+  locationSlug: string
+) {
+  return getCertificationNoteLocationAccess(user).includes(
+    String(locationSlug ?? '').trim().toLowerCase()
+  );
 }

@@ -622,7 +622,7 @@ class ExternalDnpCapController extends ApiController
             'progress' => ['required', 'integer', 'min:0', 'max:100'],
             'action' => ['required', 'in:draft'],
             'exportToExternal' => ['nullable', 'boolean'],
-            'file' => ['nullable', 'file', 'max:20480'],
+            'file' => ['nullable', 'file', 'mimes:pdf,png,jpg,jpeg,doc,docx,xls,xlsx,ppt,pptx,mp3,mp4', 'max:20480'],
         ]);
         $exportToExternal = $request->boolean('exportToExternal');
         if ($exportToExternal && empty($validated['file'])) {
@@ -699,7 +699,7 @@ class ExternalDnpCapController extends ApiController
 
         $validated = $request->validate([
             'dueDate' => ['required', 'date'],
-            'file' => ['required', 'file', 'max:20480'],
+            'file' => ['required', 'file', 'mimes:pdf,png,jpg,jpeg,doc,docx,xls,xlsx,ppt,pptx,mp3,mp4', 'max:20480'],
         ]);
 
         $path = $validated['file']->store('external-dnp-cap-extensions', 'public');

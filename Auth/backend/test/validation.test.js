@@ -31,6 +31,7 @@ test('validateCreateUserPayload normalizes permissions object', () => {
       can_manage_users: 1,
       unknown_flag: true,
     },
+    certification_note_location_access: ['surabaya', 'UNKNOWN', 'malang'],
     external_dnp_instansi_access: ['ngloram', 'UNKNOWN', 'ngloram'],
   });
 
@@ -38,6 +39,7 @@ test('validateCreateUserPayload normalizes permissions object', () => {
   assert.deepEqual(result.data.permissions, {
     can_manage_users: true,
   });
+  assert.deepEqual(result.data.certification_note_location_access, ['surabaya', 'malang']);
   assert.deepEqual(result.data.external_dnp_instansi_access, ['ngloram']);
 });
 
@@ -112,6 +114,7 @@ test('validateUpdateUserPayload keeps undefined permissions untouched', () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.data.permissions, undefined);
+  assert.equal(result.data.certification_note_location_access, undefined);
   assert.equal(result.data.external_dnp_instansi_access, undefined);
 });
 

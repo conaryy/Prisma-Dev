@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
+use App\Support\CertificationNoteLocationAccess;
 use App\Services\Whatsapp\SelfAssessmentWhatsappNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -57,6 +58,7 @@ class UserController extends ApiController
             'permissions.can_access_k3' => ['sometimes', 'boolean'],
             'permissions.can_access_keamanan' => ['sometimes', 'boolean'],
             'permissions.can_access_external_dnp' => ['sometimes', 'boolean'],
+            'certification_note_location_access' => ['nullable', 'array'],
             'external_dnp_instansi_access' => ['nullable', 'array'],
         ]);
 
@@ -65,6 +67,9 @@ class UserController extends ApiController
         $username = trim((string) $validated['username']);
         $name = trim((string) ($validated['name'] ?? ''));
         $phone = trim((string) ($validated['phone'] ?? ''));
+        $certificationNoteLocationAccess = CertificationNoteLocationAccess::normalizeKeys(
+            $validated['certification_note_location_access'] ?? []
+        );
         $permissions = $this->applyRolePermissionRules(
             $this->normalizePermissions($validated['permissions'] ?? null),
             $validated['role']
@@ -103,6 +108,20 @@ class UserController extends ApiController
                 ? ($validated['external_dnp_instansi_access'] ?? [])
                 : [];
         }
+        if (Schema::hasColumn('users', 'certification_note_location_access')) {
+            $user->certification_note_location_access = $validated['role'] === 'Admin'
+                ? CertificationNoteLocationAccess::normalizeKeys([
+                    'surabaya',
+                    'sumenep',
+                    'banyuwangi',
+                    'malang',
+                    'kediri',
+                    'blora',
+                    'jember',
+                    'bawean',
+                ])
+                : $certificationNoteLocationAccess;
+        }
         $user->save();
 
         return $this->respondData($user->only([
@@ -116,6 +135,7 @@ class UserController extends ApiController
             'can_access_external_dnp',
             'permissions',
             'external_dnp_instansi_access',
+            'certification_note_location_access',
             'sso_subject',
         ]));
     }
@@ -181,10 +201,14 @@ class UserController extends ApiController
             'permissions.can_access_k3' => ['sometimes', 'boolean'],
             'permissions.can_access_keamanan' => ['sometimes', 'boolean'],
             'permissions.can_access_external_dnp' => ['sometimes', 'boolean'],
+            'certification_note_location_access' => ['nullable', 'array'],
         ]);
 
         $email = isset($validated['email']) ? trim((string) $validated['email']) : '';
         $phone = isset($validated['phone']) ? trim((string) $validated['phone']) : '';
+        $certificationNoteLocationAccess = CertificationNoteLocationAccess::normalizeKeys(
+            $validated['certification_note_location_access'] ?? []
+        );
         $permissions = $this->applyRolePermissionRules(
             $this->normalizePermissions($validated['permissions'] ?? null),
             $validated['role']
@@ -203,9 +227,21 @@ class UserController extends ApiController
             'status' => $validated['status'] ?? 'Active',
             'can_access_external_dnp' => $canAccessExternalDnp,
             'permissions' => $permissions,
+            'certification_note_location_access' => $validated['role'] === 'Admin'
+                ? CertificationNoteLocationAccess::normalizeKeys([
+                    'surabaya',
+                    'sumenep',
+                    'banyuwangi',
+                    'malang',
+                    'kediri',
+                    'blora',
+                    'jember',
+                    'bawean',
+                ])
+                : $certificationNoteLocationAccess,
         ]);
 
-        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions']), 201);
+        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions', 'certification_note_location_access']), 201);
     }
 
     /**
@@ -213,7 +249,7 @@ class UserController extends ApiController
      */
     public function show(User $user)
     {
-        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions']));
+        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions', 'certification_note_location_access']));
     }
 
     /**
@@ -239,6 +275,7 @@ class UserController extends ApiController
             'permissions.can_access_k3' => ['sometimes', 'boolean'],
             'permissions.can_access_keamanan' => ['sometimes', 'boolean'],
             'permissions.can_access_external_dnp' => ['sometimes', 'boolean'],
+            'certification_note_location_access' => ['sometimes', 'nullable', 'array'],
         ]);
 
         if (isset($validated['password'])) {
@@ -271,11 +308,30 @@ class UserController extends ApiController
             );
             $validated['can_access_external_dnp'] = (bool) ($validated['permissions']['can_access_external_dnp'] ?? false);
         }
+        if (array_key_exists('certification_note_location_access', $validated) || array_key_exists('role', $validated)) {
+            $effectiveRole = (string) ($validated['role'] ?? $user->role ?? 'Viewer');
+            $validated['certification_note_location_access'] = $effectiveRole === 'Admin'
+                ? CertificationNoteLocationAccess::normalizeKeys([
+                    'surabaya',
+                    'sumenep',
+                    'banyuwangi',
+                    'malang',
+                    'kediri',
+                    'blora',
+                    'jember',
+                    'bawean',
+                ])
+                : CertificationNoteLocationAccess::normalizeKeys(
+                    $validated['certification_note_location_access']
+                        ?? $user->certification_note_location_access
+                        ?? []
+                );
+        }
 
         $user->fill($validated);
         $user->save();
 
-        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions']));
+        return $this->respondData($user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions', 'certification_note_location_access']));
     }
 
     /**
@@ -305,7 +361,7 @@ class UserController extends ApiController
         }
 
         return $this->respondData([
-            'user' => $user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions']),
+            'user' => $user->only(['id', 'name', 'username', 'email', 'phone', 'role', 'status', 'can_access_external_dnp', 'permissions', 'certification_note_location_access']),
             'password_reset' => true,
             'logged_out_sessions' => (bool) ($validated['logout_sessions'] ?? true),
         ]);

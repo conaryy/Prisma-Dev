@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
   ExternalLink,
@@ -19,15 +19,17 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from '@/hooks/use-toast';
-import { apiFetch, resolveApiUrl } from '@/lib/api';
+import { apiFetch, getAuthUser, resolveApiUrl } from '@/lib/api';
 import { generateCertificationNoteDocument } from '@/lib/certificationNoteDocuments';
 import {
+  CERTIFICATION_NOTE_LOCATIONS,
   CERTIFICATION_NOTE_MAX_FILE_SIZE_BYTES,
   CERTIFICATION_NOTE_MAX_FILE_SIZE_LABEL,
   CERTIFICATION_NOTE_PROGRESS_OPTIONS,
   findCertificationNoteLocationBySlug,
 } from '@/lib/certificationNotes';
 import { downloadApiFile } from '@/lib/download';
+import { canAccessCertificationNoteLocation, getCertificationNoteLocationAccess } from '@/lib/permissions';
 
 type CertificationNoteEvidenceFile = {
   name: string;
@@ -150,10 +152,31 @@ const toolbarButton =
 
 export function CatatanSertifikasi() {
   const { locationSlug } = useParams();
+  const user = getAuthUser<{ role?: string; certification_note_location_access?: string[] }>();
+  const allowedLocationSlugs = getCertificationNoteLocationAccess(user);
+  const fallbackLocation =
+    CERTIFICATION_NOTE_LOCATIONS.find((item) => allowedLocationSlugs.includes(item.slug))?.slug ??
+    null;
   const selectedLocation = useMemo(
     () => findCertificationNoteLocationBySlug(locationSlug),
     [locationSlug]
   );
+  const hasAccessToSelectedLocation = canAccessCertificationNoteLocation(
+    user,
+    selectedLocation.slug
+  );
+
+  if (!fallbackLocation) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        Anda tidak memiliki akses ke Catatan Sertifikasi.
+      </div>
+    );
+  }
+
+  if (!hasAccessToSelectedLocation) {
+    return <Navigate to={`/catatan-sertifikasi/${fallbackLocation}`} replace />;
+  }
   const [tables, setTables] = useState<CertificationNoteTableRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingTable, setIsCreatingTable] = useState(false);

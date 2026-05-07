@@ -40,7 +40,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getAuthUser } from '@/lib/api';
 import { getAuthPortalUrl } from '@/lib/authPortal';
 import { CERTIFICATION_NOTE_LOCATIONS } from '@/lib/certificationNotes';
-import { canAccessExternalDnp, canManageAdminModule } from '@/lib/permissions';
+import {
+  canAccessExternalDnp,
+  canManageAdminModule,
+  getCertificationNoteLocationAccess,
+} from '@/lib/permissions';
 import { useAppData } from '@/contexts/AppDataContext';
 
 interface SidebarProps {
@@ -78,6 +82,9 @@ export function Sidebar({
   }>();
   const canAccessExternalDnpMenu = canAccessExternalDnp(user);
   const canAccessAdminMenu = canManageAdminModule(user);
+  const allowedCertificationLocations = CERTIFICATION_NOTE_LOCATIONS.filter((item) =>
+    getCertificationNoteLocationAccess(user).includes(item.slug)
+  );
   const { instansi } = useAppData();
   const profileName =
     user?.name?.trim() || instansi?.name?.trim() || 'Pengguna';
@@ -1073,6 +1080,7 @@ export function Sidebar({
             </CollapsibleContent>
           </Collapsible>
 
+          {allowedCertificationLocations.length > 0 && (
           <Collapsible
             open={certificationNotesOpen}
             onOpenChange={setCertificationNotesOpen}
@@ -1100,7 +1108,7 @@ export function Sidebar({
                 isCollapsed && 'invisible pointer-events-none'
               )}
             >
-              {CERTIFICATION_NOTE_LOCATIONS.map((locationItem) => (
+              {allowedCertificationLocations.map((locationItem) => (
                 <Link
                   key={locationItem.slug}
                   to={`/catatan-sertifikasi/${locationItem.slug}`}
@@ -1117,6 +1125,7 @@ export function Sidebar({
               ))}
             </CollapsibleContent>
           </Collapsible>
+          )}
 
           {canAccessExternalDnpMenu && (
             <Collapsible open={externalDnpOpen} onOpenChange={setExternalDnpOpen}>

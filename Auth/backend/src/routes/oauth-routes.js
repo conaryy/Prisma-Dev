@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
+import { safeCertificationNoteLocationInput } from '../certification-note-locations.js';
 import { config } from '../config.js';
 import { execQuery, queryOne } from '../db.js';
 import { hashToken, randomToken, signAccessToken, signIdToken, verifyAccessToken } from '../crypto.js';
@@ -39,6 +40,9 @@ export function createOauthRouter(deps = {}) {
     tokenRateLimiter: createTokenRateLimiter(),
     ...deps,
   };
+
+  const getCertificationNoteLocationAccess = (userRow) =>
+    safeCertificationNoteLocationInput(userRow?.certification_note_location_access_json);
 
   router.get(
     '/oauth/authorize',
@@ -167,6 +171,7 @@ export function createOauthRouter(deps = {}) {
 
         const permissions = services.getUserPermissions(userRow);
         const externalDnpInstansiAccess = services.getUserExternalDnpInstansiAccess(userRow);
+        const certificationNoteLocationAccess = getCertificationNoteLocationAccess(userRow);
         const accessToken = await services.signAccessToken(
           {
             sub: userRow.id,
@@ -176,6 +181,7 @@ export function createOauthRouter(deps = {}) {
             name: userRow.username,
             role: userRow.role,
             permissions,
+            certification_note_location_access: certificationNoteLocationAccess,
             external_dnp_instansi_access: externalDnpInstansiAccess,
             scope: codeRow.scope,
           },
@@ -189,6 +195,7 @@ export function createOauthRouter(deps = {}) {
             preferred_username: userRow.username,
             name: userRow.username,
             role: userRow.role,
+            certification_note_location_access: certificationNoteLocationAccess,
             external_dnp_instansi_access: externalDnpInstansiAccess,
           },
           config.accessTokenTtlSeconds
@@ -221,6 +228,7 @@ export function createOauthRouter(deps = {}) {
             user: {
               ...userRow,
               permissions,
+              certification_note_location_access: certificationNoteLocationAccess,
               external_dnp_instansi_access: externalDnpInstansiAccess,
             },
           })
@@ -252,6 +260,7 @@ export function createOauthRouter(deps = {}) {
 
         const permissions = services.getUserPermissions(userRow);
         const externalDnpInstansiAccess = services.getUserExternalDnpInstansiAccess(userRow);
+        const certificationNoteLocationAccess = getCertificationNoteLocationAccess(userRow);
         const accessToken = await services.signAccessToken(
           {
             sub: userRow.id,
@@ -261,6 +270,7 @@ export function createOauthRouter(deps = {}) {
             name: userRow.username,
             role: userRow.role,
             permissions,
+            certification_note_location_access: certificationNoteLocationAccess,
             external_dnp_instansi_access: externalDnpInstansiAccess,
             scope: tokenRow.scope,
           },
@@ -274,6 +284,7 @@ export function createOauthRouter(deps = {}) {
             preferred_username: userRow.username,
             name: userRow.username,
             role: userRow.role,
+            certification_note_location_access: certificationNoteLocationAccess,
             external_dnp_instansi_access: externalDnpInstansiAccess,
           },
           config.accessTokenTtlSeconds
@@ -306,6 +317,7 @@ export function createOauthRouter(deps = {}) {
             user: {
               ...userRow,
               permissions,
+              certification_note_location_access: certificationNoteLocationAccess,
               external_dnp_instansi_access: externalDnpInstansiAccess,
             },
           })
@@ -350,6 +362,7 @@ export function createOauthRouter(deps = {}) {
           name: payload.name,
           role: payload.role,
           permissions: payload.permissions,
+          certification_note_location_access: payload.certification_note_location_access ?? [],
           external_dnp_instansi_access: payload.external_dnp_instansi_access ?? [],
         });
       } catch {

@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
+import { safeCertificationNoteLocationInput } from './certification-note-locations.js';
 import { execQuery, parseJson, queryOne } from './db.js';
 import {
   requiresExternalDnpInstansiAccess,
@@ -80,6 +81,9 @@ export async function createManagedUser(payload) {
   const userId = nanoid();
   const now = nowMs();
   const permissions = buildEffectivePermissions(role, safePermissionsInput(payload.permissions));
+  const certificationNoteLocationAccess = safeCertificationNoteLocationInput(
+    payload.certification_note_location_access
+  );
   const externalDnpInstansiAccess = buildExternalDnpInstansiAccess(
     role,
     permissions,
@@ -98,12 +102,13 @@ export async function createManagedUser(payload) {
         password_hash,
         role,
         permissions_json,
+        certification_note_location_access_json,
         external_dnp_instansi_json,
         status,
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       userId,
@@ -113,6 +118,7 @@ export async function createManagedUser(payload) {
       bcrypt.hashSync(password, 10),
       role,
       JSON.stringify(permissions),
+      JSON.stringify(certificationNoteLocationAccess),
       JSON.stringify(externalDnpInstansiAccess.data),
       status,
       now,
@@ -136,6 +142,12 @@ export async function updateManagedUser(userId, payload) {
   const nextPhone = payload.phone === undefined ? current.phone : sanitizePhone(payload.phone);
   const nextRole = payload.role ? ensureRole(sanitizeText(payload.role)) : current.role;
   const nextStatus = payload.status ? ensureStatus(sanitizeText(payload.status)) : current.status;
+  const nextCertificationNoteLocationAccess =
+    payload.certification_note_location_access !== undefined
+      ? safeCertificationNoteLocationInput(payload.certification_note_location_access)
+      : safeCertificationNoteLocationInput(
+          parseJson(current.certification_note_location_access_json || '[]', [])
+        );
   const rawPermissions =
     payload.permissions !== undefined
       ? safePermissionsInput(payload.permissions)
@@ -188,6 +200,7 @@ export async function updateManagedUser(userId, payload) {
         nextPhone,
         nextRole,
         JSON.stringify(nextPermissions),
+        JSON.stringify(nextCertificationNoteLocationAccess),
         JSON.stringify(nextExternalDnpInstansiAccess.data),
         nextStatus,
         nowMs(),
@@ -200,6 +213,7 @@ export async function updateManagedUser(userId, payload) {
         nextPhone,
         nextRole,
         JSON.stringify(nextPermissions),
+        JSON.stringify(nextCertificationNoteLocationAccess),
         JSON.stringify(nextExternalDnpInstansiAccess.data),
         nextStatus,
         nowMs(),
@@ -210,12 +224,12 @@ export async function updateManagedUser(userId, payload) {
     shouldUpdatePassword
       ? `
           UPDATE users
-          SET username = ?, email = ?, phone = ?, role = ?, permissions_json = ?, external_dnp_instansi_json = ?, status = ?, updated_at = ?, password_hash = ?
+          SET username = ?, email = ?, phone = ?, role = ?, permissions_json = ?, certification_note_location_access_json = ?, external_dnp_instansi_json = ?, status = ?, updated_at = ?, password_hash = ?
           WHERE id = ?
         `
       : `
           UPDATE users
-          SET username = ?, email = ?, phone = ?, role = ?, permissions_json = ?, external_dnp_instansi_json = ?, status = ?, updated_at = ?
+          SET username = ?, email = ?, phone = ?, role = ?, permissions_json = ?, certification_note_location_access_json = ?, external_dnp_instansi_json = ?, status = ?, updated_at = ?
           WHERE id = ?
         `,
     params

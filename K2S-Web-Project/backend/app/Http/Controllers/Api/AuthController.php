@@ -65,7 +65,7 @@ class AuthController extends ApiController
         return $this->respondData([
             'token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user->only(['id', 'name', 'username', 'email', 'role', 'status', 'can_access_external_dnp', 'permissions', 'external_dnp_instansi_access']),
+            'user' => $user->only(['id', 'name', 'username', 'email', 'role', 'status', 'can_access_external_dnp', 'permissions', 'external_dnp_instansi_access', 'certification_note_location_access']),
             'permissions' => $this->permissionsPayload($user),
             'portals' => $this->portalPayload(),
         ]);
@@ -84,7 +84,7 @@ class AuthController extends ApiController
     public function me(Request $request)
     {
         $user = $request->user();
-        $userData = $user->only(['id', 'name', 'username', 'email', 'role', 'status', 'phone', 'position', 'can_access_external_dnp', 'permissions', 'external_dnp_instansi_access']);
+        $userData = $user->only(['id', 'name', 'username', 'email', 'role', 'status', 'phone', 'position', 'can_access_external_dnp', 'permissions', 'external_dnp_instansi_access', 'certification_note_location_access']);
 
         return $this->respondData(array_merge(
             $userData,
@@ -100,7 +100,7 @@ class AuthController extends ApiController
         $user = $request->user();
 
         return $this->respondData([
-            'user' => $user->only(['id', 'name', 'username', 'email', 'role', 'status', 'phone', 'position', 'can_access_external_dnp', 'permissions', 'external_dnp_instansi_access']),
+            'user' => $user->only(['id', 'name', 'username', 'email', 'role', 'status', 'phone', 'position', 'can_access_external_dnp', 'permissions', 'external_dnp_instansi_access', 'certification_note_location_access']),
             'permissions' => $this->permissionsPayload($user),
             'portals' => $this->portalPayload(),
             'sso' => $this->ssoConfigPayload(),

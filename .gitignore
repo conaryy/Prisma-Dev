@@ -23,3 +23,20 @@
 **/pnpm-debug.log*
 **/.DS_Store
 **/*.tsbuildinfo
+
+# Local PKL/report drafting files
+/bab3_logbook_dan_k2s.md
+/bab4_4_3_diagram_mermaid.md
+/bab4_logbook_dan_k2s.md
+/Buku_KP_PT_Mitra_Informatika.pdf
+/mermaid_arsitektur_k2s.md
+/materi.md
+/Buku_KP_TRI_TELKOMSEL.pdf
+/contoh deskripsi TA.pdf
+/FM-BIMA-14.Rev00-Pengajuan-Judul-RC1.docx
+/Logbook/diagram_mermaid_new.md
+/Logbook/document_materi.md
+/Logbook/presentasi.md
+/Logbook/arsitektur_new.md
+/Logbook/arsitektur_blockchain.md
+/Logbook/arsitektur.md.bak

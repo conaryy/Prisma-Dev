@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { safeCertificationNoteLocationInput } from './certification-note-locations.js';
 import { parseJson } from './db.js';
 import { resolveExternalDnpInstansiAccess } from './external-dnp-instansi.js';
 import { DEFAULT_ADMIN_PERMISSIONS, buildEffectivePermissions } from './permissions.js';
@@ -133,6 +134,9 @@ export function getUserExternalDnpInstansiAccess(user) {
 export function toUserResponse(row) {
   const permissions = getUserPermissions(row);
   const externalDnpInstansiAccess = getUserExternalDnpInstansiAccess(row);
+  const certificationNoteLocationAccess = safeCertificationNoteLocationInput(
+    parseJson(row.certification_note_location_access_json || '[]', [])
+  );
   return {
     id: row.id,
     name: row.username,
@@ -142,6 +146,7 @@ export function toUserResponse(row) {
     role: row.role,
     status: row.status,
     can_access_external_dnp: Boolean(permissions.can_access_external_dnp),
+    certification_note_location_access: certificationNoteLocationAccess,
     external_dnp_instansi_access: externalDnpInstansiAccess,
     permissions,
     created_at: row.created_at,
@@ -167,6 +172,7 @@ export function tokenResponse({ accessToken, idToken, refreshToken, scope, user 
       status: user.status,
       permissions: user.permissions,
       can_access_external_dnp: Boolean(user.permissions?.can_access_external_dnp),
+      certification_note_location_access: user.certification_note_location_access ?? [],
       external_dnp_instansi_access: user.external_dnp_instansi_access ?? [],
     },
   };

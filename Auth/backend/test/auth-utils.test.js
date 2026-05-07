@@ -57,6 +57,7 @@ test('toUserResponse returns merged permissions and external dnp flag', () => {
     permissions_json: {
       can_access_external_dnp: true,
     },
+    certification_note_location_access_json: ['surabaya', 'unknown'],
     external_dnp_instansi_json: ['ngloram'],
     created_at: 1,
     updated_at: 2,
@@ -65,5 +66,6 @@ test('toUserResponse returns merged permissions and external dnp flag', () => {
   assert.equal(response.username, 'admin');
   assert.equal(response.can_access_external_dnp, true);
   assert.equal(response.permissions.can_manage_users, true);
+  assert.deepEqual(response.certification_note_location_access, ['surabaya']);
   assert.deepEqual(response.external_dnp_instansi_access, []);
 });

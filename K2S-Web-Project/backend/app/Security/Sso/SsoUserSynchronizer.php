@@ -3,6 +3,7 @@
 namespace App\Security\Sso;
 
 use App\Models\User;
+use App\Support\CertificationNoteLocationAccess;
 use App\Support\ExternalDnpInstansiAccess;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +24,7 @@ class SsoUserSynchronizer
     ];
 
     private ?bool $supportsExternalDnpInstansiAccessColumn = null;
+    private ?bool $supportsCertificationNoteLocationAccessColumn = null;
 
     /**
      * @param  array<string, mixed>  $claims
@@ -48,6 +50,7 @@ class SsoUserSynchronizer
         $localRole = $this->mapLocalRole($roles);
         $canAccessExternalDnp = $this->hasExternalDnpAccess($roles);
         $externalDnpInstansiAccess = $this->extractExternalDnpInstansiAccess($claims);
+        $certificationNoteLocationAccess = $this->extractCertificationNoteLocationAccess($claims);
         $permissions = $this->extractPermissions($claims, $localRole, $canAccessExternalDnp);
 
         return DB::transaction(function () use (
@@ -59,6 +62,7 @@ class SsoUserSynchronizer
             $localRole,
             $canAccessExternalDnp,
             $externalDnpInstansiAccess,
+            $certificationNoteLocationAccess,
             $permissions
         ) {
             $query = User::query();
@@ -112,6 +116,20 @@ class SsoUserSynchronizer
                 $user->external_dnp_instansi_access = $canAccessExternalDnp
                     ? ($localRole === 'Admin' ? [] : $externalDnpInstansiAccess)
                     : [];
+            }
+            if ($this->supportsCertificationNoteLocationAccessColumn()) {
+                $user->certification_note_location_access = $localRole === 'Admin'
+                    ? CertificationNoteLocationAccess::normalizeKeys([
+                        'surabaya',
+                        'sumenep',
+                        'banyuwangi',
+                        'malang',
+                        'kediri',
+                        'blora',
+                        'jember',
+                        'bawean',
+                    ])
+                    : $certificationNoteLocationAccess;
             }
             $user->last_sso_login_at = now();
             $user->last_login_at = now();
@@ -241,6 +259,20 @@ class SsoUserSynchronizer
 
     /**
      * @param  array<string, mixed>  $claims
+     * @return array<int, string>
+     */
+    private function extractCertificationNoteLocationAccess(array $claims): array
+    {
+        $raw = Arr::get($claims, 'certification_note_location_access');
+        if (!is_array($raw)) {
+            $raw = Arr::get($claims, 'certificationNoteLocationAccess');
+        }
+
+        return CertificationNoteLocationAccess::normalizeKeys($raw);
+    }
+
+    /**
+     * @param  array<string, mixed>  $claims
      * @return array<string, bool>|null
      */
     private function extractPermissions(array $claims, string $role, bool $canAccessExternalDnp): ?array
@@ -272,6 +304,12 @@ class SsoUserSynchronizer
     {
         return $this->supportsExternalDnpInstansiAccessColumn
             ??= Schema::hasColumn('users', 'external_dnp_instansi_access');
+    }
+
+    private function supportsCertificationNoteLocationAccessColumn(): bool
+    {
+        return $this->supportsCertificationNoteLocationAccessColumn
+            ??= Schema::hasColumn('users', 'certification_note_location_access');
     }
 
     private function toString(mixed $value): string

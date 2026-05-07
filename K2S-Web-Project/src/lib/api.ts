@@ -70,6 +70,9 @@ function deriveUserFromToken(token: string) {
       payload.permissions && typeof payload.permissions === 'object'
         ? payload.permissions
         : undefined,
+    certification_note_location_access: Array.isArray(payload.certification_note_location_access)
+      ? payload.certification_note_location_access
+      : [],
     external_dnp_instansi_access: Array.isArray(payload.external_dnp_instansi_access)
       ? payload.external_dnp_instansi_access
       : [],
@@ -80,6 +83,12 @@ function deriveUserFromToken(token: string) {
 
 function consumeTokenFromQuery() {
   if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const allowQueryToken =
+    (import.meta as { env?: Record<string, string> }).env?.VITE_ALLOW_QUERY_TOKEN === 'true';
+  if (!allowQueryToken) {
     return null;
   }
 

@@ -56,6 +56,7 @@ export async function initDb() {
   await pool.query(schemaSql);
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT');
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS external_dnp_instansi_json JSONB NOT NULL DEFAULT '[]'::jsonb");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS certification_note_location_access_json JSONB NOT NULL DEFAULT '[]'::jsonb");
 }
 
 export async function seedDefaults() {

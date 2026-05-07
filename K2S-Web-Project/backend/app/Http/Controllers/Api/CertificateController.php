@@ -21,17 +21,6 @@ class CertificateController extends ApiController
             return $instansi->id;
         }
 
-        $orphan = Instansi::query()
-            ->whereNull('user_id')
-            ->first();
-
-        if ($orphan) {
-            $orphan->user_id = $userId;
-            $orphan->save();
-
-            return $orphan->id;
-        }
-
         if (!$createIfMissing) {
             return null;
         }
@@ -110,11 +99,9 @@ class CertificateController extends ApiController
      */
     public function show(Certificate $certificate)
     {
-        $instansiId = Instansi::query()
-            ->where('user_id', request()->user()->id)
-            ->value('id');
-        if ($instansiId && $certificate->instansi_id !== $instansiId) {
-            return response()->json(['error' => 'Forbidden.'], 403);
+        $forbidden = $this->forbidUnlessOwned(request(), $certificate);
+        if ($forbidden) {
+            return $forbidden;
         }
         return $this->respondData($certificate);
     }
@@ -124,11 +111,9 @@ class CertificateController extends ApiController
      */
     public function update(Request $request, Certificate $certificate)
     {
-        $instansiId = Instansi::query()
-            ->where('user_id', $request->user()->id)
-            ->value('id');
-        if ($instansiId && $certificate->instansi_id !== $instansiId) {
-            return response()->json(['error' => 'Forbidden.'], 403);
+        $forbidden = $this->forbidUnlessOwned($request, $certificate);
+        if ($forbidden) {
+            return $forbidden;
         }
         $validated = $request->validate([
             'name' => ['sometimes'],
@@ -157,15 +142,26 @@ class CertificateController extends ApiController
      */
     public function destroy(Certificate $certificate)
     {
-        $instansiId = Instansi::query()
-            ->where('user_id', request()->user()->id)
-            ->value('id');
-        if ($instansiId && $certificate->instansi_id !== $instansiId) {
-            return response()->json(['error' => 'Forbidden.'], 403);
+        $forbidden = $this->forbidUnlessOwned(request(), $certificate);
+        if ($forbidden) {
+            return $forbidden;
         }
         $this->deleteFileIfExists($certificate->file_url);
         $certificate->delete();
         return $this->respondData(['success' => true]);
+    }
+
+    private function forbidUnlessOwned(Request $request, Certificate $certificate)
+    {
+        $instansiId = Instansi::query()
+            ->where('user_id', $request->user()->id)
+            ->value('id');
+
+        if (!$instansiId || $certificate->instansi_id !== $instansiId) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
+
+        return null;
     }
 
     private function deleteFileIfExists(?string $url): void

@@ -8,9 +8,19 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EnsureInternalApiToken
 {
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, string $scope = 'whatsapp'): Response
     {
-        $expectedToken = trim((string) env('WHATSAPP_BOT_INTERNAL_TOKEN', ''));
+        $envKey = match ($scope) {
+            'auth-user-sync' => 'AUTH_K2S_USER_SYNC_TOKEN',
+            'whatsapp' => 'WHATSAPP_BOT_INTERNAL_TOKEN',
+            default => '',
+        };
+
+        if ($envKey === '') {
+            return response()->json(['error' => 'Internal API token scope tidak dikenal.'], 500);
+        }
+
+        $expectedToken = trim((string) env($envKey, ''));
         if ($expectedToken === '') {
             return response()->json(['error' => 'Internal API token belum dikonfigurasi.'], 500);
         }

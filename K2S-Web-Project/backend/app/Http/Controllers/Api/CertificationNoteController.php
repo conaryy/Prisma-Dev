@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\CertificationNoteRow;
 use App\Models\CertificationNoteTable;
 use App\Models\Instansi;
+use App\Support\CertificationNoteLocationAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -62,8 +63,11 @@ class CertificationNoteController extends ApiController
         if (!$location) {
             return response()->json(['error' => 'Lokasi catatan sertifikasi tidak valid.'], 404);
         }
+        if (!$this->canAccessLocation($request, $locationSlug)) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
 
-        $instansiId = $this->resolveInstansiId($request);
+        $instansiId = $this->resolveInstansiIdForLocation($locationSlug);
         if (!$instansiId) {
             return $this->respondData([
                 'location' => $location,
@@ -91,8 +95,11 @@ class CertificationNoteController extends ApiController
         if (!$location) {
             return response()->json(['error' => 'Lokasi catatan sertifikasi tidak valid.'], 404);
         }
+        if (!$this->canAccessLocation($request, $locationSlug)) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
 
-        $instansiId = $this->resolveInstansiId($request, true);
+        $instansiId = $this->resolveInstansiIdForLocation($locationSlug, true);
         $nextOrder = (int) CertificationNoteTable::query()
             ->where('instansi_id', $instansiId)
             ->where('location_slug', $locationSlug)
@@ -345,27 +352,23 @@ class CertificationNoteController extends ApiController
         ];
     }
 
-    private function resolveInstansiId(Request $request, bool $createIfMissing = false): ?string
+    private function resolveInstansiIdForLocation(string $locationSlug, bool $createIfMissing = false): ?string
     {
-        $userId = $request->user()->id;
+        $location = $this->resolveLocationPayload($locationSlug);
+        if (!$location) {
+            return null;
+        }
 
         $instansi = Instansi::query()
-            ->where('user_id', $userId)
+            ->where(function ($query) use ($location) {
+                $query
+                    ->whereRaw('LOWER(alias) = ?', [strtolower((string) $location['label'])])
+                    ->orWhereRaw('LOWER(name) = ?', [strtolower((string) $location['office_label'])]);
+            })
             ->first();
 
         if ($instansi) {
             return $instansi->id;
-        }
-
-        $orphan = Instansi::query()
-            ->whereNull('user_id')
-            ->first();
-
-        if ($orphan) {
-            $orphan->user_id = $userId;
-            $orphan->save();
-
-            return $orphan->id;
         }
 
         if (!$createIfMissing) {
@@ -373,13 +376,13 @@ class CertificationNoteController extends ApiController
         }
 
         return Instansi::create([
-            'user_id' => $userId,
+            'user_id' => null,
             'facility_group' => 'Pelayanan Navigasi Penerbangan',
             'kobu' => 'KANTOR OTORITAS BANDAR UDARA WILAYAH III',
             'bandara' => 'JUANDA',
-            'cabang_airnav' => 'PERUM LPPNPI CABANG SURABAYA',
-            'name' => 'Perum LPPNPI Cabang Surabaya',
-            'alias' => 'Surabaya',
+            'cabang_airnav' => strtoupper((string) $location['office_label']),
+            'name' => (string) $location['office_label'],
+            'alias' => (string) $location['label'],
             'address' => '',
             'contact_name' => '',
             'contact_email' => '',
@@ -399,12 +402,24 @@ class CertificationNoteController extends ApiController
 
     private function authorizeTable(Request $request, CertificationNoteTable $table): ?JsonResponse
     {
-        $instansiId = $this->resolveInstansiId($request);
+        if (!$this->canAccessLocation($request, $table->location_slug)) {
+            return response()->json(['error' => 'Forbidden.'], 403);
+        }
+
+        $instansiId = $this->resolveInstansiIdForLocation($table->location_slug);
         if (!$instansiId || $table->instansi_id !== $instansiId) {
             return response()->json(['error' => 'Forbidden.'], 403);
         }
 
         return null;
+    }
+
+    private function canAccessLocation(Request $request, string $locationSlug): bool
+    {
+        return CertificationNoteLocationAccess::canUserAccessLocation(
+            $request->user(),
+            $locationSlug
+        );
     }
 
     private function authorizeRow(

@@ -6,6 +6,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { apiFetch, ApiError } from '@/lib/api';
 import {
+  CERTIFICATION_NOTE_LOCATION_OPTIONS,
+  formatCertificationNoteLocationAccess,
+} from '@/lib/certificationNoteLocations';
+import {
   EXTERNAL_DNP_INSTANSI_OPTIONS,
   formatExternalDnpInstansiAccess,
 } from '@/lib/externalDnpInstansi';
@@ -30,6 +34,7 @@ type UserItem = {
   role: 'Admin' | 'Viewer';
   status: 'Active' | 'Disabled';
   permissions: PermissionState;
+  certification_note_location_access: string[];
   external_dnp_instansi_access: string[];
 };
 
@@ -42,6 +47,7 @@ type UserFormState = {
   role: 'Admin' | 'Viewer';
   status: 'Active' | 'Disabled';
   permissions: PermissionState;
+  certificationNoteLocationAccess: string[];
   externalDnpInstansiAccess: string[];
 };
 
@@ -80,6 +86,7 @@ function createInitialForm(role: 'Admin' | 'Viewer' = 'Viewer'): UserFormState {
     role,
     status: 'Active',
     permissions: defaultPermissions(role),
+    certificationNoteLocationAccess: [],
     externalDnpInstansiAccess: [],
   };
 }
@@ -227,6 +234,7 @@ export function UserManagement() {
       role: form.role,
       status: form.status,
       permissions: form.permissions,
+      certification_note_location_access: form.certificationNoteLocationAccess,
       external_dnp_instansi_access:
         requiresExternalDnpInstansiSelection ? form.externalDnpInstansiAccess : [],
     };
@@ -266,6 +274,7 @@ export function UserManagement() {
       role: user.role,
       status: user.status,
       permissions: user.permissions,
+      certificationNoteLocationAccess: user.certification_note_location_access ?? [],
       externalDnpInstansiAccess: user.external_dnp_instansi_access ?? [],
     });
     setError(null);
@@ -278,6 +287,15 @@ export function UserManagement() {
       externalDnpInstansiAccess: checked
         ? Array.from(new Set([...prev.externalDnpInstansiAccess, key]))
         : prev.externalDnpInstansiAccess.filter((value) => value !== key),
+    }));
+  };
+
+  const toggleCertificationNoteLocation = (key: string, checked: boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      certificationNoteLocationAccess: checked
+        ? Array.from(new Set([...prev.certificationNoteLocationAccess, key]))
+        : prev.certificationNoteLocationAccess.filter((value) => value !== key),
     }));
   };
 
@@ -441,6 +459,31 @@ export function UserManagement() {
             ))}
           </div>
 
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-white/70 p-4 dark:border-[#3158bb66] dark:bg-transparent">
+            <div className="space-y-1">
+              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                Akses Lokasi Catatan Sertifikasi
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-300">
+                Pilih lokasi yang boleh diisi user pada menu Catatan Sertifikasi, termasuk upload dan hapus evidence pada lokasi tersebut.
+              </div>
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+              {CERTIFICATION_NOTE_LOCATION_OPTIONS.map((option) => (
+                <label key={option.key} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-sm text-slate-700 transition-colors duration-300 dark:border-[#3158bb66] dark:bg-transparent dark:text-slate-100">
+                  <Checkbox
+                    checked={form.certificationNoteLocationAccess.includes(option.key)}
+                    onCheckedChange={(checked) =>
+                      toggleCertificationNoteLocation(option.key, checked === true)
+                    }
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           {form.permissions.can_access_external_dnp && (
             <div className="space-y-3 rounded-xl border border-slate-200 bg-white/70 p-4 dark:border-[#3158bb66] dark:bg-transparent">
               <div className="space-y-1">
@@ -504,15 +547,16 @@ export function UserManagement() {
                 <th className="px-3 py-2">Role</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Service</th>
+                <th className="px-3 py-2">Catatan Sertifikasi</th>
                 <th className="px-3 py-2">External DNP</th>
                 <th className="px-3 py-2 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={8}>Memuat data...</td></tr>
+                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={9}>Memuat data...</td></tr>
               ) : users.length === 0 ? (
-                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={8}>Belum ada user.</td></tr>
+                <tr><td className="px-3 py-4 text-slate-500 dark:text-slate-300" colSpan={9}>Belum ada user.</td></tr>
               ) : (
                 users.map((user) => (
                   <tr key={user.id} className="border-t border-slate-200 transition-colors duration-300 dark:border-[#3158bb55]">
@@ -528,6 +572,11 @@ export function UserManagement() {
                         user.permissions.can_access_k3 && 'K3',
                         user.permissions.can_access_keamanan && 'Keamanan',
                       ].filter(Boolean).join(', ') || '-'}
+                    </td>
+                    <td className="px-3 py-2">
+                      {formatCertificationNoteLocationAccess(
+                        user.certification_note_location_access
+                      ) || '-'}
                     </td>
                     <td className="px-3 py-2">
                       {!user.permissions.can_access_external_dnp

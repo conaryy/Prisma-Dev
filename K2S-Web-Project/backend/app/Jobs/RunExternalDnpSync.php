@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Throwable;
 
 class RunExternalDnpSync implements ShouldQueue
@@ -18,11 +19,14 @@ class RunExternalDnpSync implements ShouldQueue
 
     public int $tries = 1;
 
+    public string $encryptedPayload;
+
     public function __construct(
         public string $syncJobId,
         public string $userId,
-        public array $payload
+        array $payload
     ) {
+        $this->encryptedPayload = Crypt::encrypt($payload);
     }
 
     public function handle(ExternalDnpCapController $controller): void
@@ -46,10 +50,15 @@ class RunExternalDnpSync implements ShouldQueue
             return;
         }
 
-        $request = Request::create('/api/external-dnp/sync/run', 'POST', $this->payload);
-        $request->setUserResolver(static fn () => $user);
-
         try {
+            $payload = Crypt::decrypt($this->encryptedPayload);
+            if (!is_array($payload)) {
+                throw new \RuntimeException('Payload sinkronisasi tidak valid.');
+            }
+
+            $request = Request::create('/api/external-dnp/sync/run', 'POST', $payload);
+            $request->setUserResolver(static fn () => $user);
+
             $response = $controller->syncRun($request);
             $statusCode = method_exists($response, 'getStatusCode') ? $response->getStatusCode() : 500;
             $payload = method_exists($response, 'getContent')
@@ -83,4 +92,3 @@ class RunExternalDnpSync implements ShouldQueue
         }
     }
 }
-

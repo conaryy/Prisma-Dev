@@ -1,4 +1,5 @@
 import { safePermissionsInput } from './auth-utils.js';
+import { safeCertificationNoteLocationInput } from './certification-note-locations.js';
 import { safeExternalDnpInstansiInput } from './external-dnp-instansi.js';
 
 function normalizeObject(input) {
@@ -69,6 +70,9 @@ export function validateCreateUserPayload(input) {
       role: payload.role,
       status: payload.status,
       permissions: safePermissionsInput(payload.permissions),
+      certification_note_location_access: safeCertificationNoteLocationInput(
+        payload.certification_note_location_access
+      ),
       external_dnp_instansi_access: safeExternalDnpInstansiInput(payload.external_dnp_instansi_access),
     },
   };
@@ -95,6 +99,10 @@ export function validateUpdateUserPayload(input) {
       role: payload.role,
       status: payload.status,
       permissions: payload.permissions === undefined ? undefined : safePermissionsInput(payload.permissions),
+      certification_note_location_access:
+        payload.certification_note_location_access === undefined
+          ? undefined
+          : safeCertificationNoteLocationInput(payload.certification_note_location_access),
       external_dnp_instansi_access: payload.external_dnp_instansi_access === undefined
         ? undefined
         : safeExternalDnpInstansiInput(payload.external_dnp_instansi_access),

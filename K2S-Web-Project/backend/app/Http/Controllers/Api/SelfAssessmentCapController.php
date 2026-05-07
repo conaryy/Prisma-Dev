@@ -453,9 +453,9 @@ class SelfAssessmentCapController extends ApiController
             'completeDate' => ['required', 'date'],
             'progress' => ['required', 'integer', 'min:0', 'max:100'],
             'action' => ['required', 'in:draft,send'],
-            'file' => ['nullable', 'file', 'max:20480'],
+            'file' => ['nullable', 'file', 'mimes:pdf,png,jpg,jpeg,doc,docx,xls,xlsx,ppt,pptx,mp3,mp4', 'max:20480'],
             'files' => ['nullable', 'array'],
-            'files.*' => ['file', 'max:20480'],
+            'files.*' => ['file', 'mimes:pdf,png,jpg,jpeg,doc,docx,xls,xlsx,ppt,pptx,mp3,mp4', 'max:20480'],
         ]);
 
         if ($cap->user_id !== $request->user()->id) {
@@ -585,7 +585,7 @@ class SelfAssessmentCapController extends ApiController
     {
         $validated = $request->validate([
             'dueDate' => ['required', 'date'],
-            'file' => ['required', 'file', 'max:20480'],
+            'file' => ['required', 'file', 'mimes:pdf,png,jpg,jpeg,doc,docx,xls,xlsx,ppt,pptx,mp3,mp4', 'max:20480'],
         ]);
 
         if ($cap->user_id !== $request->user()->id) {
