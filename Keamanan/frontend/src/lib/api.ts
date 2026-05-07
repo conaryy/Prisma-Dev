@@ -224,6 +224,18 @@ export async function uploadPersonnelPhoto(slug: string, photo: File) {
   return response.json();
 }
 
+export async function deleteSupervisionActivity(activityId: string) {
+  const response = await apiFetch(`${API_BASE_URL}/api/supervision-activities/${activityId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Gagal menghapus agenda pengawasan.'));
+  }
+
+  return response.json();
+}
+
 export async function createFacility(input: {
   name: string;
   zone: string;
@@ -272,6 +284,16 @@ export async function updateSupervisionStatus(
     completedAt?: string | null;
     completionNote?: string | null;
     inspectorNames?: string[] | null;
+    template?: {
+      title: string;
+      category: 'Audit' | 'Inspeksi' | 'Tes Keamanan';
+      scheduleLabel: string;
+      scheduleYear: number;
+      scheduleMonth: number | null;
+      scheduleWeek: number | null;
+      sourceDocument: string;
+      inspectorNames: string[];
+    };
   }
 ) {
   const response = await apiFetch(`${API_BASE_URL}/api/supervision-activities/${activityId}/status`, {

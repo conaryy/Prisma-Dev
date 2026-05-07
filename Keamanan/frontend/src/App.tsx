@@ -18,6 +18,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { SupervisionProgramSection } from '@/components/SupervisionProgramSection';
 import {
   createFacility,
+  deleteSupervisionActivity,
   deleteFacility,
   deleteDocument,
   deleteDocumentsTable,
@@ -74,6 +75,25 @@ type NewPersonnelInput = {
   refreshmentPlan?: string;
   recurrentExisting?: string;
   recurrentPlan?: string;
+};
+type PersonnelFormState = {
+  name: string;
+  location: string;
+  status: LicenseItem['status'];
+  licenseNumber: string;
+  address: string;
+  documentPeriod: string;
+  sourceDocument: string;
+  birthPlaceDate: string;
+  maritalStatus: string;
+  religion: string;
+  educationHistory: string[];
+  workHistory: string[];
+  trainingHistory: string[];
+  refreshmentExisting: string;
+  refreshmentPlan: string;
+  recurrentExisting: string;
+  recurrentPlan: string;
 };
 type NewFacilityInput = {
   name: string;
@@ -229,6 +249,32 @@ const SUPERVISION_SUMMARY_CARDS: SupervisionSummaryCard[] = [
     subtitle: 'Pelaksanaan rutin per 2 bulan untuk memastikan kesiapan operasional tetap stabil.',
   },
 ];
+
+function createInitialPersonnelFormState(): PersonnelFormState {
+  return {
+    name: '',
+    location: '',
+    status: 'Valid',
+    licenseNumber: '',
+    address: '',
+    documentPeriod: '',
+    sourceDocument: '',
+    birthPlaceDate: '',
+    maritalStatus: '',
+    religion: '',
+    educationHistory: [''],
+    workHistory: [''],
+    trainingHistory: [''],
+    refreshmentExisting: '',
+    refreshmentPlan: '',
+    recurrentExisting: '',
+    recurrentPlan: '',
+  };
+}
+
+function normalizePersonnelHistory(values: string[]) {
+  return values.map((value) => value.trim()).filter(Boolean);
+}
 
 function createInspectionEntries(
   year: number,
@@ -1936,6 +1982,16 @@ export default function App() {
     completedAt?: string | null;
     completionNote?: string | null;
     inspectorNames?: string[] | null;
+    template?: {
+      title: string;
+      category: 'Audit' | 'Inspeksi' | 'Tes Keamanan';
+      scheduleLabel: string;
+      scheduleYear: number;
+      scheduleMonth: number | null;
+      scheduleWeek: number | null;
+      sourceDocument: string;
+      inspectorNames: string[];
+    };
   }): Promise<TestItem> {
     const payload = (await updateSupervisionStatus(input.activityId, {
       status: input.status,
@@ -1943,6 +1999,7 @@ export default function App() {
       completedAt: input.completedAt,
       completionNote: input.completionNote,
       inspectorNames: input.inspectorNames,
+      template: input.template,
     })) as { data: TestItem };
     const refreshedDashboard = await refreshDashboardData();
 
@@ -1952,6 +2009,15 @@ export default function App() {
   async function handleUploadSupervisionActivityEvidence(activityId: string, files: File[]) {
     for (const file of files) {
       await uploadSupervisionEvidence(activityId, file);
+    }
+
+    await refreshDashboardData();
+  }
+
+  async function handleDeleteSupervisionActivities(activityIds: string[]) {
+    const uniqueIds = Array.from(new Set(activityIds.filter(Boolean)));
+    for (const activityId of uniqueIds) {
+      await deleteSupervisionActivity(activityId);
     }
 
     await refreshDashboardData();
@@ -2266,6 +2332,7 @@ export default function App() {
             searchQuery={deferredSearch}
             onUpdateActivity={handleUpdateSupervisionActivity}
             onUploadEvidence={handleUploadSupervisionActivityEvidence}
+            onDeleteActivities={handleDeleteSupervisionActivities}
           />
         ) : null}
 
@@ -2369,7 +2436,7 @@ function DashboardPage({
             </p>
           </div>
 
-          <div className="dashboard-module-stat-grid">
+          <div className="dashboard-module-stat-grid dashboard-module-stat-grid--two">
             <div className="dashboard-module-stat">
               <span>Optimal</span>
               <strong>{facilityOptimalCount}</strong>
@@ -2377,10 +2444,6 @@ function DashboardPage({
             <div className="dashboard-module-stat">
               <span>Perlu Servis</span>
               <strong>{facilityNeedsServiceCount}</strong>
-            </div>
-            <div className="dashboard-module-stat">
-              <span>Terjadwal</span>
-              <strong>{facilityScheduledCount}</strong>
             </div>
           </div>
 
@@ -3172,6 +3235,61 @@ function FacilitiesSection({
   );
 }
 
+function PersonnelHistoryEditor({
+  label,
+  helper,
+  values,
+  placeholder,
+  onChange,
+  onAdd,
+  onRemove,
+}: {
+  label: string;
+  helper: string;
+  values: string[];
+  placeholder: string;
+  onChange: (index: number, value: string) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div className="personnel-field personnel-field--full personnel-history-editor">
+      <div className="personnel-form-subhead">
+        <span>{label}</span>
+        <p>{helper}</p>
+      </div>
+
+      <div className="personnel-history-stack">
+        {values.map((value, index) => (
+          <div key={`${label}-${index}`} className="personnel-history-row">
+            <input
+              className="personnel-form-input"
+              type="text"
+              value={value}
+              onChange={(event) => onChange(index, event.target.value)}
+              placeholder={placeholder}
+            />
+            <button
+              type="button"
+              className="personnel-history-remove"
+              onClick={() => onRemove(index)}
+              aria-label={`Hapus item ${label.toLowerCase()} ${index + 1}`}
+            >
+              <TrashIcon className="mini-icon" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="personnel-history-toolbar">
+        <button type="button" className="action-pill is-ghost personnel-history-add" onClick={onAdd}>
+          Tambah item
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PersonnelSection({
   eyebrow,
   title,
@@ -3212,13 +3330,7 @@ function PersonnelSection({
   } | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const importSuccessTimeoutRef = useRef<number | null>(null);
-  const [formState, setFormState] = useState<NewPersonnelInput>({
-    name: '',
-    location: '',
-    status: 'Valid',
-    licenseNumber: '',
-    address: '',
-  });
+  const [formState, setFormState] = useState<PersonnelFormState>(createInitialPersonnelFormState);
   const totalPages = Math.max(1, Math.ceil(licenses.length / ITEMS_PER_PAGE));
   const safePage = Math.min(currentPage, totalPages);
   const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
@@ -3288,23 +3400,46 @@ function PersonnelSection({
     }, 2200);
   }
 
-  function handleFormChange<Key extends keyof NewPersonnelInput>(key: Key, value: NewPersonnelInput[Key]) {
+  function handleFormChange<Key extends keyof PersonnelFormState>(key: Key, value: PersonnelFormState[Key]) {
     setFormState((current) => ({
       ...current,
       [key]: value,
     }));
   }
 
+  function handleHistoryItemChange(
+    key: 'educationHistory' | 'workHistory' | 'trainingHistory',
+    index: number,
+    value: string
+  ) {
+    setFormState((current) => ({
+      ...current,
+      [key]: current[key].map((item, itemIndex) => (itemIndex === index ? value : item)),
+    }));
+  }
+
+  function handleHistoryItemAdd(key: 'educationHistory' | 'workHistory' | 'trainingHistory') {
+    setFormState((current) => ({
+      ...current,
+      [key]: [...current[key], ''],
+    }));
+  }
+
+  function handleHistoryItemRemove(key: 'educationHistory' | 'workHistory' | 'trainingHistory', index: number) {
+    setFormState((current) => {
+      const nextItems = current[key].filter((_, itemIndex) => itemIndex !== index);
+
+      return {
+        ...current,
+        [key]: nextItems.length ? nextItems : [''],
+      };
+    });
+  }
+
   function closeModal() {
     setIsAddOpen(false);
     setSubmitError('');
-    setFormState({
-      name: '',
-      location: '',
-      status: 'Valid',
-      licenseNumber: '',
-      address: '',
-    });
+    setFormState(createInitialPersonnelFormState());
   }
 
   async function handleImportChange(event: ChangeEvent<HTMLInputElement>) {
@@ -3380,7 +3515,25 @@ function PersonnelSection({
     try {
       setIsSubmitting(true);
       setSubmitError('');
-      await onAddPerson(formState);
+      await onAddPerson({
+        name: formState.name.trim(),
+        location: formState.location.trim(),
+        status: formState.status,
+        licenseNumber: formState.licenseNumber.trim(),
+        address: formState.address.trim(),
+        documentPeriod: formState.documentPeriod.trim(),
+        sourceDocument: formState.sourceDocument.trim(),
+        birthPlaceDate: formState.birthPlaceDate.trim(),
+        maritalStatus: formState.maritalStatus.trim(),
+        religion: formState.religion.trim(),
+        educationHistory: normalizePersonnelHistory(formState.educationHistory),
+        workHistory: normalizePersonnelHistory(formState.workHistory),
+        trainingHistory: normalizePersonnelHistory(formState.trainingHistory),
+        refreshmentExisting: formState.refreshmentExisting.trim(),
+        refreshmentPlan: formState.refreshmentPlan.trim(),
+        recurrentExisting: formState.recurrentExisting.trim(),
+        recurrentPlan: formState.recurrentPlan.trim(),
+      });
       setCurrentPage(1);
       closeModal();
     } catch (submitError) {
@@ -3638,7 +3791,9 @@ function PersonnelSection({
                 <h2 id="personnel-modal-title" className="panel-title">
                   Tambah Data Personil Keamanan
                 </h2>
-                <p className="panel-copy">Isi data dasar personil agar langsung masuk ke daftar roster.</p>
+                <p className="panel-copy">
+                  Lengkapi identitas, riwayat pendidikan, pengalaman kerja, kompetensi, dan jadwal lisensi personil.
+                </p>
               </div>
               <button type="button" className="action-pill is-ghost" onClick={closeModal}>
                 Tutup
@@ -3646,66 +3801,226 @@ function PersonnelSection({
             </div>
 
             <form className="personnel-form" onSubmit={handleSubmit}>
-              <div className="personnel-form-grid">
-                <label className="personnel-field">
-                  <span>Nama Personil</span>
-                  <input
-                    className="personnel-form-input"
-                    type="text"
-                    value={formState.name}
-                    onChange={(event) => handleFormChange('name', event.target.value)}
-                    placeholder="Masukkan Nama Personil"
-                    required
-                  />
-                </label>
+              <section className="personnel-form-section">
+                <div className="personnel-form-section-header">
+                  <p className="personnel-form-section-title">Data dasar personil</p>
+                  <p className="personnel-form-section-copy">
+                    Informasi utama yang langsung dipakai pada roster dan profil lengkap personil.
+                  </p>
+                </div>
 
-                <label className="personnel-field">
-                  <span>Lokasi</span>
-                  <input
-                    className="personnel-form-input"
-                    type="text"
-                    value={formState.location}
-                    onChange={(event) => handleFormChange('location', event.target.value)}
-                    placeholder="Masukkan Lokasi"
-                    required
-                  />
-                </label>
+                <div className="personnel-form-grid">
+                  <label className="personnel-field">
+                    <span>Nama Personil</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.name}
+                      onChange={(event) => handleFormChange('name', event.target.value)}
+                      placeholder="Masukkan Nama Personil"
+                      required
+                    />
+                  </label>
 
-                <label className="personnel-field">
-                  <span>Status</span>
-                  <select
-                    className="personnel-form-input"
-                    value={formState.status}
-                    onChange={(event) => handleFormChange('status', event.target.value as LicenseItem['status'])}
-                  >
-                    <option value="Valid">Valid</option>
-                    <option value="Perpanjangan">Perpanjangan</option>
-                    <option value="Pelatihan">Pelatihan</option>
-                  </select>
-                </label>
+                  <label className="personnel-field">
+                    <span>Lokasi</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.location}
+                      onChange={(event) => handleFormChange('location', event.target.value)}
+                      placeholder="Contoh: Cabang Surabaya"
+                      required
+                    />
+                  </label>
 
-                <label className="personnel-field">
-                  <span>Nomor Lisensi</span>
-                  <input
-                    className="personnel-form-input"
-                    type="text"
-                    value={formState.licenseNumber}
-                    onChange={(event) => handleFormChange('licenseNumber', event.target.value)}
-                    placeholder="Opsional"
-                  />
-                </label>
+                  <label className="personnel-field">
+                    <span>Status Rekam Jejak</span>
+                    <select
+                      className="personnel-form-input"
+                      value={formState.status}
+                      onChange={(event) => handleFormChange('status', event.target.value as LicenseItem['status'])}
+                    >
+                      <option value="Valid">Valid</option>
+                      <option value="Perpanjangan">Perpanjangan</option>
+                      <option value="Pelatihan">Pelatihan</option>
+                    </select>
+                  </label>
 
-                <label className="personnel-field personnel-field--full">
-                  <span>Alamat</span>
-                  <textarea
-                    className="personnel-form-input personnel-form-textarea"
-                    value={formState.address}
-                    onChange={(event) => handleFormChange('address', event.target.value)}
-                    placeholder="Masukkan Alamat"
-                    rows={4}
+                  <label className="personnel-field">
+                    <span>Nomor Lisensi</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.licenseNumber}
+                      onChange={(event) => handleFormChange('licenseNumber', event.target.value)}
+                      placeholder="Contoh: 025320/AS-B/DKP/VIII/2023"
+                    />
+                  </label>
+
+                  <label className="personnel-field">
+                    <span>Periode Dokumen</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.documentPeriod}
+                      onChange={(event) => handleFormChange('documentPeriod', event.target.value)}
+                      placeholder="Contoh: Maret 2025"
+                    />
+                  </label>
+
+                  <label className="personnel-field">
+                    <span>Sumber Dokumen</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.sourceDocument}
+                      onChange={(event) => handleFormChange('sourceDocument', event.target.value)}
+                      placeholder="Contoh: DATA REKAM JEJAK PERSONEL SECURITY ..."
+                    />
+                  </label>
+
+                  <label className="personnel-field">
+                    <span>Tempat, Tanggal Lahir</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.birthPlaceDate}
+                      onChange={(event) => handleFormChange('birthPlaceDate', event.target.value)}
+                      placeholder="Contoh: Sleman, 30-04-2005"
+                    />
+                  </label>
+
+                  <label className="personnel-field">
+                    <span>Agama</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.religion}
+                      onChange={(event) => handleFormChange('religion', event.target.value)}
+                      placeholder="Contoh: Islam"
+                    />
+                  </label>
+
+                  <label className="personnel-field">
+                    <span>Status Pernikahan</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.maritalStatus}
+                      onChange={(event) => handleFormChange('maritalStatus', event.target.value)}
+                      placeholder="Contoh: Belum Menikah"
+                    />
+                  </label>
+
+                  <label className="personnel-field personnel-field--full">
+                    <span>Alamat</span>
+                    <textarea
+                      className="personnel-form-input personnel-form-textarea"
+                      value={formState.address}
+                      onChange={(event) => handleFormChange('address', event.target.value)}
+                      placeholder="Masukkan Alamat Lengkap"
+                      rows={4}
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section className="personnel-form-section">
+                <div className="personnel-form-section-header">
+                  <p className="personnel-form-section-title">Riwayat personil</p>
+                  <p className="personnel-form-section-copy">
+                    Gunakan satu baris untuk satu item agar daftar pendidikan, pekerjaan, dan kompetensi langsung rapi.
+                  </p>
+                </div>
+
+                <div className="personnel-form-grid">
+                  <PersonnelHistoryEditor
+                    label="Jenjang Pendidikan"
+                    helper="Contoh: SMA · SMA Negeri 1 Tempel · 2020"
+                    values={formState.educationHistory}
+                    placeholder="Masukkan satu riwayat pendidikan"
+                    onChange={(index, value) => handleHistoryItemChange('educationHistory', index, value)}
+                    onAdd={() => handleHistoryItemAdd('educationHistory')}
+                    onRemove={(index) => handleHistoryItemRemove('educationHistory', index)}
                   />
-                </label>
-              </div>
+
+                  <PersonnelHistoryEditor
+                    label="Pengalaman Kerja"
+                    helper="Contoh: Security Officer · AirNav Surabaya · 2024"
+                    values={formState.workHistory}
+                    placeholder="Masukkan satu riwayat pekerjaan"
+                    onChange={(index, value) => handleHistoryItemChange('workHistory', index, value)}
+                    onAdd={() => handleHistoryItemAdd('workHistory')}
+                    onRemove={(index) => handleHistoryItemRemove('workHistory', index)}
+                  />
+
+                  <PersonnelHistoryEditor
+                    label="Diklat dan Kompetensi"
+                    helper="Contoh: Diklat Garda Pratama · 2023"
+                    values={formState.trainingHistory}
+                    placeholder="Masukkan satu riwayat diklat/kompetensi"
+                    onChange={(index, value) => handleHistoryItemChange('trainingHistory', index, value)}
+                    onAdd={() => handleHistoryItemAdd('trainingHistory')}
+                    onRemove={(index) => handleHistoryItemRemove('trainingHistory', index)}
+                  />
+                </div>
+              </section>
+
+              <section className="personnel-form-section">
+                <div className="personnel-form-section-header">
+                  <p className="personnel-form-section-title">Jadwal pembaruan lisensi</p>
+                  <p className="personnel-form-section-copy">
+                    Isi status refreshment dan recurrent untuk membantu monitoring lisensi aktif personil.
+                  </p>
+                </div>
+
+                <div className="personnel-form-grid">
+                  <label className="personnel-field">
+                    <span>Refreshment Existing</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.refreshmentExisting}
+                      onChange={(event) => handleFormChange('refreshmentExisting', event.target.value)}
+                      placeholder="Contoh: 15 Des 2024"
+                    />
+                  </label>
+
+                  <label className="personnel-field">
+                    <span>Refreshment Rencana</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.refreshmentPlan}
+                      onChange={(event) => handleFormChange('refreshmentPlan', event.target.value)}
+                      placeholder="Contoh: 15 Des 2026"
+                    />
+                  </label>
+
+                  <label className="personnel-field">
+                    <span>Recurrent Existing</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.recurrentExisting}
+                      onChange={(event) => handleFormChange('recurrentExisting', event.target.value)}
+                      placeholder="Contoh: 25 Agustus 2023"
+                    />
+                  </label>
+
+                  <label className="personnel-field">
+                    <span>Recurrent Rencana</span>
+                    <input
+                      className="personnel-form-input"
+                      type="text"
+                      value={formState.recurrentPlan}
+                      onChange={(event) => handleFormChange('recurrentPlan', event.target.value)}
+                      placeholder="Contoh: 25 Agustus 2025"
+                    />
+                  </label>
+                </div>
+              </section>
 
               {submitError ? <div className="personnel-form-error">{submitError}</div> : null}
 
@@ -4006,11 +4321,6 @@ function PersonnelDetailPage({
                     ? `${certificates.length} sertifikat tersimpan untuk personel ini.`
                     : 'Belum ada sertifikat yang diunggah.'}
                 </strong>
-                <p>
-                  {certificates.length
-                    ? 'Setiap sertifikat bisa dibuka langsung dengan viewer bawaan browser atau dihapus jika salah upload.'
-                    : 'Dukung unggahan PDF atau gambar sertifikat personel.'}
-                </p>
               </div>
 
               <div className="certificate-action-row">
