@@ -2,7 +2,8 @@ import { clearSessionTokens, getRefreshToken, getSessionToken, setSessionTokens 
 import { refreshAccessToken } from '@/lib/sso';
 import type { DashboardData } from '@/types/dashboard';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+const RAW_API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, '').replace(/\/api$/i, '');
 let activeRefreshRequest: Promise<string | null> | null = null;
 
 function resolveApiAssetUrl(url: string) {

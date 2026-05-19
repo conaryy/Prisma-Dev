@@ -202,66 +202,84 @@ type SupervisionSeedItem = {
   sourceDocument: string | null;
 };
 
-const SUPERVISION_SOURCE_DOCUMENT = 'Jadwal Kegiatan Pengawasan Keamanan - Tahun 2026.pdf';
+const SUPERVISION_BASE_YEAR = 2026;
+const SUPERVISION_MAX_YEAR = 2030;
+const SUPERVISION_AUDIT_YEARS = Array.from(
+  { length: Math.floor((SUPERVISION_MAX_YEAR - SUPERVISION_BASE_YEAR) / 2) + 1 },
+  (_, index) => SUPERVISION_BASE_YEAR + index * 2
+);
+const SUPERVISION_YEAR_RANGE = Array.from(
+  { length: SUPERVISION_MAX_YEAR - SUPERVISION_BASE_YEAR + 1 },
+  (_, index) => SUPERVISION_BASE_YEAR + index
+);
+const SUPERVISION_SOURCE_DOCUMENT = (year: number) => `Jadwal Kegiatan Pengawasan Keamanan - Tahun ${year}.pdf`;
 const SUPERVISION_INSPECTOR_NAMES = ['Arif Hartono', 'Adhe Rafika Yulianti'];
-const SUPERVISION_TEST_MONTHS = [
-  { month: 2, label: 'Minggu II Februari 2026' },
-  { month: 4, label: 'Minggu II April 2026' },
-  { month: 6, label: 'Minggu II Juni 2026' },
-  { month: 8, label: 'Minggu II Agustus 2026' },
-  { month: 10, label: 'Minggu II Oktober 2026' },
-  { month: 12, label: 'Minggu II Desember 2026' },
-];
+const SUPERVISION_TEST_MONTHS = [2, 4, 6, 8, 10, 12] as const;
+const SUPERVISION_INSPECTION_LOCATIONS = [
+  'Cabang Surabaya',
+  'KCP Banyuwangi',
+  'KCP Malang',
+  'KCP Sumenep',
+  'Penyedia Personel AVSEC',
+] as const;
+const SUPERVISION_TEST_LOCATIONS = ['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'] as const;
+const SUPERVISION_MONTH_NAMES = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
-const SUPERVISION_ACTIVITY_SEED: SupervisionSeedItem[] = [
-  {
-    id: 'audit-internal-keamanan-2026',
-    slug: 'audit-internal-keamanan-2026',
-    title: 'Audit Internal Keamanan',
-    category: 'AUDIT',
-    location: 'Perum LPPNPI Cabang Surabaya',
-    inspectorNames: SUPERVISION_INSPECTOR_NAMES,
-    scheduleLabel: '1 kali dalam 2 tahun (internal)',
-    scheduleYear: 2026,
-    scheduleMonth: null,
-    scheduleWeek: null,
-    sourceDocument: SUPERVISION_SOURCE_DOCUMENT,
-  },
-  ...[
-    'Cabang Surabaya',
-    'KCP Banyuwangi',
-    'KCP Malang',
-    'KCP Sumenep',
-    'Penyedia Personel AVSEC',
-  ].map((location) => ({
-    id: `inspeksi-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-2026`,
-    slug: `inspeksi-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-2026`,
-    title: 'Inspeksi Keamanan',
-    category: 'INSPEKSI' as const,
-    location,
-    inspectorNames: SUPERVISION_INSPECTOR_NAMES,
-    scheduleLabel: '1 kali dalam tahun 2026 (lokasi pelaksanaan menyesuaikan program pengawasan)',
-    scheduleYear: 2026,
-    scheduleMonth: null,
-    scheduleWeek: null,
-    sourceDocument: SUPERVISION_SOURCE_DOCUMENT,
-  })),
-  ...['Cabang Surabaya', 'KCP Banyuwangi', 'KCP Sumenep'].flatMap((location) =>
-    SUPERVISION_TEST_MONTHS.map(({ month, label }) => ({
-      id: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
-      slug: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-2026`,
-      title: 'Tes Keamanan',
-      category: 'TEST' as const,
-      location,
+function buildSupervisionTestScheduleLabel(month: number, year: number) {
+  return `Minggu I ${SUPERVISION_MONTH_NAMES[Math.max(0, month - 1)]} ${year}`;
+}
+
+function buildSupervisionActivitySeed(): SupervisionSeedItem[] {
+  return [
+    ...SUPERVISION_AUDIT_YEARS.map((year) => ({
+      id: `audit-internal-keamanan-${year}`,
+      slug: `audit-internal-keamanan-${year}`,
+      title: 'Audit Internal Keamanan',
+      category: 'AUDIT' as const,
+      location: 'Perum LPPNPI Cabang Surabaya',
       inspectorNames: SUPERVISION_INSPECTOR_NAMES,
-      scheduleLabel: label,
-      scheduleYear: 2026,
-      scheduleMonth: month,
-      scheduleWeek: 2,
-      sourceDocument: SUPERVISION_SOURCE_DOCUMENT,
-    }))
-  ),
-];
+      scheduleLabel: '1 kali dalam 2 tahun (internal)',
+      scheduleYear: year,
+      scheduleMonth: null,
+      scheduleWeek: null,
+      sourceDocument: SUPERVISION_SOURCE_DOCUMENT(year),
+    })),
+    ...SUPERVISION_YEAR_RANGE.flatMap((year) =>
+      SUPERVISION_INSPECTION_LOCATIONS.map((location) => ({
+        id: `inspeksi-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${year}`,
+        slug: `inspeksi-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${year}`,
+        title: 'Inspeksi Keamanan',
+        category: 'INSPEKSI' as const,
+        location,
+        inspectorNames: SUPERVISION_INSPECTOR_NAMES,
+        scheduleLabel: `1 kali dalam tahun ${year} (lokasi pelaksanaan menyesuaikan program pengawasan)`,
+        scheduleYear: year,
+        scheduleMonth: null,
+        scheduleWeek: null,
+        sourceDocument: SUPERVISION_SOURCE_DOCUMENT(year),
+      }))
+    ),
+    ...SUPERVISION_YEAR_RANGE.flatMap((year) =>
+      SUPERVISION_TEST_LOCATIONS.flatMap((location) =>
+        SUPERVISION_TEST_MONTHS.map((month) => ({
+          id: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-${year}`,
+          slug: `test-${location.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}-${year}`,
+          title: 'Tes Keamanan',
+          category: 'TEST' as const,
+          location,
+          inspectorNames: SUPERVISION_INSPECTOR_NAMES,
+          scheduleLabel: buildSupervisionTestScheduleLabel(month, year),
+          scheduleYear: year,
+          scheduleMonth: month,
+          scheduleWeek: 1,
+          sourceDocument: SUPERVISION_SOURCE_DOCUMENT(year),
+        }))
+      )
+    ),
+  ];
+}
+
+const SUPERVISION_ACTIVITY_SEED: SupervisionSeedItem[] = buildSupervisionActivitySeed();
 
 @Injectable()
 export class DashboardService {
@@ -348,6 +366,18 @@ export class DashboardService {
     return 'Tes Keamanan';
   }
 
+  private toSupervisionCategory(category: TestItem['category']): SupervisionCategoryValue {
+    if (category === 'Audit') {
+      return 'AUDIT';
+    }
+
+    if (category === 'Inspeksi') {
+      return 'INSPEKSI';
+    }
+
+    return 'TEST';
+  }
+
   private mapSupervisionStatus(status: SupervisionStatusValue): TestItem['status'] {
     if (status === 'TERLAKSANA') {
       return 'Terlaksana';
@@ -358,6 +388,28 @@ export class DashboardService {
     }
 
     return 'Terjadwal';
+  }
+
+  private normalizeSupervisionBranch(value: string | null) {
+    const normalizedValue = (value ?? '').trim().toLowerCase();
+
+    if (normalizedValue.includes('avsec')) {
+      return 'Penyedia Personel AVSEC';
+    }
+
+    if (normalizedValue.includes('banyuwangi')) {
+      return 'KCP Banyuwangi';
+    }
+
+    if (normalizedValue.includes('malang')) {
+      return 'KCP Malang';
+    }
+
+    if (normalizedValue.includes('sumenep')) {
+      return 'KCP Sumenep';
+    }
+
+    return 'Cabang Surabaya';
   }
 
   private toSupervisionStatus(status: TestItem['status']): SupervisionStatusValue {
@@ -597,6 +649,74 @@ export class DashboardService {
     };
   }
 
+  private supervisionItemHasRecordedExecution(item: TestItem) {
+    return (
+      item.status !== 'Terjadwal' ||
+      Boolean(item.completedAtIso) ||
+      item.evidenceFiles.length > 0 ||
+      Boolean(item.completionNote?.trim())
+    );
+  }
+
+  private supervisionItemsMatchRuleWindow(referenceItem: TestItem, candidateItem: TestItem) {
+    if (referenceItem.category === 'Audit') {
+      return candidateItem.scheduleYear >= referenceItem.scheduleYear - 1 && candidateItem.scheduleYear <= referenceItem.scheduleYear;
+    }
+
+    if (referenceItem.category === 'Inspeksi') {
+      return candidateItem.scheduleYear === referenceItem.scheduleYear;
+    }
+
+    return (
+      candidateItem.scheduleYear === referenceItem.scheduleYear &&
+      (candidateItem.scheduleMonth ?? null) === (referenceItem.scheduleMonth ?? null)
+    );
+  }
+
+  private getSupervisionLockedPeriodLabel(item: TestItem) {
+    if (item.category === 'Audit') {
+      return `rentang ${item.scheduleYear - 1}-${item.scheduleYear}`;
+    }
+
+    if (item.category === 'Inspeksi') {
+      return `tahun ${item.scheduleYear}`;
+    }
+
+    return item.date.toLowerCase();
+  }
+
+  private async assertSupervisionExecutionAllowed(
+    activity: SupervisionActivityWithRelations,
+    options?: {
+      allowCurrentRecorded?: boolean;
+    }
+  ) {
+    const activities = this.sortSupervisionActivities(await this.loadSupervisionActivities()).map((item) => this.toTestItem(item));
+    const targetItem = activities.find((item) => item.id === activity.id) ?? this.toTestItem(activity);
+
+    if (!options?.allowCurrentRecorded && this.supervisionItemHasRecordedExecution(targetItem)) {
+      throw new BadRequestException(
+        `Agenda ${targetItem.category.toLowerCase()} untuk ${this.getSupervisionLockedPeriodLabel(targetItem)} sudah tersimpan dan tidak dapat diinput ulang.`
+      );
+    }
+
+    const conflictingItem = activities.find(
+      (item) =>
+        item.id !== targetItem.id &&
+        item.category === targetItem.category &&
+        this.normalizeSupervisionBranch(item.location ?? item.owner) ===
+          this.normalizeSupervisionBranch(targetItem.location ?? targetItem.owner) &&
+        this.supervisionItemHasRecordedExecution(item) &&
+        this.supervisionItemsMatchRuleWindow(targetItem, item)
+    );
+
+    if (conflictingItem) {
+      throw new BadRequestException(
+        `Input ${targetItem.category.toLowerCase()} untuk ${this.getSupervisionLockedPeriodLabel(targetItem)} sudah ada. Detail hanya dapat dilihat sebagai informasi.`
+      );
+    }
+  }
+
   private sortSupervisionActivities(items: SupervisionActivityWithRelations[]) {
     const categoryOrder: Record<SupervisionCategoryValue, number> = {
       AUDIT: 0,
@@ -633,6 +753,7 @@ export class DashboardService {
     }
 
     await this.supervisionStorageReadyPromise;
+    await this.syncSupervisionSeedData();
   }
 
   private async ensureFacilityPhotoStorage() {
@@ -750,15 +871,9 @@ export class DashboardService {
       WHERE "category" = 'TEST'
         AND "title" IN ('Pengujian (Test) Keamanan', 'Pengujian Keamanan', 'Pengunjungan Keamanan');
     `);
+  }
 
-    const [countRow] = await this.prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
-      SELECT COUNT(*)::bigint AS "count" FROM "SupervisionActivity"
-    `);
-
-    if (Number(countRow?.count ?? 0) > 0) {
-      return;
-    }
-
+  private async syncSupervisionSeedData() {
     for (const item of SUPERVISION_ACTIVITY_SEED) {
       await this.prisma.$executeRaw(Prisma.sql`
         INSERT INTO "SupervisionActivity" (
@@ -772,7 +887,9 @@ export class DashboardService {
           "scheduleYear",
           "scheduleMonth",
           "scheduleWeek",
-          "sourceDocument"
+          "sourceDocument",
+          "createdAt",
+          "updatedAt"
         )
         VALUES (
           ${item.id},
@@ -785,7 +902,9 @@ export class DashboardService {
           ${item.scheduleYear},
           ${item.scheduleMonth},
           ${item.scheduleWeek},
-          ${item.sourceDocument}
+          ${item.sourceDocument},
+          NOW(),
+          NOW()
         )
         ON CONFLICT ("slug") DO NOTHING
       `);
@@ -1504,12 +1623,34 @@ export class DashboardService {
       completedAt?: string | null;
       completionNote?: string | null;
       inspectorNames?: string[] | null;
+      template?: {
+        title: string;
+        category: TestItem['category'];
+        scheduleLabel: string;
+        scheduleYear: number;
+        scheduleMonth: number | null;
+        scheduleWeek: number | null;
+        sourceDocument: string;
+        inspectorNames?: string[] | null;
+      };
     }
   ) {
-    const activity = await this.requireSupervisionActivity(activityId);
     const nextStatus = this.toSupervisionStatus(input.status);
     const requestedCompletedAt = this.parseCompletedAtInput(input.completedAt);
     const trimmedLocation = input.location?.trim();
+
+    let activity: SupervisionActivityWithRelations;
+    if (activityId.startsWith('virtual:')) {
+      if (!input.template) {
+        throw new BadRequestException('Template agenda pengawasan tidak ditemukan.');
+      }
+
+      const templateLocation = trimmedLocation || 'Cabang Surabaya';
+      activity = await this.resolveSupervisionActivityFromTemplate(input.template, templateLocation);
+    } else {
+      activity = await this.requireSupervisionActivity(activityId);
+    }
+
     const requestedLocation = trimmedLocation ? trimmedLocation : activity.location;
     const targetActivity =
       requestedLocation && requestedLocation !== activity.location
@@ -1540,6 +1681,9 @@ export class DashboardService {
           );
 
     await this.ensureSupervisionStorage();
+    await this.assertSupervisionExecutionAllowed(targetActivity, {
+      allowCurrentRecorded: !activityId.startsWith('virtual:') && targetActivity.id === activity.id,
+    });
     await this.prisma.$executeRaw(Prisma.sql`
       UPDATE "SupervisionActivity"
       SET
@@ -1555,6 +1699,45 @@ export class DashboardService {
     const updatedActivity = await this.requireSupervisionActivity(targetActivity.id);
 
     return this.toTestItem(updatedActivity);
+  }
+
+  async deleteSupervisionActivity(activityId: string) {
+    await this.ensureSupervisionStorage();
+
+    const activity = await this.prisma.supervisionActivity.findUnique({
+      where: { id: activityId },
+      select: {
+        id: true,
+        title: true,
+        evidences: {
+          select: {
+            storageName: true,
+          },
+        },
+      },
+    });
+
+    if (!activity) {
+      throw new NotFoundException('Agenda pengawasan tidak ditemukan.');
+    }
+
+    await this.prisma.supervisionActivity.delete({
+      where: { id: activityId },
+    });
+
+    await Promise.all(
+      activity.evidences.map(async (row) => {
+        const targetPath = join(this.supervisionEvidenceUploadsRoot, row.storageName);
+        await fs.unlink(targetPath).catch(() => undefined);
+      })
+    );
+
+    return {
+      deleted: true,
+      id: activityId,
+      title: activity.title,
+      deletedEvidenceCount: activity.evidences.length,
+    };
   }
 
   private async resolveSupervisionActivityByLocation(
@@ -1610,6 +1793,74 @@ export class DashboardService {
     return this.requireSupervisionActivity(createdActivity.id);
   }
 
+  private async resolveSupervisionActivityFromTemplate(
+    template: {
+      title: string;
+      category: TestItem['category'];
+      scheduleLabel: string;
+      scheduleYear: number;
+      scheduleMonth: number | null;
+      scheduleWeek: number | null;
+      sourceDocument: string;
+      inspectorNames?: string[] | null;
+    },
+    location: string
+  ) {
+    const category = this.toSupervisionCategory(template.category);
+    const normalizedInspectorNames = Array.from(
+      new Set(
+        (template.inspectorNames ?? SUPERVISION_INSPECTOR_NAMES)
+          .map((name) => name.trim())
+          .filter(Boolean)
+      )
+    );
+
+    const existingActivity = await this.prisma.supervisionActivity.findFirst({
+      where: {
+        title: template.title,
+        category,
+        scheduleLabel: template.scheduleLabel,
+        scheduleYear: template.scheduleYear,
+        scheduleMonth: template.scheduleMonth,
+        scheduleWeek: template.scheduleWeek,
+        location,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (existingActivity) {
+      return this.requireSupervisionActivity(existingActivity.id);
+    }
+
+    const slug = await this.createUniqueSupervisionSlug(
+      this.slugify(
+        `${template.title}-${location}-${template.scheduleYear}-${template.scheduleMonth ?? 'na'}-${template.scheduleWeek ?? 'na'}`
+      )
+    );
+
+    const createdActivity = await this.prisma.supervisionActivity.create({
+      data: {
+        slug,
+        title: template.title,
+        category,
+        location,
+        inspectorNames: normalizedInspectorNames,
+        scheduleLabel: template.scheduleLabel,
+        scheduleYear: template.scheduleYear,
+        scheduleMonth: template.scheduleMonth,
+        scheduleWeek: template.scheduleWeek,
+        sourceDocument: template.sourceDocument,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return this.requireSupervisionActivity(createdActivity.id);
+  }
+
   async uploadSupervisionEvidence(
     activityId: string,
     file: {
@@ -1626,6 +1877,7 @@ export class DashboardService {
     }
 
     await fs.mkdir(this.supervisionEvidenceUploadsRoot, { recursive: true });
+    await this.assertSupervisionExecutionAllowed(activity, { allowCurrentRecorded: true });
 
     const safeOriginalName = basename(file.originalname).replace(/[^a-zA-Z0-9._-]+/g, '-');
     const extension = extname(safeOriginalName);

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField, FormSection } from '@/components/shared/Form';
@@ -22,6 +23,11 @@ export function Profile() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [visiblePasswords, setVisiblePasswords] = useState({
+    currentPassword: false,
+    nextPassword: false,
+    confirmPassword: false,
+  });
 
   const tabs = useMemo(
     () => [
@@ -123,12 +129,75 @@ export function Profile() {
         nextPassword: '',
         confirmPassword: '',
       });
+      setVisiblePasswords({
+        currentPassword: false,
+        nextPassword: false,
+        confirmPassword: false,
+      });
     } catch (error) {
       setErrorMessage((error as Error).message);
     } finally {
       setIsSaving(false);
     }
   };
+
+  const handleCancelPassword = () => {
+    setPasswordForm({
+      currentPassword: '',
+      nextPassword: '',
+      confirmPassword: '',
+    });
+    setVisiblePasswords({
+      currentPassword: false,
+      nextPassword: false,
+      confirmPassword: false,
+    });
+    setStatusMessage(null);
+    setErrorMessage(null);
+  };
+
+  const passwordVisibilityButtonClass =
+    'absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200';
+
+  const renderPasswordInput = (
+    key: keyof typeof passwordForm,
+    label: string
+  ) => (
+    <FormField label={label}>
+      <div className="relative">
+        <Input
+          className="pr-12"
+          type={visiblePasswords[key] ? 'text' : 'password'}
+          placeholder="********"
+          value={passwordForm[key]}
+          onChange={(event) =>
+            setPasswordForm((prev) => ({
+              ...prev,
+              [key]: event.target.value,
+            }))
+          }
+        />
+        <button
+          type="button"
+          className={passwordVisibilityButtonClass}
+          aria-label={visiblePasswords[key] ? `Sembunyikan ${label}` : `Tampilkan ${label}`}
+          title={visiblePasswords[key] ? `Sembunyikan ${label}` : `Tampilkan ${label}`}
+          onClick={() =>
+            setVisiblePasswords((prev) => ({
+              ...prev,
+              [key]: !prev[key],
+            }))
+          }
+        >
+          {visiblePasswords[key] ? (
+            <EyeOff className="h-4 w-4" />
+          ) : (
+            <Eye className="h-4 w-4" />
+          )}
+        </button>
+      </div>
+    </FormField>
+  );
 
   return (
     <div className="space-y-6">
@@ -221,48 +290,14 @@ export function Profile() {
       ) : (
         <FormSection>
           <div className="grid gap-4 md:grid-cols-2">
-            <FormField label="Password Lama">
-              <Input
-                type="password"
-                placeholder="********"
-                value={passwordForm.currentPassword}
-                onChange={(event) =>
-                  setPasswordForm((prev) => ({
-                    ...prev,
-                    currentPassword: event.target.value,
-                  }))
-                }
-              />
-            </FormField>
-            <FormField label="Password Baru">
-              <Input
-                type="password"
-                placeholder="********"
-                value={passwordForm.nextPassword}
-                onChange={(event) =>
-                  setPasswordForm((prev) => ({
-                    ...prev,
-                    nextPassword: event.target.value,
-                  }))
-                }
-              />
-            </FormField>
-            <FormField label="Konfirmasi Password Baru">
-              <Input
-                type="password"
-                placeholder="********"
-                value={passwordForm.confirmPassword}
-                onChange={(event) =>
-                  setPasswordForm((prev) => ({
-                    ...prev,
-                    confirmPassword: event.target.value,
-                  }))
-                }
-              />
-            </FormField>
+            {renderPasswordInput('currentPassword', 'Password Lama')}
+            {renderPasswordInput('nextPassword', 'Password Baru')}
+            {renderPasswordInput('confirmPassword', 'Konfirmasi Password Baru')}
           </div>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline">Batal</Button>
+            <Button type="button" variant="outline" onClick={handleCancelPassword}>
+              Batal
+            </Button>
             <Button onClick={handleChangePassword} disabled={isSaving}>
               {isSaving ? 'Menyimpan...' : 'Update Password'}
             </Button>

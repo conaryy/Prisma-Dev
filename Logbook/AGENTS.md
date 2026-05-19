@@ -1,132 +1,175 @@
-# AGENTS.md
+# AGENTS.md — Logbook Service
 
-## Project Overview
-- Folder ini berisi service Logbook:
-  - `frontend`: React + Vite + TypeScript
-  - `backend`: NestJS + Prisma + PostgreSQL
-- Backend berjalan dengan global prefix `api/v1`.
-- Backend memvalidasi access token SSO melalui `SsoJwtStrategy` dan `SsoAuthGuard`.
-- Backend kini punya skeleton module resmi `src/semantic-search` untuk integrasi search runtime.
-- Domain logbook aktif:
-  - frontend `logbook.ryvidia.my.id`
-  - backend `apilogbook.ryvidia.my.id`
-- Kategori logbook aktif:
-  - `tower`
-  - `app`
-  - `teknik`
-- Import parser dipisah per kategori di `src/logbook/imports`.
-- Import management yang sudah aktif:
-  - `logbook_import_batches`
-  - `logbook_import_sources`
-  - `logbook_import_errors`
-  - `logbook_audit_trails`
-  - `logbook_integrity_records`
-- Lifecycle batch saat ini:
-  - `pending`
-  - `processing`
-  - `completed`
-  - `failed`
-- Model operasional import saat ini berbasis `active batch`:
-  - query logbook harian hanya membaca batch `completed` yang `is_active = true`
-  - reimport aman memakai `sourcePeriod`
-  - rollback sederhana sudah tersedia untuk mengaktifkan kembali batch archived
-  - row lama tidak dihapus secara fisik saat revisi; status aktif ditentukan oleh batch
-- Frontend sekarang punya halaman `Import Center` untuk observability batch, error parsing, sample source row, dan audit trail.
-- Frontend halaman kategori sekarang memakai input operator:
-  - tombol `Tambah Data Baru`
-  - tombol `Upload Revisi`
-  - `Tambah Data Baru` = auto split file ke batch bulanan baru
-  - `Upload Revisi` = pilih `tahun` dan `bulan` spesifik
+Service pencatatan logbook harian operasional ATC (Tower, APP, Teknik) dengan fitur import Excel dan semantic search.
 
-## Build And Test Commands
-- Frontend:
-  - `cd Logbook/frontend`
-  - `cp .env.example .env`
-  - `npm install`
-  - `npm run dev`
-  - `npm run build`
-- Backend:
-  - `cd Logbook/backend`
-  - `cp .env.example .env`
-  - `npm install`
-  - `npm run prisma:generate`
-  - `npm run prisma:push`
-  - `npm run start:dev`
-  - `npm run build`
-- Docker central dari root repo:
-  - `docker compose --env-file .env.central -f docker-compose.central.yml up -d --build`
-- Jika menambah kolom/table untuk import management:
-  - jalankan `cd Logbook/backend && npm run prisma:generate && npm run prisma:push`
+---
 
-## Code Style Guidelines
-- Frontend:
-  - gunakan pola yang ada di `components/layout`, `components/ui`, `lib`, `hooks`, dan `pages`
-  - SSO client ada di `frontend/src/lib/sso.ts`; jangan ubah flow callback tanpa cek integrasi auth portal
-  - halaman import management ada di `frontend/src/pages/ImportManagement.tsx`; pertahankan pola data-fetch sekarang sebelum menambah state manager baru
-  - halaman kategori `LogbookHarian.tsx` sengaja memakai istilah awam; jangan kembalikan UX ke input `sourcePeriod` mentah tanpa alasan kuat
-- Backend:
-  - pertahankan pemisahan:
-    - `src/auth` untuk auth guard/strategy/current-user
-    - `src/database` untuk Prisma
-    - `src/health` untuk health endpoint
-    - `src/logbook` untuk domain utama
-  - import parser kategori baru harus ditaruh di `src/logbook/imports`, bukan menambah beban `logbook.service.ts`
-  - semantic search runtime resmi diletakkan di `src/semantic-search`; `backend/semantic_search_referensi` tetap hanya referensi
-  - query utama memang memakai kombinasi Prisma schema dan raw SQL; bila schema berubah, cek keduanya
-  - jangan bypass konsep `sourcePeriod`, `reimport_of_batch_id`, dan `is_active` saat mengubah flow import/reimport/rollback
-  - perubahan pada read path harus mempertahankan filter batch aktif agar reimport tidak memunculkan data ganda
-  - untuk file Excel tabel panjang lintas bulan, `Tambah Data Baru` sekarang memecah file ke batch per bulan berdasarkan tanggal row
-  - `Upload Revisi` tetap spesifik per `sourcePeriod`
-  - consumer eksternal seperti seed Qdrant, export, atau ETL wajib join/filter ke `logbook_import_batches.is_active = true`
-  - endpoint status semantic search ada di `GET /api/v1/logbook/search/semantic/status` dan bisa dipakai frontend untuk feature gating
-  - endpoint query semantic search resmi saat ini ada di `POST /api/v1/logbook/search/semantic`
-- Schema/database:
-  - perubahan database tetap harus lewat `prisma/schema.prisma`
-  - perhatikan mapping `@map(...)` dan nama kolom snake_case yang dipakai raw SQL
-  - service sengaja mengembalikan `DATE` sebagai text untuk menghindari timezone shift; jangan ubah itu tanpa uji data nyata
-  - kolom `import_batch_id` pada tabel entry adalah penghubung utama antara data hasil parse dan lifecycle batch
-  - status aktif tidak disimpan di setiap row entry; status aktif ditentukan dari batch induknya
+## Struktur Direktori
 
-## Testing Instructions
-- Minimum check:
-  - `cd Logbook/backend && npm run build`
-  - `cd Logbook/frontend && npm run build`
-- Jika schema berubah:
-  - `cd Logbook/backend && npm run prisma:generate && npm run prisma:push`
-- Smoke test backend:
-  - `GET /api/v1/health`
-  - `GET /api/v1/logbook/me`
-  - `GET /api/v1/logbook/entries`
-  - `GET /api/v1/logbook/import-batches`
-  - `GET /api/v1/logbook/import-batches/:batchId`
-  - `GET /api/v1/logbook/import-batches/:batchId/errors`
-  - `GET /api/v1/logbook/search/semantic/status`
-  - `POST /api/v1/logbook/search/semantic`
-  - `POST /api/v1/logbook/import/teknik`
-  - `POST /api/v1/logbook/import/app`
-  - `POST /api/v1/logbook/import/tower`
-  - `POST /api/v1/logbook/import-batches/:batchId/rollback`
-  - `DELETE /api/v1/logbook/purge`
-- End-to-end minimum:
-  - redirect login ke auth portal
-  - callback ke `/auth/callback`
-  - request entries tidak `401`
-  - filter tahun/bulan tetap konsisten
-  - import kategori dengan `sourcePeriod` tersimpan benar
-  - `Tambah Data Baru` membuat beberapa batch bulanan baru dan melewati periode yang sudah ada
-  - `Upload Revisi` membentuk periode internal dari input `tahun/bulan`
-  - reimport periode yang sama mengarsipkan batch aktif lama
-  - rollback mengaktifkan ulang batch archived yang dipilih
-- Verifikasi deploy:
-  - bundle frontend tidak memuat `localhost` atau dev secret
-  - `oauth_clients.logbook-web` harus cocok dengan env deploy logbook dan auth backend
+```
+Logbook/
+├── backend/                    # NestJS + Prisma (PostgreSQL)
+│   ├── src/
+│   │   ├── main.ts            # Entry point
+│   │   ├── app.module.ts      # Root module
+│   │   ├── auth/              # SSO JWT authentication
+│   │   │   ├── sso-auth.guard.ts
+│   │   │   ├── sso-jwt.strategy.ts
+│   │   │   └── current-user.decorator.ts
+│   │   ├── common/
+│   │   │   └── current-user.ts
+│   │   ├── database/
+│   │   │   ├── database.module.ts
+│   │   │   └── prisma.service.ts
+│   │   ├── health/            # Health check endpoint
+│   │   ├── logbook/           # Core logbook module
+│   │   │   ├── logbook.controller.ts   # REST endpoints
+│   │   │   ├── logbook.service.ts      # Business logic
+│   │   │   ├── logbook.module.ts
+│   │   │   ├── dto/           # Query & import DTOs
+│   │   │   └── imports/       # Excel parsers (tower, app, teknik)
+│   │   ├── semantic-search/   # Semantic search module
+│   │   │   ├── semantic-search.controller.ts
+│   │   │   ├── semantic-search.service.ts
+│   │   │   ├── semantic-search.indexing.ts
+│   │   │   ├── semantic-search.embedding.ts
+│   │   │   ├── semantic-search.documents.ts
+│   │   │   ├── semantic-search.filters.ts
+│   │   │   └── semantic-search.config.ts
+│   │   ├── scripts/
+│   │   │   └── semantic-seed.ts
+│   │   └── types/
+│   ├── prisma/
+│   │   └── schema.prisma      # Database schema
+│   ├── package.json
+│   └── Dockerfile
+├── frontend/                   # React/Vite/TypeScript
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Dashboard.tsx
+│   │   │   ├── LogbookHarian.tsx
+│   │   │   ├── RekapLogbook.tsx
+│   │   │   ├── ImportManagement.tsx
+│   │   │   └── AuthCallback.tsx
+│   │   ├── components/
+│   │   ├── hooks/
+│   │   ├── lib/
+│   │   └── types/
+│   └── package.json
+└── README.md
+```
 
-## Security Considerations
-- Access token frontend disimpan client-side; hindari perubahan yang memperluas risiko XSS.
-- Backend wajib memvalidasi `iss`, `aud`, dan JWKS dengan benar.
-- Endpoint purge adalah operasi destruktif total; perlakukan perubahan di sana sebagai high risk.
-- Endpoint reimport dan rollback juga termasuk operasi berisiko karena mengubah batch aktif.
-- Import Excel harus tetap menjaga pembacaan tanggal serial workbook mentah.
-- Parser `app` dan `tower` memakai pola carry-forward row; perubahan heuristic harus diuji dengan data contoh nyata.
-- Parser `teknik` juga sensitif terhadap variasi format tanggal lokal seperti singkatan bulan non-Inggris.
-- Untuk migrasi awal atau backfill historis, jalur `Tambah Data Baru` sekarang menjadi mode default karena file panjang akan dipecah ke batch bulanan.
+---
+
+## Tech Stack
+
+| Layer | Teknologi |
+|-------|-----------|
+| Backend | NestJS, TypeScript |
+| ORM | Prisma (PostgreSQL) |
+| Auth | passport-jwt + jwks-rsa (SSO JWT validation) |
+| File Import | xlsx library (Excel parsing) |
+| Semantic Search | Custom embedding + indexing (in-process) |
+| Frontend | React 18, TypeScript, Vite, Tailwind, react-router-dom v7 |
+
+---
+
+## Database Schema (PostgreSQL — Prisma)
+
+| Model | Tabel | Fungsi |
+|-------|-------|--------|
+| `TowerLogbookEntry` | `tower_logbook_entries` | Logbook Tower/TWR |
+| `AppLogbookEntry` | `app_logbook_entries` | Logbook APP (Approach) |
+| `TeknikLogbookEntry` | `teknik_logbook_entries` | Logbook Teknik |
+| `LogbookImportBatch` | `logbook_import_batches` | Batch import metadata |
+| `LogbookImportSource` | `logbook_import_sources` | Raw source rows per batch |
+| `LogbookImportError` | `logbook_import_errors` | Validation errors per batch |
+| `LogbookAuditTrail` | `logbook_audit_trails` | Audit trail (who did what) |
+| `LogbookIntegrityRecord` | `logbook_integrity_records` | Hash integrity records |
+
+---
+
+## API Endpoints (prefix: /api/v1)
+
+### Logbook
+- `GET /logbook/me` — Current user session & permissions
+- `GET /logbook/entries` — List entries (paginated, filterable by category/year/month/search)
+- `POST /logbook/import/tower` — Import Tower logbook (Excel .xlsx)
+- `POST /logbook/import/app` — Import APP logbook (Excel .xlsx)
+- `POST /logbook/import/teknik` — Import Teknik logbook (Excel .xlsx)
+- `GET /logbook/import-batches` — List import batches
+- `GET /logbook/import-batches/:batchId` — Batch detail
+- `GET /logbook/import-batches/:batchId/errors` — Batch errors
+- `POST /logbook/import-batches/:batchId/rollback` — Rollback batch
+- `DELETE /logbook/purge` — Purge all logbook data (admin)
+
+### Semantic Search
+- `GET /logbook/search/semantic/status` — Index status
+- `POST /logbook/search/semantic` — Search (query, limit, filters)
+- `POST /logbook/search/semantic/reindex` — Trigger reindex
+
+### Health
+- `GET /health` — Health check
+
+---
+
+## Logbook Categories
+
+| Category | Model | Fields Khusus |
+|----------|-------|---------------|
+| `tower` | TowerLogbookEntry | operationType, facility, callSign, description |
+| `app` | AppLogbookEntry | operationType, facility, callSign, description |
+| `teknik` | TeknikLogbookEntry | equipment, frequencySection, incident |
+
+---
+
+## Import Flow
+
+1. User upload file `.xlsx` via frontend
+2. Backend parse Excel menggunakan parser spesifik (tower/app/teknik)
+3. Validasi per-row, catat errors
+4. Insert valid rows ke tabel logbook
+5. Simpan metadata batch (total, valid, invalid, status)
+6. Support reimport (replace batch lama)
+
+---
+
+## Konfigurasi (Environment)
+
+| Env Var | Fungsi |
+|---------|--------|
+| `DATABASE_URL` | PostgreSQL connection (Prisma) |
+| `PORT` | Backend port (default: 3105) |
+| `LOGBOOK_CORS_ALLOW_ORIGINS` | CORS origins |
+| `LOGBOOK_SSO_ISSUER` | SSO issuer URL |
+| `LOGBOOK_SSO_AUDIENCE` | JWT audience |
+| `LOGBOOK_SSO_JWKS_URL` | JWKS endpoint for JWT validation |
+
+---
+
+## Cara Development Lokal
+
+```bash
+# Backend
+cd Logbook/backend
+npm install
+npx prisma db push        # Sync schema ke DB
+npm run start:dev          # NestJS watch mode (port 3105)
+
+# Frontend
+cd Logbook/frontend
+npm install
+npm run dev                # Vite dev server (port 5175)
+```
+
+---
+
+## Konvensi & Tips
+
+- Prisma schema di `prisma/schema.prisma` — setelah edit, jalankan `npx prisma generate`.
+- Semua endpoint dilindungi `SsoAuthGuard` (JWT validation via JWKS).
+- Import parsers di `src/logbook/imports/` — satu parser per kategori logbook.
+- Semantic search berjalan in-process (tidak butuh external service).
+- Reindex semantic search via endpoint atau script: `npm run semantic:seed`.
+- File upload max 15MB (Excel .xlsx only).
+- Audit trail otomatis dicatat untuk operasi import, rollback, dan purge.

@@ -7,18 +7,22 @@ Dokumen ini untuk verifikasi cepat setelah patch security:
 
 ## 1) Prasyarat
 
-- Backend dan frontend sudah up:
-  - `docker compose --env-file .env.production up -d --build backend backend-nginx frontend`
+- Backend dan frontend sudah up.
+  - Deploy aktif via root repo: `docker compose --env-file .env.central -f docker-compose.central.yml up -d --build`
+  - Deploy lokal K2S: `docker compose --env-file .env.production up -d --build backend backend-nginx frontend`
 - Tersedia 2 akun:
   - `Admin`
   - `Viewer`
-- Siapkan token bearer masing-masing akun dari endpoint login:
-  - `POST /api/auth/login`
+- Siapkan token bearer masing-masing akun.
+
+> **Catatan SSO:** Pada deployment aktif, autentikasi menggunakan **SSO PKCE OIDC** via `https://authapi.ryvidia.my.id`.
+> Endpoint `POST /api/auth/login` dengan email/password hanya berlaku di environment **non-SSO** (local dev atau `VITE_SSO_ENABLED=false`).
+> Untuk testing di environment SSO aktif, ambil token dari browser localStorage (`k2s.authToken`) setelah login via UI.
 
 Contoh login:
 
 ```bash
-curl -X POST https://apiprisma.ryvidia.my.id/api/auth/login \
+curl -X POST https://apik2s.ryvidia.my.id/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin","password":"***"}'
 ```
@@ -105,7 +109,7 @@ Expected:
 Uji langsung:
 
 ```bash
-curl -I https://apiprisma.ryvidia.my.id/storage/some-file.pdf
+curl -I https://apik2s.ryvidia.my.id/storage/some-file.pdf
 ```
 
 Expected:
@@ -137,7 +141,7 @@ Jika ada flow user terganggu:
 ## 8) Template Curl (Copy-Paste)
 
 Ganti value berikut sesuai environment:
-- `API_BASE=https://apiprisma.ryvidia.my.id`
+- `API_BASE=https://apik2s.ryvidia.my.id`
 - username/password admin/viewer
 - ID resource (`{id}`, `{followUp}`, `{evidence}`)
 
@@ -145,7 +149,7 @@ Ganti value berikut sesuai environment:
 # =========================
 # A. Setup variable
 # =========================
-API_BASE="https://apiprisma.ryvidia.my.id"
+API_BASE="https://apik2s.ryvidia.my.id"
 
 # =========================
 # B. Login Admin & Viewer

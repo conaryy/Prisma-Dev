@@ -1,0 +1,162 @@
+# Central gateway for multi-app deployment.
+# Point these production domains to this gateway host:
+# - authapi.safetyairnavsub.com
+# - safetyairnavsub.com
+# - www.safetyairnavsub.com
+# - k2s.safetyairnavsub.com
+# - apik2s.safetyairnavsub.com
+# - logbook.safetyairnavsub.com
+# - apilogbook.safetyairnavsub.com
+# - k3.safetyairnavsub.com
+# - apik3.safetyairnavsub.com
+# - keamanan.safetyairnavsub.com
+# - apikeamanan.safetyairnavsub.com
+
+server {
+    listen 80 default_server;
+    server_name _;
+
+    location / {
+        return 404;
+    }
+}
+
+server {
+    listen 80;
+    server_name safetyairnavsub.com www.safetyairnavsub.com;
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://auth-frontend:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name authapi.safetyairnavsub.com;
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://auth-backend:3104;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name k2s.safetyairnavsub.com;
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://frontend:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name apik2s.safetyairnavsub.com;
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://backend-nginx:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name logbook.safetyairnavsub.com;
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://logbook-frontend:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name apilogbook.safetyairnavsub.com;
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://logbook-backend:3105;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name k3.safetyairnavsub.com;
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://k3-backend:3106;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name apik3.safetyairnavsub.com;
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://k3-backend:3106;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name keamanan.safetyairnavsub.com;
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://keamanan-backend:3107;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name apikeamanan.safetyairnavsub.com;
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://keamanan-backend:3107;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

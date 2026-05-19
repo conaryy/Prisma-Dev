@@ -11,7 +11,7 @@ return [
     | sso    : only OIDC bearer token
     |
     */
-    'mode' => env('AUTH_MODE', 'sso'),
+    'mode' => env('AUTH_MODE', 'local'),
 
     'issuer' => env('SSO_ISSUER'),
     'audience' => env('SSO_AUDIENCE'),

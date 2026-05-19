@@ -14,7 +14,7 @@ export const DEFAULT_VIEWER_PERMISSIONS = {
   can_manage_users: false,
   can_manage_admin_module: false,
   can_access_k2s_dashboard: true,
-  can_access_logbook: true,
+  can_access_logbook: false,
   can_access_k3: false,
   can_access_keamanan: false,
   can_access_external_dnp: false,
@@ -36,4 +36,3 @@ export function buildEffectivePermissions(role, inputPermissions) {
 
   return merged;
 }
-

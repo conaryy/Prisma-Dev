@@ -181,6 +181,16 @@ export class AppController {
       completedAt?: string | null;
       completionNote?: string | null;
       inspectorNames?: string[] | null;
+      template?: {
+        title: string;
+        category: 'Audit' | 'Inspeksi' | 'Tes Keamanan';
+        scheduleLabel: string;
+        scheduleYear: number;
+        scheduleMonth: number | null;
+        scheduleWeek: number | null;
+        sourceDocument: string;
+        inspectorNames?: string[] | null;
+      };
     }
   ): Promise<{ data: unknown }> {
     if (!body.status) {
@@ -194,7 +204,16 @@ export class AppController {
         completedAt: body.completedAt,
         completionNote: body.completionNote,
         inspectorNames: body.inspectorNames,
+        template: body.template,
       }),
+    };
+  }
+
+  @Delete('supervision-activities/:activityId')
+  @UseGuards(AdminAuthGuard)
+  async deleteSupervisionActivity(@Param('activityId') activityId: string): Promise<{ data: unknown }> {
+    return {
+      data: await this.dashboardService.deleteSupervisionActivity(activityId),
     };
   }
 

@@ -62,10 +62,31 @@ src/
 │   # Seed atau data dummy/helper untuk kebutuhan frontend tertentu.
 ├── hooks/
 │   # Custom hooks reusable.
-│   # Contoh: useAsyncJobPolling, useDnpSessionAreaFlow, useDnpMatchSelection.
+│   # useAsyncJobPolling.ts    → polling status job async (export DNP, import DNP)
+│   # useDnpSessionAreaFlow.ts → flow navigasi area DNP
+│   # useDnpMatchSelection.ts  → logika seleksi & matching pertanyaan lokal ↔ DNP
+│   # useLocalStorage.ts       → wrapper abstraksi localStorage
+│   # use-toast.ts             → helper toast notification
 ├── lib/
-│   # API client, helper domain, dan util frontend.
-│   # Contoh paling penting: api.ts, sso.ts, selfAssessment.ts.
+│   # API client, helper domain, dan kontrak request.
+│   # File paling penting:
+│   # api.ts                         → fondasi fetch, token management (localStorage), auto-refresh
+│   # sso.ts                         → PKCE OIDC flow, SSO lock multi-tab
+│   # permissions.ts                 → PermissionMap dan helper akses lintas-service
+│   # selfAssessment.ts              → kontrak API Self Assessment (terbesar, 36KB)
+│   # externalDnp.ts                 → kontrak API External DNP
+│   # monitoringReview.ts            → kontrak API monitoring review
+│   # certificationNotes.ts          → kontrak API catatan sertifikasi
+│   # certificationNoteDocuments.ts  → helper generate/download dokumen catatan sertifikasi
+│   # notifications.ts               → kontrak API notifikasi
+│   # authPortal.ts                  → integrasi dengan Auth Portal eksternal
+│   # selfAssessmentDnpMatching.ts   → util matching pertanyaan DNP
+│   # selfAssessmentFilters.ts       → util filter self assessment
+│   # download.ts                    → helper download file via signed URL
+│   # date.ts                        → utility format tanggal
+│   # storage.ts                     → wrapper abstraksi localStorage
+│   # theme.ts                       → konfigurasi tema
+│   # id.ts, utils.ts                → utility umum
 ├── pages/
 │   # Page-level orchestration. Tempat halaman utama berada.
 │   ├── admin/
@@ -83,13 +104,22 @@ src/
   Alasan: semua route baru biasanya akan masuk lewat sini.
 
 - `src/lib/api.ts`
-  Alasan: ini fondasi request API frontend.
+  Alasan: ini fondasi request API frontend. Token disimpan di **localStorage** (`k2s.authToken`, `k2s.authRefreshToken`, `k2s.authUser`). Ada mekanisme **auto-refresh token** — jika response `401` diterima, `apiFetch` otomatis memanggil `refreshAccessToken()` dan mengulang request dengan token baru.
+
+- `src/lib/sso.ts`
+  Alasan: flow PKCE OIDC lengkap ada di sini, termasuk **SSO lock multi-tab** (TTL 15 detik) yang mencegah race condition login di beberapa tab browser sekaligus.
+
+- `src/lib/permissions.ts`
+  Alasan: berisi `PermissionMap` lengkap dan helper cek akses untuk seluruh fitur K2S, termasuk akses lintas-service (Logbook, K3, Keamanan).
 
 - `src/lib/selfAssessment.ts`
   Alasan: kontrak API self assessment, admin, DNP, dan CAP saat ini banyak dikumpulkan di sini.
 
 - `src/pages/admin/SelfAssessmentReviews.tsx`
   Alasan: ini orchestration page besar untuk review, export DNP, dan import jawaban DNP.
+
+- `src/pages/DashboardEntry.tsx`
+  Alasan: entry point dashboard yang memilih antara dua versi dashboard (`Dashboard.tsx` dan `Dashboard2.tsx`) secara kondisional.
 
 - `src/contexts/AppDataContext.tsx`
   Alasan: banyak data operasional lama masih hidup dari context ini.
@@ -461,35 +491,51 @@ Kalau baru pertama kali masuk ke frontend K2S, buka file berikut dalam urutan in
 
 ### 1. `src/App.tsx`
 Tujuan:
-- lihat semua route utama
+- lihat semua route utama (50+ route)
 - pahami domain mana saja yang ada
 - tahu page mana yang menjadi entrypoint tiap menu
+- perhatikan 3 guard: `RequireAuth`, `RequireAdmin`, `RequireExternalDnp`
 
 ### 2. `src/lib/api.ts`
 Tujuan:
 - pahami bagaimana request ke backend dilakukan
-- pahami token/auth client dasar
+- **token disimpan di localStorage** (bukan sessionStorage), key: `k2s.authToken`
+- ada **auto-refresh token** saat `401`: request diulang otomatis dengan token baru
+- ada `consumeTokenFromQuery()` untuk mode token via URL query param (`VITE_ALLOW_QUERY_TOKEN=true`)
 
 ### 3. `src/lib/sso.ts`
 Tujuan:
-- pahami bahwa auth di project ini tidak sesederhana login biasa
-- lihat flow SSO, PKCE, dan refresh token
+- pahami flow PKCE OIDC: state + verifier → code_challenge → authorize → callback → token
+- **SSO lock multi-tab** dengan TTL 15 detik (disimpan di localStorage)
+- refresh token flow via `refreshAccessToken()`
+- logout via `buildSsoLogoutUrl()`
 
-### 4. `src/contexts/AppDataContext.tsx`
+### 4. `src/lib/permissions.ts`
+Tujuan:
+- pahami `PermissionMap` yang mengontrol akses seluruh fitur
+- helper seperti `canAccessCertificationNoteLocation()` untuk access control berbasis lokasi (8 cabang AirNav)
+- **permissions mengontrol akses lintas-service**: Logbook, K3, Keamanan
+
+### 5. `src/contexts/AppDataContext.tsx`
 Tujuan:
 - lihat data operasional umum yang masih dikelola global
 - pahami domain mana yang masih bergantung pada provider lama
 
-### 5. `src/lib/selfAssessment.ts`
+### 6. `src/lib/selfAssessment.ts`
 Tujuan:
 - pahami domain self assessment yang menjadi area terbesar saat ini
 
-### 6. `src/pages/admin/SelfAssessmentReviews.tsx`
+### 7. `src/pages/admin/SelfAssessmentReviews.tsx`
 Tujuan:
 - lihat contoh page orchestration yang paling lengkap
 - lihat bagaimana hook, panel, dan API client digabung
 
-### 7. `refactor_process.md`
+### 8. `src/pages/DashboardEntry.tsx`
+Tujuan:
+- entry point dashboard yang memilih antara dua versi: `Dashboard.tsx` dan `Dashboard2.tsx`
+- pahami kondisi yang menentukan versi dashboard mana yang tampil
+
+### 9. `refactor_process.md`
 Tujuan:
 - lihat area refactor yang sedang berlangsung
 - hindari mengulang refactor yang sudah selesai

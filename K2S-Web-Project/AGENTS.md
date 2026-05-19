@@ -1,256 +1,297 @@
-# AGENTS.md
+# AGENTS.md — K2S-Web-Project
 
-## Project Overview
-- Folder ini adalah service utama K2S.
-- Struktur aktif:
-  - root folder: frontend React + TypeScript + Vite
-  - `backend`: Laravel 12 API
-  - `backend/wrapping`: service Python wrapper untuk integrasi external DNP
-  - `backend/whatsapp_api`: service Python bridge WAHA/WhatsApp
-- Dokumen arsitektur yang perlu dibaca developer baru:
-  - `arsitekltur.md` untuk arsitektur frontend
-  - `backend/arsitektur.md` untuk arsitektur backend Laravel API
-  - `refactor_process.md` untuk jejak refactor frontend K2S yang sedang berjalan
-- Jalur container aktif di `docker-compose.central.yml`:
-  - `backend-init`
-  - `backend`
-  - `queue-worker`
-  - `wrapper`
-  - `whatsapp-api`
-  - `backend-nginx`
-  - `frontend`
-- Area fungsional besar saat ini:
-  - auth lokal + SSO
-  - menu `Informasi`, termasuk master `Kelompok Fasilitas` di modul `Fasilitas`
-  - self assessment, review, CAP, monitoring
-  - admin `Review Unit Safety` dan `Export DNP` berbagi komponen list awal dengan menu user self assessment
-  - guide manual / signed download
-  - external DNP sync dan export dokumen
-  - WhatsApp API admin dan batch send
-  - notifikasi dan signed SSE stream
-  - admin user management lokal K2S
+Aplikasi utama platform K2S. Terdiri dari frontend React SPA dan backend Laravel 12, plus dua Python microservices (DNP scraper & WhatsApp bridge).
 
-## Export DNP Notes
-- Menu admin `Self Assessment > Export DNP` sekarang bukan hanya compare/baseline, tetapi sudah punya jalur pairing lokal->DNP dan draft export ke DNP.
-- UI aktif memakai `SelfAssessmentReviews.tsx` dalam mode `detailPanelMode="assessment"` dan reuse shell/list/table/filter yang sama dengan halaman self assessment utama.
-- Sejak refactor frontend 2026-04-17, `SelfAssessmentReviews.tsx` tidak lagi menjadi satu file UI besar. File itu sekarang lebih berperan sebagai orchestration page yang menyusun hook dan panel presentational di `src/components/self-assessment`.
-- Jejak refactor bertahap untuk area ini dicatat di `refactor_process.md`; baca file itu dulu sebelum melanjutkan refactor frontend K2S agar tidak mengulang work yang sama.
-- Jalur `Export DNP` sekarang:
-  - `POST /api/admin/self-assessment/export-dnp/init`
-  - `POST /api/admin/self-assessment/export-dnp/areas`
-  - `POST /api/admin/self-assessment/export-dnp/import`
-  - `POST /api/admin/self-assessment/export-dnp/run`
-  - `POST /api/admin/self-assessment/export-dnp/matches`
-  - `POST /api/admin/self-assessment/export-dnp/export`
-  - `GET /api/admin/self-assessment/export-dnp/jobs/{job}`
-- Data hasil ambil DNP disimpan permanen sebagai snapshot compare per kombinasi `session_area_id + user_id` di:
-  - `self_assessment_export_dnp_snapshots`
-  - `self_assessment_export_dnp_snapshot_items`
-- Snapshot compare untuk area-user yang sama bersifat overwrite/update, bukan append terus-menerus, supaya storage tetap hemat.
-- `selectedMatches` lokal->DNP sekarang disimpan di `summary` snapshot yang sama, sehingga pairing tidak hilang saat reload detail.
-- Job import DNP berjalan async melalui queue di:
-  - `SelfAssessmentExportDnpImportJob`
-  - `RunSelfAssessmentExportDnpImport`
-- Pairing pertanyaan memakai similarity teks pertanyaan lokal vs DNP dalam persen.
-- UI admin sekarang mendukung:
-  - pilih target DNP per pertanyaan lokal
-  - batalkan pairing
-  - minimize/buka lagi panel compare
-  - indikator kecil `PQ lokal` pada item DNP yang sudah dipasangkan
-  - export satu pertanyaan aktif atau semua pairing dalam area yang sedang dibuka
-- Jalur export draft ke DNP saat ini mengambil dari lokal:
-  - status jawaban
-  - comment
-  - evidence note
-  - semua file evidence yang terkait `question_code`
-  lalu mengirimkannya ke slot pertanyaan DNP yang dipilih admin.
-- Sebelum upload file evidence pada `Export DNP`, backend sekarang mencoba mengambil daftar file target secara live dari DNP lewat `get_plan_pq`, lalu fallback ke snapshot compare jika live fetch gagal.
-- Dedup nama file pada `Export DNP` sekarang membandingkan nama file lokal dengan nama tampilan file DNP, dengan prioritas key metadata `file_judul` bila tersedia, bukan hanya `file_name` internal DNP.
-- Session login DNP untuk `Export DNP` tidak dipersist permanen; session HTTP/cookies tetap hidup di memory wrapper Python, sedangkan Laravel hanya menyimpan `session_id` ke cache selama 6 jam.
-- Cache session `Export DNP` mengikuti pola `External DNP`:
-  - key global per user
-  - key per `user + scope`
-  - key per `user + scope + sessionAreaId`
-  - key per `user + scope + sessionAreaId + fillArea`
-- Detail admin submission (`SelfAssessmentReviewController::adminShow`) sekarang juga mengembalikan:
-  - `dnpCompare`
-  - `dnpSession` dari cache
-  - `dnpImportJob` yang masih `queued/running`
-  sehingga saat pindah sub menu lalu kembali ke area yang sama, UI `Export DNP` bisa memulihkan state sesi dan polling job.
-- Wrapper `backend/wrapping/app.py` untuk jalur self assessment compare sudah diparalelkan dan sebagian disamakan dengan referensi `folder_referensi/test5`, termasuk:
-  - `selfassessment_fill`
-  - `selfassessment_compare`
-  - `selfassessment_fetch_files`
-  - `selfassessment_save_draft`
-  - `selfassessment_upload_file`
-  - helper `_ajax_headers(...)`
-  - fallback `insert_realisasi` untuk resolve `data_id`
-  - payload compare yang membawa `draft_payload`, `raw_detail`, `ref_data`, dan `data_id_lookup` bila diperlukan
-- Jika sesudah perubahan fitur export muncul error lama yang tidak nyambung dengan kode terbaru, curigai proses `wrapper` atau `backend` masih memakai kode lama; recreate/restart service aktif terlebih dulu.
-- Jika jalur `Export DNP` bermasalah, bandingkan dulu dengan referensi `folder_referensi/test5/app.py`; referensi itu adalah basis perilaku scrape/export self assessment DNP yang paling dekat dengan kebutuhan fitur ini.
+---
 
-## Self Assessment Question Admin Notes
-- Menu admin `Self Assessment > Pertanyaan Self Assessment` sekarang punya 3 jalur impor:
-  - tambah manual per pertanyaan
-  - import CSV
-  - import pertanyaan dari DNP
-- Jalur `Import Pertanyaan dari DNP` sekarang memakai `get_datatable` lalu `get_plan_pq` per item untuk mengambil detail pertanyaan.
-- Wrapper `backend/wrapping/app.py` sekarang ikut meneruskan `pqNo` dari DNP ke backend import.
-- Backend `SelfAssessmentQuestionController::importQuestionRows()` sekarang memprioritaskan `pqNo` DNP sebagai `code` lokal, misalnya `B.68`, jika formatnya valid.
-- Jika `pqNo` DNP kosong atau tidak valid, import pertanyaan fallback ke pola lokal lama `prefix + nextNumber`.
-- Jika import menemukan `code` yang sama dengan pertanyaan lokal yang isinya sama, item tersebut akan di-skip agar re-import area yang sama tidak menggandakan pertanyaan.
-- Jika import menemukan `code` yang sama tetapi isi pertanyaannya berbeda, import menandainya sebagai bentrok dan mengembalikan error per baris.
-- Karena alur import DNP pertanyaan memakai queue dan wrapper, perubahan pada fitur ini minimum perlu verifikasi:
-  - `php artisan queue:work` aktif
-  - `python app.py` wrapper sudah direstart bila route/payload wrapper berubah
-- Halaman admin pertanyaan sekarang juga mendukung aksi `Hapus Area`.
-- `Hapus Area` menghapus entri area yang dipilih sekaligus seluruh pertanyaan pada area tersebut, dan harus selalu diperlakukan sebagai operasi destruktif.
-- UI `Hapus Area` memakai modal konfirmasi terpisah yang secara eksplisit menyebut area dan seluruh pertanyaannya akan dihapus.
+## Struktur Direktori
 
-## Import Jawaban DNP Notes
-- Menu admin `Self Assessment > Import Jawaban DNP` reuse snapshot compare DNP yang sama dengan `Export DNP`, tetapi arah penulisannya kebalik: data DNP diinjeksi ke jawaban lokal.
-- `Inject Semua Pairing` dan inject per pertanyaan sekarang berjalan async melalui queue, bukan request sinkron panjang.
-- Job inject DNP memakai:
-  - model `SelfAssessmentImportDnpInjectJob`
-  - queue worker `RunSelfAssessmentImportDnpInject`
-  - endpoint status `GET /api/admin/self-assessment/import-dnp/jobs/{job}`
-- Karena inject DNP sekarang async, UI admin melakukan polling status job sampai selesai dan dapat melanjutkan polling lagi setelah reload detail jika job masih `queued/running`.
-- Jalur inject DNP tetap dapat mengikutkan import file evidence dari DNP bila opsi `includeEvidence` aktif, tetapi beban proses itu sekarang ditangani oleh queue job, bukan request frontend tunggal.
-- Jika fitur `Import Jawaban DNP` terlihat berhenti di status `queued` atau `running`, hal pertama yang harus dicek adalah `php artisan queue:work`.
+```
+K2S-Web-Project/
+├── src/                         # Frontend React/TypeScript/Vite
+│   ├── App.tsx                  # Router utama (lazy-loaded pages)
+│   ├── AppShell.tsx             # Layout shell (sidebar, header)
+│   ├── main.tsx                 # Entry point
+│   ├── pages/                   # Halaman-halaman
+│   │   ├── admin/               # Admin-only pages
+│   │   ├── external-dnp/        # External DNP pages
+│   │   ├── Dashboard.tsx
+│   │   ├── Login.tsx
+│   │   ├── AuthCallback.tsx
+│   │   └── ...                  # ~57 page components
+│   ├── components/              # Reusable UI components
+│   │   └── auth/                # RequireAuth, RequireAdmin, RequireExternalDnp
+│   ├── contexts/                # React Context (AppDataContext, DashboardContext)
+│   ├── hooks/                   # Custom hooks
+│   ├── lib/                     # Utilities
+│   ├── types/                   # TypeScript type definitions
+│   └── data/                    # Static data
+├── backend/                     # Laravel 12 (PHP 8.2)
+│   ├── app/
+│   │   ├── Http/
+│   │   │   ├── Controllers/Api/ # 40 API controllers
+│   │   │   └── Middleware/
+│   │   │       ├── AuthenticateApiRequest.php  # SSO JWT / Sanctum auth
+│   │   │       ├── EnsureAdmin.php
+│   │   │       ├── EnsureExternalDnpAccess.php
+│   │   │       └── EnsureInternalApiToken.php
+│   │   ├── Jobs/                # Queue jobs (async operations)
+│   │   │   ├── RunExternalDnpSync.php
+│   │   │   ├── RunSelfAssessmentExportDnpImport.php
+│   │   │   ├── RunSelfAssessmentImportDnpInject.php
+│   │   │   ├── RunSelfAssessmentQuestionImport.php
+│   │   │   └── RunWhatsappBatchSend.php
+│   │   ├── Models/              # ~60 Eloquent models
+│   │   └── Security/Sso/       # OIDC token validator, user synchronizer
+│   ├── routes/
+│   │   └── api.php             # Semua API routes (~327 lines)
+│   ├── database/
+│   │   ├── migrations/         # ~30+ migration files
+│   │   └── seeders/
+│   ├── config/                 # Laravel config files
+│   ├── storage/                # File uploads, logs
+│   ├── wrapping/               # Python Flask - DNP Scraper (:5001)
+│   │   ├── app.py
+│   │   ├── requirements.txt
+│   │   ├── Dockerfile
+│   │   └── templates/
+│   ├── whatsapp_api/           # Python Flask - WhatsApp Bridge (:5002)
+│   │   ├── app.py
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
+│   ├── Dockerfile              # PHP-FPM container
+│   ├── composer.json
+│   └── docker/                 # Nginx config for backend-nginx
+├── package.json                # Frontend dependencies
+├── vite.config.ts
+├── tailwind.config.js
+└── tsconfig.json
+```
 
-## Frontend Refactor Notes
-- Area frontend K2S yang sedang dirapikan bertahap saat ini berpusat di:
-  - `src/pages/admin/SelfAssessmentReviews.tsx`
-  - `src/lib/selfAssessment.ts`
-  - `src/contexts/AppDataContext.tsx`
-- Developer baru yang masuk ke area frontend wajib baca:
-  - `arsitekltur.md`
-  - `refactor_process.md`
-- Untuk `SelfAssessmentReviews.tsx`, panel-panel besar sudah dipisah ke komponen berikut:
-  - `SelfAssessmentDnpLoginPanel`
-  - `SelfAssessmentDnpSnapshotPanel`
-  - `SelfAssessmentDnpAnswerPairingPanel`
-  - `SelfAssessmentAssessmentEditorPanel`
-  - `SelfAssessmentReviewDetailPanel`
-  - `SelfAssessmentResultSubmissionPanel`
-- Hook/frontend util bersama yang sudah diekstrak untuk area DNP:
-  - `useAsyncJobPolling`
-  - `useDnpSessionAreaFlow`
-  - `useDnpMatchSelection`
-  - `selfAssessmentDnpMatching`
-- Jika tugas menyentuh area ini, utamakan melanjutkan pola komponen presentational + hook reusable, bukan menambah logic baru langsung ke `SelfAssessmentReviews.tsx`.
-- Jangan pindahkan lagi logic DNP ke inline helper lokal di page selama hook/util bersama yang ada masih mencukupi.
+---
 
-## Backend Architecture Notes
-- Developer baru yang masuk ke area backend Laravel wajib baca:
-  - `backend/arsitektur.md`
-- Dokumen itu menjadi acuan utama untuk:
-  - struktur folder backend
-  - boundary route/controller/service/model
-  - standar API response
-  - middleware, keamanan, dan env
-  - onboarding backend
-- Karena backend K2S masih campuran antara controller tipis dan controller legacy yang cukup padat, gunakan `backend/arsitektur.md` sebagai target konsistensi saat menambah atau merapikan code baru.
-- Khusus modul `Informasi > Fasilitas`:
-  - daftar `Kelompok Fasilitas` sekarang dikelola terpisah sebagai master data di tabel `facility_groups`
-  - data item fasilitas tetap berada di tabel `facilities`
-  - fitur `Tambah Kelompok Fasilitas` menulis ke master `facility_groups`
-  - fitur `Hapus Kelompok Fasilitas` saat ini menghapus master grup sekaligus semua item `facilities` yang masih memakai grup tersebut
+## Tech Stack
 
-## Build And Test Commands
-- Frontend:
-  - `cd K2S-Web-Project`
-  - `npm install`
-  - `npm run dev`
-  - `npm run lint`
-  - `npm run typecheck`
-  - `npm run build`
-- Backend Laravel:
-  - `cd K2S-Web-Project/backend`
-  - `composer install`
-  - `cp .env.example .env`
-  - `php artisan key:generate`
-  - `php artisan migrate --force`
-  - `php artisan serve`
-  - `php artisan queue:work`
-  - `composer test`
-  - alternatif dev terpadu: `composer dev`
-- Wrapper Python:
-  - `cd K2S-Web-Project/backend/wrapping`
-  - `pip install -r requirements.txt`
-  - `python app.py`
-- WhatsApp API Python:
-  - `cd K2S-Web-Project/backend/whatsapp_api`
-  - `pip install -r requirements.txt`
-  - `python app.py`
-- Docker central dari root repo:
-  - `docker compose --env-file .env.central -f docker-compose.central.yml up -d --build`
+| Layer | Teknologi |
+|-------|-----------|
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS, Radix UI / shadcn/ui |
+| Forms | react-hook-form + zod |
+| Routing | react-router-dom v7 (lazy loading) |
+| Charts | recharts |
+| Backend | Laravel 12, PHP 8.2 |
+| ORM | Eloquent |
+| Auth | SSO JWT (OIDC) + Sanctum (fallback/hybrid) |
+| Queue | Laravel Queue (database driver) |
+| Database | MySQL 8.0 |
+| Microservices | Python Flask (wrapping, whatsapp_api) |
 
-## Code Style Guidelines
-- Frontend:
-  - pertahankan pola `src/pages`, `src/lib`, `src/contexts`, `src/types`
-  - gunakan React function component + TypeScript
-  - alias/import yang sudah ada harus dipertahankan
-  - auth client ada di `src/lib/sso.ts` dengan lock antar tab; jangan sederhanakan flow itu tanpa memahami race condition login
-- Backend Laravel:
-  - route API sangat besar dan sudah dipisah lewat controller; tambahkan logic di controller/service/model yang sesuai, bukan di `routes/api.php`
-  - middleware penting yang sekarang aktif antara lain `auth.api`, `admin`, `external-dnp-access`, `signed`, dan `signed:relative`
-  - signed download URL dipakai untuk banyak file user/admin; jangan ubah behavior signature sembarangan
-- External DNP:
-  - area sensitif ada di `ExternalDnpCapController`, `ExternalDnpExportDocumentController`, dan integrasi wrapper
-  - export dokumen external DNP sekarang menghasilkan `.docx` per user + scope, lalu diunduh dari storage lokal
-- WhatsApp:
-  - area sensitif ada di `ExternalDnpWhatsappController` dan `backend/whatsapp_api`
-  - backend Laravel menyiapkan admin options, preview, send, dan batch queue; service Python menangani bridge WAHA/session/send
-- Admin user management:
-  - `/admin/users` sekarang tetap menjadi halaman lokal K2S; jangan kembalikan ke redirect eksternal tanpa alasan kuat
+---
 
-## Testing Instructions
-- Frontend minimum:
-  - `cd K2S-Web-Project && npm run lint && npm run typecheck && npm run build`
-- Backend minimum:
-  - `cd K2S-Web-Project/backend && composer test`
-- Jika menyentuh auth/SSO:
-  - cek `GET /api/auth/sso-config`
-  - uji login, callback, logout, dan `GET /api/auth/me`
-- Jika menyentuh upload/download:
-  - uji storage/upload manual
-  - uji signed URL download terkait
-- Jika menyentuh queue/job:
-  - verifikasi `php artisan queue:work`
-  - bila perubahan ada di WhatsApp batch send, uji antrean dan payload job
-- Jika menyentuh `Export DNP`:
-  - uji `init -> areas -> import`
-  - pastikan `php artisan queue:work` aktif karena import area DNP berjalan async
-  - bila import gagal, cek blok debug/detail di UI terlebih dulu sebelum membuka log server
-  - verifikasi snapshot tersimpan dan muncul lagi setelah pindah sub menu lalu kembali ke area yang sama
-  - verifikasi pairing pertanyaan tersimpan dan pulih lagi setelah reload detail
-  - uji `Export Pertanyaan Ini` dan `Export Semua Pairing Area Ini`
-  - verifikasi draft jawaban DNP berubah sesuai status/comment/evidence note lokal
-  - verifikasi file evidence lokal ikut terupload ke draft DNP
-- Jika menyentuh `Import Jawaban DNP`:
-  - uji inject satu pertanyaan
-  - uji `Inject Semua Pairing`
-  - pastikan `php artisan queue:work` aktif karena inject sekarang berjalan async
-  - verifikasi polling job selesai dan detail jawaban lokal ter-refresh
-  - bila opsi file evidence aktif, verifikasi evidence lokal hasil import benar-benar tersimpan
-- Jika menyentuh external DNP:
-  - uji sync init/start/run/status
-  - uji export document `items`, `generate`, dan `download`
-- `backend/whatsapp_api` minimum:
-  - `python3 -m py_compile app.py`
-  - uji status sesi, QR/session baru, logout, dan satu pengiriman uji
-- Verifikasi deploy:
-  - `k2s.ryvidia.my.id` membuka frontend
-  - `apik2s.ryvidia.my.id` merespons API lewat `backend-nginx`
-  - jika `frontend`, `backend`, `backend-nginx`, atau upstream terkait direcreate, restart `gateway`
+## API Routes Overview (routes/api.php)
 
-## Security Considerations
-- K2S memiliki banyak endpoint sensitif; jangan melepas middleware auth/admin/external DNP/signed.
-- Konfigurasi auth bergantung pada `AUTH_MODE`, `SSO_*`, `CORS_ALLOW_ORIGINS`, dan `SANCTUM_STATEFUL_DOMAINS`.
-- `backend/whatsapp_api` harus sinkron dengan `WHATSAPP_BOT_INTERNAL_TOKEN`, `WAHA_API_BASE_URL`, `WAHA_API_KEY`, dan session WAHA.
-- Wrapper external DNP harus sinkron dengan `EXTERNAL_DNP_WRAPPER_INTERNAL_TOKEN`, `WRAPPER_SECRET_KEY`, dan `EXTERNAL_DNP_WEB2_URL`.
-- Queue worker penting untuk job async; perubahan yang memutus queue akan memukul WhatsApp batch dan proses background lain.
-- Session `Export DNP` dan `External DNP` saat ini bergantung pada memory wrapper + cache Laravel; restart wrapper dapat menghilangkan session walau cache masih menyimpan `session_id`.
-- Jalur export draft self assessment DNP sensitif terhadap `draft_payload`, `plan_id`, `area_group_id`, `pq_id`, dan `data_id` dari snapshot compare; jangan ubah struktur payload itu tanpa cek wrapper dan perilaku DNP aktual.
-- Hindari menambah cycle `depends_on` baru di compose antara `backend`, `backend-nginx`, `whatsapp-api`, dan service lain.
+### Public (no auth)
+- `POST /api/auth/login` — Local login (Sanctum)
+- `GET /api/auth/sso-config` — SSO configuration for frontend
+- `GET /api/self-assessment/evidence/{id}/signed` — Signed file download
+- `GET /api/self-assessment/cap/fulfillment-files/{file}/signed` — Signed CAP file
+- Various other signed download routes
+
+### Authenticated (middleware: AuthenticateApiRequest)
+- `GET/PATCH /api/profile` — User profile
+- `GET /api/notifications` — System notifications
+- `GET /api/instansi` — Instansi data
+- `GET /api/self-assessment/questions` — SA questions
+- `GET /api/self-assessment/sessions` — SA sessions
+- `POST /api/self-assessment/answers/bulk` — Submit answers
+- `GET /api/self-assessment/cap` — CAP list
+- `POST /api/self-assessment/cap/{cap}/fulfillments` — Submit CAP fulfillment
+- `GET /api/certification-notes/{locationSlug}` — Certification notes
+- Resources: facilities, organizations, personil, certificates, agenda, audits, inspections, monitoring, findings, follow-ups
+
+### Admin Only (middleware: admin)
+- `GET /api/dashboard/admin-module-trend` — Dashboard trends
+- CRUD `/api/users` — User management
+- `POST /api/admin/self-assessment/sessions` — Create SA session
+- `POST /api/admin/self-assessment/questions` — Manage questions
+- Import/Export DNP endpoints
+- WhatsApp admin endpoints
+
+### External DNP (middleware: external-dnp-access)
+- `GET /api/external-dnp/sessions` — DNP sessions
+- `GET /api/external-dnp/caps` — DNP CAPs
+- Sync endpoints with captcha
+
+### Internal Service-to-Service
+- `POST /api/internal/auth/users/sync` — User sync from Auth service
+- `GET /api/internal/whatsapp/external-dnp/temuan` — WhatsApp bot data
+
+---
+
+## Middleware Stack
+
+| Middleware | Fungsi |
+|-----------|--------|
+| `AuthenticateApiRequest` | Validate JWT (SSO) atau Sanctum token. Support mode: `sso`, `local`, `hybrid` |
+| `EnsureAdmin` | Cek `role === 'Admin'` |
+| `EnsureExternalDnpAccess` | Cek permission `can_access_external_dnp` |
+| `EnsureInternalApiToken` | Validate `X-Internal-Token` header (HMAC timing-safe) |
+
+---
+
+## Auth Mode
+
+Dikonfigurasi via `AUTH_MODE` env var:
+
+| Mode | Behavior |
+|------|----------|
+| `sso` | Hanya terima JWT dari Auth Service (production) |
+| `local` | Hanya Sanctum token (standalone dev) |
+| `hybrid` | Coba Sanctum dulu, fallback ke SSO JWT |
+
+---
+
+## Queue Jobs
+
+| Job | Fungsi |
+|-----|--------|
+| `RunExternalDnpSync` | Sync data dari portal DNP eksternal (scraping) |
+| `RunSelfAssessmentExportDnpImport` | Export hasil SA ke portal DNP |
+| `RunSelfAssessmentImportDnpInject` | Import pertanyaan dari DNP |
+| `RunSelfAssessmentQuestionImport` | Import pertanyaan dari file |
+| `RunWhatsappBatchSend` | Kirim batch WhatsApp notifications |
+
+Queue worker berjalan di container terpisah (`k2s-queue-worker`).
+
+---
+
+## Python Microservices
+
+### wrapping/ (DNP Scraper, port 5001)
+- Flask app yang melakukan web scraping ke portal DNP eksternal.
+- Auth: `X-Internal-Token` header (env: `EXTERNAL_DNP_WRAPPER_INTERNAL_TOKEN`).
+- Fungsi: login ke portal DNP, scrape data pertanyaan/jawaban, submit data.
+
+### whatsapp_api/ (WhatsApp Bridge, port 5002)
+- Flask app sebagai bridge ke WAHA (WhatsApp HTTP API).
+- Auth: `X-Internal-Token` header (env: `WHATSAPP_BOT_INTERNAL_TOKEN`).
+- Fungsi: kirim pesan WhatsApp, cek session status, handle webhook dari WAHA.
+
+---
+
+## Frontend Architecture
+
+### Routing & Auth Guards
+- `RequireAuth` — Redirect ke login jika belum authenticated
+- `RequireAdmin` — Hanya role Admin
+- `RequireExternalDnp` — Hanya user dengan akses External DNP
+
+### State Management
+- `AppDataContext` — Global app state (user, permissions, instansi)
+- `DashboardContext` — Dashboard-specific state
+
+### Page Categories
+| Kategori | Pages |
+|----------|-------|
+| Dashboard | Dashboard, AdminDashboard |
+| Self Assessment | AuditSelfAssessment, InspeksiSelfAssessment, MonitoringSelfAssessment, Surveillance |
+| CAP | CapDraft, CapFulfillment, CapReview (per modul) |
+| External DNP | ExternalDnpAudit/Inspeksi/Surveillance CAP pages |
+| Instansi | Profil, Fasilitas, Organisasi, Personil, Sertifikat |
+| Certification | CatatanSertifikasi, PemenuhanSertifikat |
+| Admin | UserManagement, SelfAssessmentSessions, Questions, ExportDnp, ImportDnp, WhatsApp |
+| Pengawasan | Agenda, Temuan, FollowUp |
+
+---
+
+## Database (MySQL)
+
+~60 tabel, grouped:
+
+| Group | Tabel Utama |
+|-------|-------------|
+| User & Auth | `users`, `personal_access_tokens` |
+| Self Assessment | `self_assessment_questions`, `_sessions`, `_session_areas`, `_answers`, `_evidences`, `_reviews`, `_results` |
+| CAP | `self_assessment_caps`, `_cap_reviews`, `_cap_fulfillments`, `_cap_fulfillment_files`, `_cap_extensions` |
+| External DNP | `external_dnp_sessions`, `_areas`, `_questions`, `_caps`, `_export_dnp_snapshots`, `_export_dnp_pairings` |
+| Certification | `certification_note_tables`, `_rows`, `_evidence_files` |
+| Instansi | `instansis`, `facilities`, `facility_groups`, `organizations`, `personil`, `certificates` |
+| Pengawasan | `agendas`, `audits`, `inspections`, `monitorings`, `findings`, `follow_ups`, `follow_up_histories` |
+| Notifikasi | `system_notifications`, `whatsapp_notification_panels`, `whatsapp_user_notification_recipients` |
+| Queue | `jobs`, `failed_jobs` |
+
+---
+
+## Cara Development Lokal
+
+### Backend (Laravel)
+```bash
+cd K2S-Web-Project/backend
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan serve          # port 8000
+
+# Queue worker (terminal terpisah)
+php artisan queue:work --tries=1
+
+# Atau all-in-one:
+composer dev
+```
+
+### Frontend
+```bash
+cd K2S-Web-Project
+npm install
+npm run dev               # Vite dev server (port 5173)
+```
+
+---
+
+## Konvensi & Tips
+
+- **Controllers** selalu di `app/Http/Controllers/Api/` — jangan buat controller di luar namespace ini.
+- **Models** menggunakan Eloquent — relasi didefinisikan di model, bukan di controller.
+- **Migrations** bernama dengan timestamp prefix — jangan rename migration yang sudah di-deploy.
+- **Frontend pages** menggunakan lazy loading — setiap page di-import via `lazy()` di App.tsx.
+- **File uploads** disimpan di `storage/` (non-public) — akses via signed URL.
+- **Queue jobs** untuk operasi berat (scraping, batch send) — jangan jalankan synchronous di controller.
+- **Internal API** (`/api/internal/*`) hanya boleh diakses oleh service lain via `X-Internal-Token`.
+- **SSO claims** di-map ke user lokal via `SsoUserSynchronizer` — user otomatis dibuat/diupdate saat login SSO.
+- **Frontend env vars** (`VITE_*`) di-inject saat build time — perubahan perlu rebuild.
+- **Jangan edit** `vendor/` atau `node_modules/` — gunakan composer/npm untuk dependency.
+
+---
+
+## Ganti Domain — CORS Nginx Config
+
+Saat ganti domain, selain `.env.central`, file `backend/docker/nginx.conf` juga **wajib diubah**.
+
+File ini berisi regex CORS yang menentukan origin mana yang diizinkan di level Nginx (sebelum request sampai ke Laravel):
+
+```nginx
+# backend/docker/nginx.conf — baris ini perlu diupdate:
+if ($http_origin ~* "^https://([a-z0-9-]+\.)?(ryvidia|systennup)\.my\.id$") {
+    set $cors_origin $http_origin;
+}
+```
+
+Tambahkan domain baru ke regex di atas. Contoh menambah `newdomain.com`:
+
+```nginx
+if ($http_origin ~* "^https://([a-z0-9-]+\.)?(ryvidia|systennup|newdomain)\.my\.id$") {
+    set $cors_origin $http_origin;
+}
+```
+
+Setelah edit, rebuild container `backend-nginx` dan restart gateway:
+
+```bash
+sudo docker compose --env-file .env.central -f docker-compose.central.yml up -d --build --force-recreate backend-nginx
+sudo docker compose --env-file .env.central -f docker-compose.central.yml restart gateway
+```
+
+**Kenapa ini penting:**
+- Nginx (`k2s-backend-nginx`) handle preflight OPTIONS request langsung — tanpa meneruskan ke PHP.
+- Kalau origin tidak match regex, `Access-Control-Allow-Origin` tidak dikirim → browser block semua request sebagai "CORS error".
+- Laravel CORS config (`config/cors.php`) hanya berlaku untuk request yang sampai ke PHP (non-OPTIONS).

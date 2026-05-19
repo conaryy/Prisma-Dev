@@ -1,5 +1,8 @@
 # Production Deploy Checklist (K2S)
 
+> **Penting:** Deploy aktif platform saat ini menggunakan **orkestrasi terpusat** di root repo (`docker-compose.central.yml` + `.env.central`), bukan `docker-compose.yml` lokal yang ada di folder ini. Panduan di bawah berlaku untuk deploy **standalone** K2S saja (misalnya dev/staging lokal). Untuk deploy production terpusat, lihat `DEPLOY_CENTRAL.md` dan `deploy/AGENTS.md` di root repo.
+
+
 ## 1) Prepare environment
 
 1. Copy env template:
@@ -10,15 +13,16 @@
    - `BACKEND_APP_URL`, `VITE_API_BASE_URL`
    - `CORS_ALLOW_ORIGINS`, `SANCTUM_STATEFUL_DOMAINS`
    - `QUEUE_CONNECTION`
-3. Jika K2S ikut SSO pusat:
-   - isi `VITE_SSO_AUTH_BASE_URL`
-   - `VITE_SSO_AUTHORIZE_URL`
-   - `VITE_SSO_TOKEN_URL`
-   - `VITE_SSO_LOGOUT_URL`
-   - `VITE_SSO_CLIENT_ID`
-   - `VITE_SSO_CLIENT_SECRET`
-   - `VITE_SSO_REDIRECT_URI`
-   - `VITE_AUTH_PORTAL_URL`
+3. Jika K2S ikut SSO pusat (aktif di production):
+   - `VITE_SSO_ENABLED=true`
+   - `VITE_SSO_AUTH_BASE_URL` → base URL auth service (default: `https://authapi.ryvidia.my.id`)
+   - `VITE_SSO_AUTHORIZE_URL` → endpoint authorize
+   - `VITE_SSO_TOKEN_URL` → endpoint token exchange
+   - `VITE_SSO_LOGOUT_URL` → endpoint logout
+   - `VITE_SSO_CLIENT_ID` → client ID K2S (default: `k2s-web`)
+   - `VITE_SSO_REDIRECT_URI` → harus cocok persis dengan yang didaftarkan di Auth service
+   - `VITE_AUTH_PORTAL_URL` → URL Auth Portal untuk link cross-service
+   - `VITE_ALLOW_QUERY_TOKEN` → `true` jika izinkan token via URL query param (opsional)
 
 ## 2) Build and run
 

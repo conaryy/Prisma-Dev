@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { KeyRound, Pencil, Trash2, UserPlus } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Pencil, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -62,6 +62,9 @@ const PERMISSION_LABELS: Array<{ key: keyof PermissionState; label: string }> = 
   { key: 'can_manage_users', label: 'Kelola User' },
 ];
 
+const FIELD_HELP_CLASS = 'mt-1 text-xs leading-5 text-slate-500 dark:text-slate-300';
+const FIELD_ERROR_CLASS = 'mt-1 text-xs leading-5 text-red-500 dark:text-red-300';
+
 function defaultPermissions(role: 'Admin' | 'Viewer'): PermissionState {
   const admin = role === 'Admin';
   return {
@@ -69,7 +72,7 @@ function defaultPermissions(role: 'Admin' | 'Viewer'): PermissionState {
     can_manage_users: admin,
     can_manage_admin_module: admin,
     can_access_k2s_dashboard: true,
-    can_access_logbook: true,
+    can_access_logbook: admin,
     can_access_k3: admin,
     can_access_keamanan: admin,
     can_access_external_dnp: admin,
@@ -128,6 +131,8 @@ export function UserManagement() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resetTarget, setResetTarget] = useState<UserItem | null>(null);
   const [resetPassword, setResetPassword] = useState('');
+  const [isFormPasswordVisible, setIsFormPasswordVisible] = useState(false);
+  const [isResetPasswordVisible, setIsResetPasswordVisible] = useState(false);
   const [selfUserId, setSelfUserId] = useState<string | null>(null);
   const [editTargetId, setEditTargetId] = useState<string | null>(null);
   const [form, setForm] = useState<UserFormState>(createInitialForm());
@@ -135,35 +140,60 @@ export function UserManagement() {
   const isEditing = editTargetId !== null;
   const requiresExternalDnpInstansiSelection =
     form.role !== 'Admin' && form.permissions.can_access_external_dnp;
+  const normalizedPhone = normalizePhoneInput(form.phone);
+  const isNameValid = form.name.trim().length >= 2;
+  const isUsernameValid = form.username.trim().length >= 3;
+  const isEmailValid = form.email.trim().length > 0;
+  const isPhoneValid = normalizedPhone.length === 0 || isValidInternationalPhone(normalizedPhone);
+  const isPasswordValid = isEditing
+    ? form.password.length === 0 || form.password.length >= 8
+    : form.password.length >= 8;
+  const isExternalDnpInstansiValid =
+    !requiresExternalDnpInstansiSelection || form.externalDnpInstansiAccess.length > 0;
 
   const canSubmit = useMemo(() => {
-    const phone = normalizePhoneInput(form.phone);
-    const isPasswordValid = isEditing
-      ? form.password.length === 0 || form.password.length >= 8
-      : form.password.length >= 8;
-
     return (
-      form.name.trim().length >= 2 &&
-      form.username.trim().length >= 3 &&
-      form.email.trim().length > 0 &&
-      (phone.length === 0 || isValidInternationalPhone(phone)) &&
+      isNameValid &&
+      isUsernameValid &&
+      isEmailValid &&
+      isPhoneValid &&
       isPasswordValid &&
-      (!requiresExternalDnpInstansiSelection || form.externalDnpInstansiAccess.length > 0)
+      isExternalDnpInstansiValid
     );
   }, [
-    form.email,
-    form.externalDnpInstansiAccess.length,
-    form.name,
-    form.password.length,
-    form.phone,
-    form.username,
+    isEmailValid,
+    isExternalDnpInstansiValid,
+    isNameValid,
+    isPasswordValid,
+    isPhoneValid,
+    isUsernameValid,
+  ]);
+
+  const submitRequirements = useMemo(() => {
+    const items = [];
+    if (!isNameValid) items.push('nama lengkap minimal 2 karakter');
+    if (!isUsernameValid) items.push('username minimal 3 karakter');
+    if (!isEmailValid) items.push('email wajib diisi');
+    if (!isPhoneValid) items.push('nomor WhatsApp harus format internasional yang valid');
+    if (!isPasswordValid) {
+      items.push(isEditing ? 'password baru minimal 8 karakter jika diisi' : 'password minimal 8 karakter');
+    }
+    if (!isExternalDnpInstansiValid) items.push('pilih minimal satu instansi External DNP');
+    return items;
+  }, [
     isEditing,
-    requiresExternalDnpInstansiSelection,
+    isEmailValid,
+    isExternalDnpInstansiValid,
+    isNameValid,
+    isPasswordValid,
+    isPhoneValid,
+    isUsernameValid,
   ]);
 
   const resetForm = () => {
     setEditTargetId(null);
     setForm(createInitialForm());
+    setIsFormPasswordVisible(false);
   };
 
   const loadUsers = async () => {
@@ -255,6 +285,7 @@ export function UserManagement() {
       }
 
       resetForm();
+      setIsResetPasswordVisible(false);
       await loadUsers();
     } catch (err) {
       setError((err as Error).message || 'Gagal menyimpan user.');
@@ -329,6 +360,7 @@ export function UserManagement() {
       });
       setResetTarget(null);
       setResetPassword('');
+      setIsResetPasswordVisible(false);
     } catch (err) {
       setError((err as Error).message || 'Gagal reset password.');
     }
@@ -390,21 +422,64 @@ export function UserManagement() {
 
         <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm transition-colors duration-300 dark:border-[#3158bb66] dark:bg-[#0a1538]/85 dark:shadow-none">
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-            <Input placeholder="Nama lengkap" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
-            <Input placeholder="Username" value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} />
-            <Input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
-            <Input
-              inputMode="tel"
-              placeholder="WhatsApp +62... / +1... (opsional)"
-              value={form.phone}
-              onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
-            />
-            <Input
-              type="password"
-              placeholder={isEditing ? 'Kosongkan jika tidak diubah' : 'Password min 8 karakter'}
-              value={form.password}
-              onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-            />
+            <div>
+              <Input placeholder="Nama lengkap" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
+              <p className={isNameValid ? FIELD_HELP_CLASS : FIELD_ERROR_CLASS}>
+                Wajib diisi, minimal 2 karakter.
+              </p>
+            </div>
+            <div>
+              <Input placeholder="Username" value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} />
+              <p className={isUsernameValid ? FIELD_HELP_CLASS : FIELD_ERROR_CLASS}>
+                Wajib diisi, minimal 3 karakter.
+              </p>
+            </div>
+            <div>
+              <Input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
+              <p className={isEmailValid ? FIELD_HELP_CLASS : FIELD_ERROR_CLASS}>
+                Wajib diisi untuk login dan notifikasi akun.
+              </p>
+            </div>
+            <div>
+              <Input
+                inputMode="tel"
+                placeholder="WhatsApp +62... / +1... (opsional)"
+                value={form.phone}
+                onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+              />
+              <p className={isPhoneValid ? FIELD_HELP_CLASS : FIELD_ERROR_CLASS}>
+                Opsional. Jika diisi, gunakan format internasional seperti +6281234567890.
+              </p>
+            </div>
+            <div>
+              <div className="relative">
+                <Input
+                  className="pr-11"
+                  type={isFormPasswordVisible ? 'text' : 'password'}
+                  placeholder={isEditing ? 'Kosongkan jika tidak diubah' : 'Password min 8 karakter'}
+                  value={form.password}
+                  onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                  aria-label={isFormPasswordVisible ? 'Sembunyikan password' : 'Tampilkan password'}
+                  title={isFormPasswordVisible ? 'Sembunyikan password' : 'Tampilkan password'}
+                  onClick={() => setIsFormPasswordVisible((value) => !value)}
+                >
+                  {isFormPasswordVisible ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+              <p className={isPasswordValid ? FIELD_HELP_CLASS : FIELD_ERROR_CLASS}>
+                {isEditing
+                  ? 'Opsional saat edit. Jika diisi, minimal 8 karakter.'
+                  : 'Wajib diisi, minimal 8 karakter.'}
+              </p>
+            </div>
           </div>
           {form.phone.trim() && !isValidInternationalPhone(normalizePhoneInput(form.phone)) ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
@@ -423,6 +498,9 @@ export function UserManagement() {
                 <option value="Viewer">Viewer</option>
                 <option value="Admin">Admin</option>
               </select>
+              <p className={FIELD_HELP_CLASS}>
+                Wajib dipilih. Admin mendapat akses pengelolaan penuh secara default.
+              </p>
             </label>
             <label className="space-y-2 text-sm">
               <span className="text-slate-600 dark:text-slate-300">Status</span>
@@ -434,6 +512,9 @@ export function UserManagement() {
                 <option value="Active">Active</option>
                 <option value="Disabled">Disabled</option>
               </select>
+              <p className={FIELD_HELP_CLASS}>
+                Wajib dipilih. Gunakan Active agar user bisa login.
+              </p>
             </label>
           </div>
 
@@ -525,6 +606,11 @@ export function UserManagement() {
               <UserPlus className="h-4 w-4" />
               {isSubmitting ? 'Menyimpan...' : isEditing ? 'Simpan Perubahan' : 'Tambah User'}
             </Button>
+            {!canSubmit && !isSubmitting && submitRequirements.length > 0 ? (
+              <div className="flex min-h-10 items-center text-xs text-slate-500 dark:text-slate-300">
+                Lengkapi dulu: {submitRequirements.join(', ')}.
+              </div>
+            ) : null}
             {isEditing && (
               <Button type="button" variant="outline" onClick={resetForm}>
                 Batal Edit
@@ -615,17 +701,32 @@ export function UserManagement() {
           <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm transition-colors duration-300 dark:border-[#3158bb66] dark:bg-[#0a1538]/95 dark:shadow-none">
             <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">Reset password: {resetTarget.username}</h2>
             <div className="flex flex-wrap items-center gap-2">
-              <Input
-                className="max-w-sm"
-                type="password"
-                value={resetPassword}
-                placeholder="Password baru minimal 8 karakter"
-                onChange={(e) => setResetPassword(e.target.value)}
-              />
+              <div className="relative w-full max-w-sm">
+                <Input
+                  className="pr-11"
+                  type={isResetPasswordVisible ? 'text' : 'password'}
+                  value={resetPassword}
+                  placeholder="Password baru minimal 8 karakter"
+                  onChange={(e) => setResetPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                  aria-label={isResetPasswordVisible ? 'Sembunyikan password baru' : 'Tampilkan password baru'}
+                  title={isResetPasswordVisible ? 'Sembunyikan password baru' : 'Tampilkan password baru'}
+                  onClick={() => setIsResetPasswordVisible((value) => !value)}
+                >
+                  {isResetPasswordVisible ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
               <Button type="button" onClick={onResetPassword}>
                 Simpan Password
               </Button>
-              <Button type="button" variant="outline" onClick={() => { setResetTarget(null); setResetPassword(''); }}>
+              <Button type="button" variant="outline" onClick={() => { setResetTarget(null); setResetPassword(''); setIsResetPasswordVisible(false); }}>
                 Batal
               </Button>
             </div>

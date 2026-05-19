@@ -1,4 +1,4 @@
-import { refreshAccessToken } from '@/lib/sso';
+import { isSsoEnabled, refreshAccessToken } from '@/lib/sso';
 
 const API_BASE_URL =
   (import.meta as { env?: Record<string, string> }).env?.VITE_API_BASE_URL ??
@@ -230,6 +230,12 @@ export class ApiError extends Error {
 }
 
 async function refreshSessionToken() {
+  if (!isSsoEnabled()) {
+    clearAuthToken();
+    clearAuthUser();
+    return null;
+  }
+
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
     clearAuthToken();
