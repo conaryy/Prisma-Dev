@@ -23,6 +23,13 @@
 **/pnpm-debug.log*
 **/.DS_Store
 **/*.tsbuildinfo
+/deploy/secrets/
+
+# Env berisi secret asli; yang di-commit hanya template *.example
+/.env.central*
+!/.env.central*.example
+# Dump database hasil skrip migrasi Auth (berisi data user + hash password)
+/Auth/backend/scripts/out/
 
 # Local PKL/report drafting files
 /bab3_logbook_dan_k2s.md
